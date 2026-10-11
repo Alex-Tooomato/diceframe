@@ -12,6 +12,7 @@ from src.commands.round_processor import RoundProcessor
 from src.commands.tag_parser import parse_tag_state
 from src.engine.game_instance import GameInstance
 from src.imagegen import ImageGenerationError, ImageGenerationResult
+from src.engine.modules import media
 
 
 def test_scene_image_tag_parses_into_prompt():
@@ -102,7 +103,7 @@ async def test_schedule_scene_image_updates_log_and_generated_reference():
     entry = registry.instance.log[-1]
     assert entry["scene_image"]["status"] == "ready"
     assert entry["scene_image"]["generation_id"] == "1" * 32
-    assert registry.instance.scene_image == {"kind": "generated", "asset_id": "a" * 64}
+    assert media.scene_image(registry.instance) == {"kind": "generated", "asset_id": "a" * 64}
     request = service.requests[0]
     assert request.prompt == "harbor at dusk"
     assert request.purpose == "scene"
@@ -371,6 +372,6 @@ async def test_in_flight_image_from_previous_run_cannot_mutate_restarted_game():
     slow_release.set()
     await stale_task
 
-    assert restarted.scene_image == {}
+    assert media.scene_image(restarted) == {}
     assert restarted.log[-1]["scene_image"] == {}
     assert registry.saved == []

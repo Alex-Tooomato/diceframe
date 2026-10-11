@@ -31,32 +31,20 @@ MODULES_DIR = "src/engine/modules/"
 REFLECTIVE_ACCESSORS = frozenset({"getattr", "setattr", "hasattr"})
 
 # Module-backed properties currently on GameInstance. Do not raise.
-MAX_MODULE_FACADES = 35
+MAX_MODULE_FACADES = 23
 
 # Keys are source file + property name, so edits inside a caller do not make
 # the baseline brittle. Do not add entries or raise counts.
 FACADE_USAGE: dict[tuple[str, str], int] = {
-    ("src/commands/ai_player.py", "max_players"): 1,
-    ("src/commands/ai_player.py", "total_tokens"): 1,
     ("src/commands/check_planner.py", "combat_enemies"): 3,
-    ("src/commands/check_planner.py", "total_tokens"): 1,
     ("src/commands/combat_resolver.py", "combat_enemies"): 2,
     ("src/commands/combat_resolver.py", "pending_combat_results"): 1,
-    ("src/commands/game_lifecycle.py", "bot_bind_token"): 1,
-    ("src/commands/game_lifecycle.py", "max_players"): 1,
-    ("src/commands/game_lifecycle.py", "player_access_open"): 1,
-    ("src/commands/game_lifecycle.py", "total_tokens"): 1,
-    ("src/commands/kp_questions.py", "total_tokens"): 1,
-    ("src/commands/protocol_repair.py", "total_tokens"): 3,
     ("src/commands/round_actions.py", "gm_directives"): 1,
     ("src/commands/round_effects.py", "combat_state"): 1,
     ("src/commands/round_processor.py", "adventure_progress"): 1,
     ("src/commands/round_processor.py", "combat_enemies"): 1,
     ("src/commands/round_processor.py", "combat_state"): 3,
     ("src/commands/round_processor.py", "last_overreach"): 1,
-    ("src/commands/round_processor.py", "scene_image"): 1,
-    ("src/commands/round_processor.py", "total_tokens"): 1,
-    ("src/commands/story_recap.py", "total_tokens"): 1,
     ("src/engine/checks.py", "combat_enemies"): 3,
     ("src/engine/checks.py", "combat_state"): 1,
     ("src/engine/game_context_projector.py", "combat_enemies"): 1,
@@ -73,9 +61,7 @@ FACADE_USAGE: dict[tuple[str, str], int] = {
     ("src/engine/instance_lifecycle.py", "last_token_budget_bump"): 1,
     ("src/engine/instance_lifecycle.py", "lorebook_timed_state"): 1,
     ("src/engine/instance_lifecycle.py", "pending_combat_results"): 1,
-    ("src/engine/instance_lifecycle.py", "private_log"): 1,
     ("src/engine/instance_lifecycle.py", "quick_actions"): 1,
-    ("src/engine/instance_lifecycle.py", "table_talk"): 1,
     ("src/engine/plot_tracker.py", "round_number"): 2,
     ("src/engine/progression.py", "round_number"): 3,
     ("src/engine/round_recovery.py", "adventure_progress"): 1,
@@ -88,65 +74,29 @@ FACADE_USAGE: dict[tuple[str, str], int] = {
     ("src/engine/round_snapshots.py", "initiative_current"): 1,
     ("src/engine/round_snapshots.py", "initiative_order"): 1,
     ("src/engine/round_snapshots.py", "round_entity_snapshot"): 1,
-    ("src/engine/turn_state.py", "max_players"): 1,
-    ("src/engine/turn_state.py", "player_access_open"): 1,
     ("src/engine/world/inspector.py", "last_world_events"): 1,
-    ("src/llm/client.py", "total_tokens"): 1,
     ("src/llm/context_builder.py", "combat_state"): 1,
-    ("src/llm/context_builder.py", "private_log"): 1,
     ("src/llm/world_prompt.py", "last_world_events"): 1,
     ("src/llm/world_prompt.py", "last_world_legality"): 1,
     ("src/lorebook/retrieval.py", "lorebook_timed_state"): 1,
-    ("src/plugin_host/host.py", "started_at"): 3,
     ("src/rulesets/automation.py", "combat_active"): 1,
     ("src/rulesets/automation.py", "combat_state"): 1,
     ("src/rulesets/automation.py", "initiative_current"): 1,
     ("src/rulesets/automation.py", "initiative_order"): 1,
-    ("src/rulesets/dnd2024/director/planner.py", "total_tokens"): 2,
-    ("src/rulesets/dnd2024/director/temporary_encounter.py", "total_tokens"): 1,
     ("src/rulesets/dnd2024/runtime.py", "adventure_progress"): 1,
     ("src/rulesets/dnd2024/runtime.py", "play_mode"): 1,
-    ("src/webui/access_control.py", "has_room_password"): 1,
-    ("src/webui/access_control.py", "player_access_open"): 1,
-    ("src/webui/routes/game_query_routes.py", "has_room_password"): 1,
-    ("src/webui/routes/game_query_routes.py", "scene_image"): 1,
-    ("src/webui/routes/sse.py", "last_activity"): 1,
-    ("src/webui/routes/sse.py", "private_log"): 2,
     ("src/webui/routes/sse.py", "quick_actions"): 1,
-    ("src/webui/routes/sse.py", "scene_image"): 1,
     ("src/webui/services/adventure_runtime.py", "adventure_progress"): 2,
     ("src/webui/services/adventures.py", "adventure_progress"): 1,
-    ("src/webui/services/bot_access.py", "bot_bind_token"): 3,
-    ("src/webui/services/bot_access.py", "player_access_open"): 1,
-    ("src/webui/services/characters.py", "max_players"): 1,
-    ("src/webui/services/game_controls.py", "player_access_open"): 1,
     ("src/webui/services/game_queries.py", "combat_active"): 1,
-    ("src/webui/services/game_queries.py", "has_room_password"): 1,
-    ("src/webui/services/game_queries.py", "last_activity"): 2,
     ("src/webui/services/game_queries.py", "last_token_budget_bump"): 1,
-    ("src/webui/services/game_queries.py", "map_background"): 2,
-    ("src/webui/services/game_queries.py", "max_players"): 2,
     ("src/webui/services/game_queries.py", "play_mode"): 1,
-    ("src/webui/services/game_queries.py", "player_access_open"): 1,
-    ("src/webui/services/game_queries.py", "private_log"): 1,
     ("src/webui/services/game_queries.py", "quick_actions"): 1,
-    ("src/webui/services/game_queries.py", "scene_image"): 2,
-    ("src/webui/services/game_queries.py", "started_at"): 2,
-    ("src/webui/services/game_queries.py", "table_talk"): 1,
-    ("src/webui/services/game_queries.py", "total_llm_calls"): 2,
-    ("src/webui/services/game_queries.py", "total_tokens"): 2,
-    ("src/webui/services/game_seed_lifecycle.py", "map_background"): 1,
-    ("src/webui/services/game_seed_lifecycle.py", "scene_image"): 1,
-    ("src/webui/services/generated_images.py", "scene_image"): 1,
-    ("src/webui/services/logs.py", "total_llm_calls"): 1,
-    ("src/webui/services/logs.py", "total_tokens"): 1,
-    ("src/webui/services/maps.py", "map_background"): 2,
     ("src/webui/services/ruleset_gameplay.py", "adventure_progress"): 1,
     ("src/webui/services/ruleset_gameplay.py", "combat_active"): 2,
     ("src/webui/services/ruleset_gameplay.py", "combat_state"): 2,
     ("src/webui/services/ruleset_gameplay.py", "initiative_current"): 2,
     ("src/webui/services/ruleset_gameplay.py", "initiative_order"): 2,
-    ("src/webui/services/ruleset_gameplay.py", "last_activity"): 2,
     ("src/webui/services/ruleset_rest.py", "combat_active"): 1,
     ("src/webui/services/ruleset_rest.py", "combat_state"): 1,
     ("src/webui/services/turns.py", "last_state_update"): 1,
@@ -335,3 +285,18 @@ def test_retired_facade_write_fails_instead_of_shadowing() -> None:
         with pytest.raises(AttributeError, match="was removed"):
             setattr(instance, name, {})
         assert name not in vars(instance)
+
+
+def test_session_room_media_channel_facades_are_retired() -> None:
+    from src.engine.game_instance import RETIRED_MODULE_FACADES, GameInstance
+
+    names = {
+        "total_tokens", "started_at", "last_activity", "total_llm_calls",
+        "max_players", "player_access_open", "bot_bind_token", "has_room_password",
+        "scene_image", "map_background", "private_log", "table_talk",
+    }
+    instance = GameInstance(game_key=("web", "retired-session", "u"))
+    assert names <= RETIRED_MODULE_FACADES
+    for name in sorted(names):
+        assert not hasattr(GameInstance, name)
+        assert not hasattr(instance, name)

@@ -19,7 +19,7 @@ from src.webui.map_domain.selection import select_map_definition, select_plugin_
 from src.webui.map_presets import builtin_map_preset
 from src.content_modules.projection import ContentProjectionService
 from src.engine.participant_view import Viewer
-from src.engine.modules import narrative_notes
+from src.engine.modules import media, narrative_notes
 from src.knowledge.visibility import entry_visible_to_viewer
 
 @dataclass(frozen=True)
@@ -176,7 +176,7 @@ def map_background_asset(
         return None
     try:
         selection = dependencies.validate_background_selection(
-            getattr(instance, "map_background", None),
+            media.map_background(instance),
         )
     except ValueError:
         return None
@@ -307,7 +307,7 @@ def _saved_background_selection(
 ) -> dict[str, str]:
     try:
         return dependencies.validate_background_selection(
-            getattr(instance, "map_background", None)
+            media.map_background(instance)
         )
     except ValueError:
         return {"kind": "auto"}

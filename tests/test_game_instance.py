@@ -9,7 +9,7 @@ from src.engine.character_utils import reset_character_for_restart
 from src.engine.game_instance import GameInstance, GameRegistry, GameState
 from src.engine.health import health_payload, mark_health_event, record_health_event
 from src.commands.progression_resolver import ProgressionResolver
-from src.engine.modules import checks, economy_state, ruleset_runtime, table_settings
+from src.engine.modules import checks, economy_state, media, private_channels, ruleset_runtime, session_stats, table_settings
 
 
 def test_round_entity_snapshot_round_trips_and_defaults_empty() -> None:
@@ -99,7 +99,7 @@ def test_persisted_boundary_preserves_opaque_state_and_filters_transient_entries
     assert ruleset_runtime.state(restored) == payload["ruleset_state"]
     assert restored.adventure_binding == payload["adventure_binding"]
     assert ruleset_runtime.event_ledger(restored) == payload["event_ledger"]
-    assert [item["id"] for item in restored.table_talk] == ["party"]
+    assert [item["id"] for item in private_channels.table_talk(restored)] == ["party"]
 
 
 def test_narrative_perspective_round_trips_and_old_saves_default_to_auto() -> None:
@@ -341,7 +341,7 @@ class TestGameInstance:
         inst = GameInstance(game_key=("qq", "123", "bot1"))
         await inst.activate()
         assert inst.state == GameState.ACTIVE_ACTION
-        assert inst.started_at != ""
+        assert session_stats.started_at(inst) != ""
 
     async def test_start_round(self):
         inst = GameInstance(game_key=("qq", "123", "bot1"))
@@ -455,7 +455,7 @@ class TestGameInstance:
         await inst.finish_judgment("门被踹开了")
         assert inst.state == GameState.ACTIVE_ACTION
         assert inst.round_number == 2
-        assert inst.total_llm_calls == 1
+        assert session_stats.total_llm_calls(inst) == 1
 
     async def test_serialization_roundtrip(self):
         inst = GameInstance(game_key=("qq", "123", "bot1"))
@@ -928,7 +928,7 @@ class TestGameRegistry:
         assert imported_payloads == [b"portable-scene"]
         registry = GameRegistry(tmp_path / "saves")
         restored = await registry.load(tuple(result["game_key"]))
-        assert restored.scene_image == {"kind": "upload", "asset_id": "local-scene"}
+        assert media.scene_image(restored) == {"kind": "upload", "asset_id": "local-scene"}
 
     @pytest.mark.asyncio
     async def test_import_save_zip_materializes_portable_map_background(self, tmp_path):
@@ -960,7 +960,7 @@ class TestGameRegistry:
         restored = GameRegistry(tmp_path / "saves")
         instance = await restored.load(tuple(result["game_key"]))
         assert instance is not None
-        assert instance.map_background == {"kind": "upload", "asset_id": "local-map"}
+        assert media.map_background(instance) == {"kind": "upload", "asset_id": "local-map"}
 
     async def test_import_save_zip_rejects_missing_state(self, tmp_path):
         """存档包缺 state.json 报错。"""

@@ -29,7 +29,7 @@ from typing import TYPE_CHECKING, Any
 from src.engine.contracts import ActionRecord
 from src.engine import progression
 from src.engine.game_state import GameState
-from src.engine.modules import progression_state, table_settings
+from src.engine.modules import progression_state, room_access, table_settings
 from src.engine.player_control import (
     ai_controlled_players,
     away_control_policy,
@@ -99,7 +99,7 @@ def multiplayer_status(instance: GameInstance) -> dict:
         "round_number": progression_state.round_value(instance),
         "solo_mode": table_settings.solo_mode(instance),
         "player_count": len(instance.players),
-        "max_players": instance.max_players,
+        "max_players": room_access.max_players(instance),
         "ready_count": len(ready),
         "alive_count": len(alive),
         "active_count": len(active),
@@ -145,7 +145,7 @@ def multiplayer_status(instance: GameInstance) -> dict:
         ],
         "pending_action_count": len(instance.pending_actions),
         "gm_uid": instance.gm_uid,
-        "player_access_open": instance.player_access_open,
+        "player_access_open": room_access.player_access_open(instance),
         "away_control_policy": away_control_policy(instance),
     }
 

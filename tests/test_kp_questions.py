@@ -14,6 +14,7 @@ from src.webui.services.kp_questions import (
     KPQuestionDependencies,
     KPQuestionService,
 )
+from src.engine.modules import private_channels
 
 
 def _instance() -> GameInstance:
@@ -125,7 +126,7 @@ async def test_party_question_persists_only_the_separate_table_talk_exchange() -
     assert result["payload"]["exchange"]["question"] == "大家都知道这是什么吗？"
     assert api._handler.calls == [("p1", "大家都知道这是什么吗？", "party")]
     assert api._reg.save_calls == 1
-    assert instance.table_talk[-1]["answer"].startswith("你见过")
+    assert private_channels.table_talk(instance)[-1]["answer"].startswith("你见过")
     assert instance.action_queue == [{"user_id": "p2", "text": "检查门锁"}]
     assert instance.round_number == 3
     assert "table_talk" not in instance.to_llm_view()
@@ -301,10 +302,10 @@ async def test_player_safe_context_excludes_hidden_and_other_player_data() -> No
     }]
     narrative_notes.replace_summary(instance, {"narrative": "队伍公开进入了旧宅。"})
     narrative_notes.replace_key_facts(instance, [{"content": "旧宅正门已经锁上。"}])
-    instance.private_log = {
+    private_channels.replace_private_log(instance, {
         "p1": [{"round": 2, "text": "你独自闻到海水味。"}],
         "p2": [{"round": 2, "text": "另一玩家看见了密道。"}],
-    }
+    })
 
     context = await build_player_safe_context(
         instance,
@@ -340,9 +341,9 @@ async def test_party_safe_context_excludes_questioner_private_knowledge() -> Non
         "background": "提问者的秘密背景",
         "inventory": ["提问者私藏的银钥匙"],
     })
-    instance.private_log = {
+    private_channels.replace_private_log(instance, {
         "p1": [{"round": 2, "text": "只有你听见阁楼的脚步声。"}],
-    }
+    })
 
     context = await build_player_safe_context(
         instance,

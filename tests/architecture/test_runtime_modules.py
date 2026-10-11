@@ -284,6 +284,38 @@ def test_only_checks_owners_assign_fields() -> None:
     assert not violations, "\n".join(violations)
 
 
+def _module_api_writes(
+    tree: ast.AST, module: str, setters: set[str], getters: frozenset[str] | set[str] = frozenset(),
+) -> list[int]:
+    """Module-API writes: ``<module>.replace_*(...)`` (or the bare imported name)
+    and stores/deletes into ``<module>.<getter>(...)[...]``. Does not track aliases."""
+    lines: list[int] = []
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Call):
+            func = node.func
+            if (
+                isinstance(func, ast.Attribute) and isinstance(func.value, ast.Name)
+                and func.value.id == module and func.attr in setters
+            ) or (isinstance(func, ast.Name) and func.id in setters):
+                lines.append(node.lineno)
+        elif isinstance(node, ast.Subscript) and isinstance(node.ctx, (ast.Store, ast.Del)):
+            target = node.value
+            while isinstance(target, ast.Subscript):
+                target = target.value
+            if (
+                isinstance(target, ast.Call) and isinstance(target.func, ast.Attribute)
+                and isinstance(target.func.value, ast.Name) and target.func.value.id == module
+                and target.func.attr in getters
+            ):
+                lines.append(node.lineno)
+    return lines
+
+
+SESSION_STATS_SETTERS = {
+    "replace_total_llm_calls", "replace_total_tokens", "replace_started_at", "replace_last_activity",
+}
+
+
 def test_only_session_stats_owners_assign_fields() -> None:
     owners = {
         SRC / "engine" / "game_instance.py",
@@ -308,7 +340,19 @@ def test_only_session_stats_owners_assign_fields() -> None:
             if isinstance(node.value, ast.Name) and (path, node.value.id, node.attr) in unrelated:
                 continue
             violations.append(f"{path.relative_to(ROOT)}:{node.lineno}: session stats write outside owner")
+        for line in _module_api_writes(tree, "session_stats", SESSION_STATS_SETTERS):
+            violations.append(f"{path.relative_to(ROOT)}:{line}: session stats replace call outside owner")
     assert not violations, "\n".join(violations)
+
+
+def test_session_stats_guard_rejects_module_api_writes() -> None:
+    tree = ast.parse("session_stats.replace_total_tokens(x, 1)\nreplace_last_activity(x, '')")
+    assert len(_module_api_writes(tree, "session_stats", SESSION_STATS_SETTERS)) == 2
+    assert not _module_api_writes(ast.parse("session_stats.touch(x)"), "session_stats", SESSION_STATS_SETTERS)
+
+
+PRIVATE_CHANNEL_SETTERS = {"replace_private_log", "replace_table_talk"}
+PRIVATE_CHANNEL_GETTERS = {"private_log", "table_talk"}
 
 
 def test_only_private_channel_owners_assign_compatibility_properties() -> None:
@@ -332,7 +376,30 @@ def test_only_private_channel_owners_assign_compatibility_properties() -> None:
                 target = target.value
             if isinstance(target, ast.Attribute) and target.attr in {"private_log", "table_talk"}:
                 violations.append(f"{path.relative_to(ROOT)}:{node.lineno}: private channel write outside owner")
+        for line in _module_api_writes(tree, "private_channels", PRIVATE_CHANNEL_SETTERS, PRIVATE_CHANNEL_GETTERS):
+            violations.append(f"{path.relative_to(ROOT)}:{line}: private channel module write outside owner")
     assert not violations, "\n".join(violations)
+
+
+@pytest.mark.parametrize("source", [
+    "private_channels.replace_private_log(x, {})",
+    "replace_table_talk(x, [])",
+    "private_channels.private_log(x)['u'] = []",
+    "del private_channels.table_talk(x)[:-5]",
+])
+def test_private_channel_guard_rejects_module_api_writes(source) -> None:
+    tree = ast.parse(source)
+    assert _module_api_writes(tree, "private_channels", PRIVATE_CHANNEL_SETTERS, PRIVATE_CHANNEL_GETTERS)
+
+
+MEDIA_SETTERS = {"replace_scene_image", "replace_map_background"}
+MEDIA_GETTERS = {"scene_image", "map_background"}
+# Existing generated-image save failures restore the previous top-level scene
+# image through the module API; they never set a new one.
+MEDIA_ROLLBACK_WRITERS = {
+    SRC / "commands" / "round_processor.py",
+    SRC / "webui" / "services" / "generated_images.py",
+}
 
 
 def test_only_media_owners_assign_compatibility_properties() -> None:
@@ -356,7 +423,19 @@ def test_only_media_owners_assign_compatibility_properties() -> None:
                 target = target.value
             if isinstance(target, ast.Attribute) and target.attr in {"scene_image", "map_background"}:
                 violations.append(f"{path.relative_to(ROOT)}:{node.lineno}: media write outside owner")
+        if path not in MEDIA_ROLLBACK_WRITERS:
+            for line in _module_api_writes(tree, "media", MEDIA_SETTERS, MEDIA_GETTERS):
+                violations.append(f"{path.relative_to(ROOT)}:{line}: media module write outside owner")
     assert not violations, "\n".join(violations)
+
+
+@pytest.mark.parametrize("source", [
+    "media.replace_scene_image(x, {})",
+    "replace_map_background(x, {})",
+    "media.scene_image(x)['kind'] = 'upload'",
+])
+def test_media_guard_rejects_module_api_writes(source) -> None:
+    assert _module_api_writes(ast.parse(source), "media", MEDIA_SETTERS, MEDIA_GETTERS)
 
 
 def _world_report_property_writes(path: Path, tree: ast.AST) -> list[int]:
@@ -463,6 +542,11 @@ def test_table_settings_guard_rejects_external_writes(source) -> None:
     assert not _table_settings_property_writes(MODULES / "table_settings.py", tree)
 
 
+ROOM_ACCESS_SETTERS = {"replace_max_players", "replace_player_access_open", "replace_bot_bind_token"}
+# A new run of the same game carries room access over through the module API.
+ROOM_ACCESS_CARRY_OVER_WRITERS = {SRC / "commands" / "game_lifecycle.py"}
+
+
 def test_table_settings_guard_rejects_replace_calls_outside_owners() -> None:
     tree = ast.parse("table_settings.replace_solo_mode(x, True)\n"
                      "table_settings.replace_economy_reward_policy(x, {})\n"
@@ -476,12 +560,15 @@ def _room_access_property_writes(path: Path, tree: ast.AST) -> list[int]:
     # Aggregate methods retain their existing room access mutation policy.
     if path in {MODULES / "room_access.py", SRC / "engine" / "game_instance.py"}:
         return []
-    return [
+    attribute_writes = [
         node.lineno for node in ast.walk(tree)
         if isinstance(node, ast.Attribute)
         and isinstance(node.ctx, (ast.Store, ast.Del))
         and node.attr in {"max_players", "player_access_open", "bot_bind_token", "room_password", "room_token"}
     ]
+    if path in ROOM_ACCESS_CARRY_OVER_WRITERS:
+        return attribute_writes
+    return attribute_writes + _module_api_writes(tree, "room_access", ROOM_ACCESS_SETTERS)
 
 
 def test_only_room_access_owners_assign_compatibility_properties() -> None:
@@ -506,6 +593,18 @@ def test_room_access_guard_rejects_external_writes(source) -> None:
     assert _room_access_property_writes(SRC / "webui" / "routes" / "outsider.py", tree)
     assert not _room_access_property_writes(MODULES / "room_access.py", tree)
     assert not _room_access_property_writes(SRC / "engine" / "game_instance.py", tree)
+
+
+@pytest.mark.parametrize("source", [
+    "room_access.replace_bot_bind_token(instance, 'x')",
+    "room_access.replace_player_access_open(instance, True)",
+    "replace_max_players(instance, 9)",
+])
+def test_room_access_guard_rejects_external_module_api_writes(source) -> None:
+    tree = ast.parse(source)
+    assert _room_access_property_writes(SRC / "webui" / "routes" / "outsider.py", tree)
+    assert not _room_access_property_writes(SRC / "commands" / "game_lifecycle.py", tree)
+    assert not _room_access_property_writes(MODULES / "room_access.py", tree)
 
 
 def _runtime_nodes(node: ast.AST):

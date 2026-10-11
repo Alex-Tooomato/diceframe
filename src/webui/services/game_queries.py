@@ -9,7 +9,10 @@ from typing import Any, Callable
 from src.engine.game_instance import GameState
 from src.engine.health import health_payload
 from src.engine.language import DEFAULT_LANGUAGE, normalize_language
-from src.engine.modules import checks, economy_state, narrative_notes, progression_state, ruleset_runtime, table_settings
+from src.engine.modules import (
+    checks, economy_state, media, narrative_notes, private_channels, progression_state, room_access,
+    ruleset_runtime, session_stats, table_settings,
+)
 from src.engine.player_control import away_control_policy
 from src.engine.visibility_rules import manual_roll_visible_to, proposal_visible_to
 from src.llm.parser import sanitize_narration
@@ -65,19 +68,19 @@ def list_games(dependencies: GameQueryDependencies) -> dict[str, Any]:
             "world_id": instance.world_id,
             "world_name": instance.world_name,
             "rule_id": projected_rule_id(dependencies, instance),
-            "scene_image": dict(getattr(instance, "scene_image", {}) or {}),
-            "map_background": dict(getattr(instance, "map_background", {}) or {}),
+            "scene_image": dict(media.scene_image(instance) or {}),
+            "map_background": dict(media.map_background(instance) or {}),
             "group_name": instance.group_name,
             "state": instance.state.value,
             "round_number": progression_state.round_value(instance),
             "player_count": len(instance.players),
-            "max_players": max(1, int(getattr(instance, "max_players", 6) or 6)),
+            "max_players": max(1, int(room_access.max_players(instance) or 6)),
             "combat_active": instance.combat_active,
             "scene": narrative_notes.scene(instance),
-            "total_llm_calls": instance.total_llm_calls,
-            "total_tokens": instance.total_tokens,
-            "started_at": instance.started_at,
-            "last_activity": instance.last_activity,
+            "total_llm_calls": session_stats.total_llm_calls(instance),
+            "total_tokens": session_stats.total_tokens(instance),
+            "started_at": session_stats.started_at(instance),
+            "last_activity": session_stats.last_activity(instance),
             "seed_code": table_settings.seed_code(instance),
             "language": normalize_language(
                 getattr(instance, "language", DEFAULT_LANGUAGE)
@@ -186,29 +189,27 @@ def game_detail(
         "run_id": instance.run_id,
         "world_id": instance.world_id or "",
         "rule_id": projected_rule_id(dependencies, instance),
-        "scene_image": dict(getattr(instance, "scene_image", {}) or {}),
-        "map_background": dict(getattr(instance, "map_background", {}) or {}),
+        "scene_image": dict(media.scene_image(instance) or {}),
+        "map_background": dict(media.map_background(instance) or {}),
         "world_name": instance.world_name,
         "group_name": instance.group_name,
         "state": instance.state.value,
         "round_number": progression_state.round_value(instance),
         "player_count": len(instance.players),
         "scene": narrative_notes.scene(instance),
-        "total_llm_calls": instance.total_llm_calls,
-        "total_tokens": instance.total_tokens,
-        "started_at": instance.started_at,
-        "last_activity": instance.last_activity,
+        "total_llm_calls": session_stats.total_llm_calls(instance),
+        "total_tokens": session_stats.total_tokens(instance),
+        "started_at": session_stats.started_at(instance),
+        "last_activity": session_stats.last_activity(instance),
         "seed_code": table_settings.seed_code(instance),
         "language": normalize_language(
             getattr(instance, "language", DEFAULT_LANGUAGE)
         ),
         "gm_uid": instance.gm_uid or "",
-        "player_access_open": bool(
-            getattr(instance, "player_access_open", True)
-        ),
+        "player_access_open": bool(room_access.player_access_open(instance)),
         # 房间级暂离语义（pause 默认 / ai_takeover）：前端房间设置要显示当前值。
         "away_control_policy": away_control_policy(instance),
-        "has_room_password": bool(getattr(instance, "has_room_password", False)),
+        "has_room_password": bool(room_access.has_room_password(instance)),
         "economy_reward_policy": dict(
             table_settings.economy_reward_policy(instance) or {}
         ),
@@ -233,7 +234,7 @@ def game_detail(
             if viewer_is_gm or (viewer_uid and viewer_uid == (instance.gm_uid or ""))
             else None
         ),
-        "max_players": instance.max_players,
+        "max_players": room_access.max_players(instance),
         "multiplayer": instance.multiplayer_status(),
         "rest_session": public_rest_session(instance),
         "plot_tracker": (
@@ -442,7 +443,7 @@ def table_talk(
         return {"ok": False, "error": "游戏不存在"}
     exchanges = [
         dict(item)
-        for item in (instance.table_talk or [])
+        for item in (private_channels.table_talk(instance) or [])
         if isinstance(item, dict) and item.get("visibility") == "party"
     ]
     return {"ok": True, "exchanges": exchanges[-50:]}
@@ -457,7 +458,7 @@ def _private_log_messages(
         )
 
     messages: list[dict[str, Any]] = []
-    for user_id, items in (instance.private_log or {}).items():
+    for user_id, items in (private_channels.private_log(instance) or {}).items():
         if only_user_id and user_id != only_user_id:
             continue
         for item in items or []:

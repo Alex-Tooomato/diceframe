@@ -25,7 +25,7 @@ from src.engine.economy import (
     resolve_proposal,
     set_proposal_status,
 )
-from src.engine.modules import economy_state, table_settings
+from src.engine.modules import economy_state, media, private_channels, session_stats, table_settings
 from src.commands.economy_effects import (
     guard_unbacked_payment_narration,
     defer_narrative_effects,
@@ -1239,8 +1239,8 @@ async def test_private_payment_outcome_does_not_leak_into_party_log(web_api) -> 
     assert result["ok"] is True
     assert "economy_resolutions" not in instance.log[-1]
     assert not any("私下报价" in item for item in instance.log[-1]["state_changes"])
-    assert instance.private_log[payer_uid][-1]["kind"] == "economy_resolution"
-    assert other_uid not in instance.private_log
+    assert private_channels.private_log(instance)[payer_uid][-1]["kind"] == "economy_resolution"
+    assert other_uid not in private_channels.private_log(instance)
 
 
 @pytest.mark.asyncio
@@ -1272,7 +1272,7 @@ async def test_purchase_settlement_is_party_visible_even_for_legacy_private_outc
     })
 
     assert any("购买通行证" in item for item in instance.log[-1]["state_changes"])
-    assert not instance.private_log
+    assert not private_channels.private_log(instance)
 
 
 @pytest.mark.asyncio
@@ -1459,7 +1459,7 @@ async def test_economy_scene_image_starts_only_after_authoritative_save(
     instance = registry.get(api._parse_key(created["game_key"]))
     uid = next(iter(instance.players))
     instance.gm_uid = uid
-    instance.scene_image = {"kind": "upload", "asset_id": "old-scene"}
+    media.replace_scene_image(instance, {"kind": "upload", "asset_id": "old-scene"})
     proposal = queue_proposal(
         instance,
         kind="purchase",
@@ -1493,7 +1493,7 @@ async def test_economy_scene_image_starts_only_after_authoritative_save(
         await api.resolve_payment(created["game_key"], proposal["id"], True, uid)
 
     assert schedule_calls == []
-    assert instance.scene_image == {"kind": "upload", "asset_id": "old-scene"}
+    assert media.scene_image(instance) == {"kind": "upload", "asset_id": "old-scene"}
     assert instance.get_character_sheet(uid)["currency"]["amount"] == 20
 
     api._character_dependencies = replace(
@@ -1831,11 +1831,11 @@ async def test_private_reward_and_payment_stay_out_of_public_gm_context(
     assert "秘密转账-不可公开" not in context
     assert any(
         "秘密线人奖励" in item.get("text", "")
-        for item in instance.private_log[agent_uid]
+        for item in private_channels.private_log(instance)[agent_uid]
     )
     assert any(
         "秘密转账" in item.get("text", "")
-        for item in instance.private_log[agent_uid]
+        for item in private_channels.private_log(instance)[agent_uid]
     )
 
 
@@ -1997,7 +1997,7 @@ async def test_in_flight_check_plan_is_discarded_after_economy_decision(
     )
     entered = asyncio.Event()
     release = asyncio.Event()
-    calls_before = instance.total_llm_calls
+    calls_before = session_stats.total_llm_calls(instance)
 
     async def delayed_plan(target, rule, client):
         entered.set()
@@ -2029,7 +2029,7 @@ async def test_in_flight_check_plan_is_discarded_after_economy_decision(
     assert len(checks) == 1
     assert checks_module.round_checks_prepared(instance) is True
     assert "check_request" in instance.action_queue[0]
-    assert instance.total_llm_calls > calls_before
+    assert session_stats.total_llm_calls(instance) > calls_before
 
 
 @pytest.mark.asyncio

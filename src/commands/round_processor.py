@@ -69,7 +69,7 @@ from src.engine.game_instance import GameInstance, GameState, _snapshot_players
 from src.engine.module_state import ModuleStateError
 from src.engine.modules.media import replace_scene_image
 from src.engine.modules import (
-    adventure_runtime_state, checks, legacy_combat, narrative_notes, progression_state, round_safety,
+    adventure_runtime_state, checks, legacy_combat, media, narrative_notes, progression_state, round_safety,
     ruleset_runtime, session_stats, table_settings, world_reports,
 )
 from src.engine.language import localized_text
@@ -894,7 +894,7 @@ class RoundProcessor:
                 return  # 公开剧情已变化，旧任务不得覆盖新版本
             reference = {"kind": "generated", "asset_id": result.asset_id}
             old_scene_image = deepcopy(entry.get("scene_image"))
-            old_top_scene_image = deepcopy(current.scene_image)
+            old_top_scene_image = deepcopy(media.scene_image(current))
             current.set_scene_image(reference)
             entry["scene_image"] = {
                 "reference": reference,

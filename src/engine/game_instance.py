@@ -135,6 +135,7 @@ def _same_adventure_binding(current: Any, candidate: Any) -> bool:
 # Compatibility properties deleted after their state moved into module slots.
 # Writing one of these names must fail instead of creating a shadow attribute.
 RETIRED_MODULE_FACADES = frozenset({
+    "bot_bind_token",
     "combat_extension",
     "combat_extension_round_snapshots",
     "confirmed_items",
@@ -146,19 +147,30 @@ RETIRED_MODULE_FACADES = frozenset({
     "event_ledger",
     "game_time",
     "gm_style_override",
+    "has_room_password",
     "key_facts",
+    "last_activity",
     "last_check",
     "last_checks",
     "luck_timeout_seconds",
     "manual_roll_requests",
+    "map_background",
+    "max_players",
     "narrative_perspective",
+    "player_access_open",
+    "private_log",
     "round_checks_prepared",
     "ruleset_runtime",
     "ruleset_state",
     "scene",
+    "scene_image",
     "seed_code",
     "solo_mode",
+    "started_at",
     "summary",
+    "table_talk",
+    "total_llm_calls",
+    "total_tokens",
 })
 
 
@@ -336,67 +348,6 @@ class GameInstance:
         round_safety.replace_death_save_outcomes(self, value)
 
     @property
-    def total_llm_calls(self) -> int:
-        return session_stats.total_llm_calls(self)
-
-    @total_llm_calls.setter
-    def total_llm_calls(self, value: int) -> None:
-        session_stats.replace_total_llm_calls(self, value)
-
-    @property
-    def total_tokens(self) -> int:
-        return session_stats.total_tokens(self)
-
-    @total_tokens.setter
-    def total_tokens(self, value: int) -> None:
-        session_stats.replace_total_tokens(self, value)
-
-    @property
-    def started_at(self) -> str:
-        return session_stats.started_at(self)
-
-    @started_at.setter
-    def started_at(self, value: str) -> None:
-        session_stats.replace_started_at(self, value)
-
-    @property
-    def last_activity(self) -> str:
-        return session_stats.last_activity(self)
-
-    @last_activity.setter
-    def last_activity(self, value: str) -> None:
-        session_stats.replace_last_activity(self, value)
-
-    @property
-    def max_players(self) -> int:
-        return room_access.max_players(self)
-
-    @max_players.setter
-    def max_players(self, value: int) -> None:
-        room_access.replace_max_players(self, value)
-
-    @property
-    def player_access_open(self) -> bool:
-        return room_access.player_access_open(self)
-
-    @player_access_open.setter
-    def player_access_open(self, value: bool) -> None:
-        room_access.replace_player_access_open(self, value)
-
-    @property
-    def bot_bind_token(self) -> str:
-        return room_access.bot_bind_token(self)
-
-    @bot_bind_token.setter
-    def bot_bind_token(self, value: str) -> None:
-        room_access.replace_bot_bind_token(self, value)
-
-    @property
-    def has_room_password(self) -> bool:
-        """Only presence is exposed; the password itself is stored hashed."""
-        return room_access.has_room_password(self)
-
-    @property
     def last_overreach(self) -> list:
         # 本轮裁判标注的越权声明（仅多人局且开关启用时注入 GM 上下文）。
         return world_reports.last_overreach(self)
@@ -484,38 +435,6 @@ class GameInstance:
     @health_status.setter
     def health_status(self, value: Any) -> None:
         health.replace_health_status(self, value)
-
-    @property
-    def scene_image(self) -> dict[str, str]:
-        return media.scene_image(self)
-
-    @scene_image.setter
-    def scene_image(self, value: Any) -> None:
-        media.replace_scene_image(self, value)
-
-    @property
-    def map_background(self) -> dict[str, str]:
-        return media.map_background(self)
-
-    @map_background.setter
-    def map_background(self, value: Any) -> None:
-        media.replace_map_background(self, value)
-
-    @property
-    def private_log(self) -> dict[str, list[dict[str, Any]]]:
-        return private_channels.private_log(self)
-
-    @private_log.setter
-    def private_log(self, value: Any) -> None:
-        private_channels.replace_private_log(self, value)
-
-    @property
-    def table_talk(self) -> list[TableTalkExchange]:
-        return private_channels.table_talk(self)
-
-    @table_talk.setter
-    def table_talk(self, value: Any) -> None:
-        private_channels.replace_table_talk(self, value)
 
     def __post_init__(self) -> None:
         if not self.run_id:
@@ -805,11 +724,11 @@ class GameInstance:
 
     def set_scene_image(self, reference: dict[str, str]) -> None:
         """Set the portable adventure scene-image reference."""
-        self.scene_image = dict(reference or {})
+        media.replace_scene_image(self, dict(reference or {}))
 
     def set_map_background(self, selection: dict[str, str]) -> None:
         """Set this save's validated map-background selection."""
-        self.map_background = dict(selection or {})
+        media.replace_map_background(self, dict(selection or {}))
 
     def replace_players(self, players: dict[str, PlayerData]) -> None:
         for player in players.values():
@@ -846,17 +765,17 @@ class GameInstance:
         if "scene" in snapshot and snapshot["scene"] is not None:
             narrative_notes.replace_scene(self, str(snapshot["scene"]))
         if "last_activity" in snapshot:
-            self.last_activity = str(snapshot["last_activity"])
+            session_stats.replace_last_activity(self, str(snapshot["last_activity"]))
         if "log" in snapshot:
             self.log = copy.deepcopy(snapshot["log"])
         if "round_number" in snapshot:
             progression.restore_from_snapshot(self, restored_round)
 
     def set_player_access(self, open_access: bool) -> None:
-        self.player_access_open = bool(open_access)
+        room_access.replace_player_access_open(self, bool(open_access))
 
     def set_bot_bind_token(self, token: str) -> None:
-        self.bot_bind_token = token
+        room_access.replace_bot_bind_token(self, token)
 
     def set_room_password(self, password: str) -> None:
         """设置房间密码（仅存哈希）；新密码至少 6 位。空串表示取消密码（开放房）。
@@ -916,7 +835,7 @@ class GameInstance:
                 target["story_recaps"] = recaps
             recaps.append(recap)
             self.record_llm_usage(tokens)
-            self.last_activity = datetime.now(timezone.utc).isoformat()
+            session_stats.replace_last_activity(self, datetime.now(timezone.utc).isoformat())
             return True
 
     def set_latest_log_tags_summary(self, summary: dict) -> bool:
@@ -945,19 +864,20 @@ class GameInstance:
             del confirmed[:-limit]
 
     def append_private_message(self, uid: str, message: dict) -> None:
-        self.private_log.setdefault(uid, []).append(message)
+        private_channels.private_log(self).setdefault(uid, []).append(message)
 
     def append_table_talk(self, exchange: TableTalkExchange, *, limit: int = 50) -> None:
         """Append a bounded public table-talk exchange without touching turn state."""
-        self.table_talk.append(exchange)
-        if len(self.table_talk) > limit:
-            del self.table_talk[:-limit]
+        entries = private_channels.table_talk(self)
+        entries.append(exchange)
+        if len(entries) > limit:
+            del entries[:-limit]
 
     def add_gm_directive(self, directive: dict) -> None:
         self.gm_directives.append(directive)
 
     def clear_private_messages(self, uid: str) -> None:
-        self.private_log.pop(uid, None)
+        private_channels.private_log(self).pop(uid, None)
 
     def record_check(self, check: CheckResult) -> None:
         """记录结构化检定，并保持 last_check 与 last_checks 一致。"""

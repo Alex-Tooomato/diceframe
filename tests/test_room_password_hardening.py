@@ -130,7 +130,7 @@ def test_v37_migration_materializes_a_fresh_slot(modules) -> None:
 def test_v37_unusable_password_values_fail_closed(password, locked) -> None:
     migrated = migrate_game_state_payload(_v37_payload({**V2_SLOT, "room_password": password}))
     instance = GameInstance.from_dict(migrated)
-    assert instance.has_room_password is locked
+    assert room_access.has_room_password(instance) is locked
     assert not room_access.verify_room_password(instance, str(password))
     # Without a password there is nothing a token could unlock. A locked room
     # keeps the token of players already inside, as before the upgrade.
@@ -153,7 +153,7 @@ def test_verify_is_exact_and_rejects_plaintext_storage() -> None:
         assert not room_access.verify_room_password(instance, wrong)  # type: ignore[arg-type]
     # A plaintext value in the hash field (tampered save) never verifies.
     instance.modules["room_access"]["room_password_hash"] = PASSWORD
-    assert instance.has_room_password is True
+    assert room_access.has_room_password(instance) is True
     assert not room_access.verify_room_password(instance, PASSWORD)
 
 
@@ -261,7 +261,7 @@ def test_new_passwords_need_six_characters(password, ok) -> None:
     instance = _instance("previous")
     if ok:
         instance.set_room_password(password)
-        assert instance.has_room_password is bool(password)
+        assert room_access.has_room_password(instance) is bool(password)
     else:
         with pytest.raises(ValueError, match="至少 6 位"):
             instance.set_room_password(password)
@@ -332,8 +332,8 @@ def test_import_drops_credentials_even_from_old_packages() -> None:
     )
     _assert_scrubbed(payload, closed=True)
     imported = GameInstance.from_dict(payload)
-    assert imported.has_room_password is False
-    assert imported.player_access_open is False
+    assert room_access.has_room_password(imported) is False
+    assert room_access.player_access_open(imported) is False
 
 
 def test_import_scrubs_pre_slot_legacy_saves() -> None:
@@ -674,8 +674,8 @@ async def test_import_tells_the_gm_when_it_closed_the_player_entrance(tmp_path, 
     assert result["ok"] is True, result
     assert result["player_access_closed"] is closed
     imported = registry.get(tuple(result["game_key"]))
-    assert imported.has_room_password is False
-    assert imported.player_access_open is (not closed)
+    assert room_access.has_room_password(imported) is False
+    assert room_access.player_access_open(imported) is (not closed)
 
 
 @pytest.mark.asyncio

@@ -10,7 +10,7 @@ from typing import Any, Literal
 
 from src.engine.game_instance import GameInstance
 from src.engine.language import localized_text, normalize_language
-from src.engine.modules import checks, economy_state, narrative_notes, progression_state, table_settings
+from src.engine.modules import checks, economy_state, narrative_notes, private_channels, progression_state, table_settings
 from src.engine.visibility_rules import manual_roll_visible_to
 from src.knowledge.visibility import entry_visible_to_viewer
 from src.llm.parser import sanitize_narration
@@ -1097,7 +1097,7 @@ async def build_player_safe_context(
 
     own_private = []
     for item in (
-        (instance.private_log or {}).get(actor_uid, []) if visibility == "private" else []
+        (private_channels.private_log(instance) or {}).get(actor_uid, []) if visibility == "private" else []
     ):
         if not isinstance(item, dict):
             continue

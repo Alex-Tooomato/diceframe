@@ -60,6 +60,7 @@ from src.engine.world_state import apply_world_ops
 from src.rules.rule_system import RuleSystem
 from src.rulesets.registry import RulesetRuntimeRegistry
 from src.webui.services.turns import TurnDependencies, submit_action
+from src.engine.modules import private_channels, session_stats
 
 HUMAN_SHEET = {"hp": 10, "max_hp": 10, "attributes": {"str": 14, "dex": 10}}
 AI_SHEET = {"hp": 8, "max_hp": 8, "attributes": {"str": 8, "dex": 16}}
@@ -287,8 +288,8 @@ async def test_each_ai_seat_calls_once_in_sorted_uid_order() -> None:
     assert "我执行编号0的任务" in llm.prompt(2)
     assert "我执行编号1的任务" in llm.prompt(2)
     # token 计入既有记账，而不是第二套计费。
-    assert instance.total_llm_calls == 3
-    assert instance.total_tokens == 39
+    assert session_stats.total_llm_calls(instance) == 3
+    assert session_stats.total_tokens(instance) == 39
 
 
 # ---- 3. 真人未交齐：什么都不生成 --------------------------------------------
@@ -669,10 +670,10 @@ async def test_gm_hidden_truth_never_reaches_the_ai_prompt() -> None:
     instance.gm_directives = [{
         "id": "d1", "text": "DIRECTIVE-TOKEN-9c1", "target_round": 1,
     }]
-    instance.private_log = {
+    private_channels.replace_private_log(instance, {
         "h1": [{"round": 1, "text": "OTHER-PRIVATE-1a2"}],
         "a1": [{"round": 1, "text": "OWN-PRIVATE-4d5"}],
-    }
+    })
     llm = FakePlayerLLM(replies=["我搜查船坞。"])
     dependencies = make_dependencies(instance, llm_client=llm)
 

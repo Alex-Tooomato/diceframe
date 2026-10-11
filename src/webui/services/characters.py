@@ -1384,7 +1384,7 @@ async def _create_player_authority(dependencies: CharacterDependencies, inst: Ga
     # A new seat is issued its token in the same write, so the slot must be
     # writable before anything changes.
     room_access.require_writable(inst)
-    max_players = max(1, int(getattr(inst, "max_players", 6) or 6))
+    max_players = max(1, int(room_access.max_players(inst) or 6))
     if uid not in inst.players and len(inst.players) >= max_players:
         return {
             "ok": False,

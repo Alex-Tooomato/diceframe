@@ -10,7 +10,7 @@ from src.engine.checks import build_check_request, roll_check_request
 from src.engine.dice import d20_critical_thresholds, roll
 from src.engine.game_instance import GameState
 from src.engine.health import mark_health_event
-from src.engine.modules import table_settings
+from src.engine.modules import room_access, table_settings
 from src.engine.player_control import (
     PlayerControlError,
     away_control_policy,
@@ -198,7 +198,7 @@ class GameControlService:
         await self._dependencies.save_instance(instance)
         return {
             "ok": True,
-            "player_access_open": instance.player_access_open,
+            "player_access_open": room_access.player_access_open(instance),
         }
 
     def check_request_for_action(

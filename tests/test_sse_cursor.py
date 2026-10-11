@@ -13,6 +13,7 @@ from src.webui.routes.sse import (
     _play_public_signature,
     _signature_digest,
 )
+from src.engine.modules import private_channels
 
 
 def _instance() -> GameInstance:
@@ -29,7 +30,7 @@ def _instance() -> GameInstance:
             "character_sheet": {"hp": 10, "max_hp": 10, "gold": 3},
         }
     }
-    inst.private_log["p1"] = [
+    private_channels.private_log(inst)["p1"] = [
         {"round": 11, "text": "你发现墙后的风声。", "source": "gm"},
     ]
     inst.action_queue = [
@@ -41,7 +42,7 @@ def _instance() -> GameInstance:
 def _current_cursor(inst: GameInstance) -> str:
     return _event_cursor(
         inst.round_number,
-        len(inst.private_log["p1"]),
+        len(private_channels.private_log(inst)["p1"]),
         _play_action_signature(inst),
         _play_public_signature(inst, "p1"),
     )
@@ -77,7 +78,7 @@ def test_same_state_reconnect_cursor_matches_all_server_baselines():
 
     assert parsed is not None
     assert parsed[0] == inst.round_number
-    assert parsed[1] == len(inst.private_log["p1"])
+    assert parsed[1] == len(private_channels.private_log(inst)["p1"])
     assert parsed[2] == _signature_digest(_play_action_signature(inst))
     assert parsed[3] == _signature_digest(_play_public_signature(inst, "p1"))
 

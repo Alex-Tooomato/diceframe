@@ -11,7 +11,7 @@ from typing import Any, Awaitable, Callable, Protocol
 from src.engine import progression
 from src.engine.language import normalize_language
 from src.engine.modules import narrative_notes
-from src.engine.modules.media import replace_scene_image
+from src.engine.modules.media import replace_scene_image, scene_image
 from src.imagegen import (
     ImageGenerationError,
     ImageGenerationRequest,
@@ -425,7 +425,7 @@ class GeneratedImageService:
         if storyboard_source_revision(entry) != source_revision:
             return {"ok": False, "error": "目标剧情已变化，生成图片未写入旧版本存档"}
         reference = {"kind": "generated", "asset_id": result.asset_id}
-        old_entry = deepcopy(entry.get("scene_image")); old_top = deepcopy(current.scene_image)
+        old_entry = deepcopy(entry.get("scene_image")); old_top = deepcopy(scene_image(current))
         entry["scene_image"] = {"reference": reference, "generation_id": result.generation_id, "prompt": prompt, "revised_prompt": result.revised_prompt, "status": "ready", "swipe_index": int(entry.get("current_swipe") or 0)}
         if refs:
             entry["scene_image"].update({"reference_character_ids": list(context.get("reference_character_ids", [])), "reference_count": int(context.get("reference_count") or 0)})
