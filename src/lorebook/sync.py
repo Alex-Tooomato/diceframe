@@ -10,6 +10,7 @@ from src.content_modules.sync import KindPlan, SyncItem, SyncItemError, SyncSour
 from src.engine.world.contracts import canonical_id
 from src.lorebook.import_plan import (
     PreparedLorebook,
+    book_lock_reason,
     execute_lorebook_plan,
     plan_lorebook_import,
     prepare_lorebook_import,
@@ -20,8 +21,11 @@ LOREBOOK_FORMAT = "lorebook_v3"
 FORMAT_UNSUPPORTED = "FORMAT_UNSUPPORTED"
 
 
-def lorebook_state_token(store: Any, book_id: str) -> str:
-    book = store.get_lorebook(book_id) or {}
+def lorebook_state_token(store: Any, book_id: str, *, book: dict[str, Any] | None = None) -> str:
+    """A Book's state token; pass ``book`` when it is already loaded."""
+
+    if book is None:
+        book = store.get_lorebook(book_id) or {}
     return str(int(book.get("revision") or 0))
 
 
@@ -100,7 +104,10 @@ class LorebookSyncExporter:
         book = self.store.get_lorebook(canonical_id)
         if not book:
             return None
-        return {"state_token": lorebook_state_token(self.store, canonical_id), "provenance": book_provenance(book)}
+        return {
+            "state_token": lorebook_state_token(self.store, canonical_id, book=book),
+            "provenance": book_provenance(book),
+        }
 
     def export(self, canonical_id: str) -> dict[str, Any] | None:
         book = self.store.get_lorebook(canonical_id)
@@ -109,8 +116,27 @@ class LorebookSyncExporter:
         return {
             "format": LOREBOOK_FORMAT,
             "document": portable_lorebook_document(self.store, canonical_id),
-            "state_token": lorebook_state_token(self.store, canonical_id),
+            "state_token": lorebook_state_token(self.store, canonical_id, book=book),
             "provenance": book_provenance(book),
+            "locked_reason": book_lock_reason(self.store, canonical_id),
+        }
+
+    def ids(self) -> list[str]:
+        # Every Book, whatever it is bound to (world, game, character, global)
+        # or unbound: the owner's library, not one scope's view of it.
+        return [str(book["id"]) for book in self.store.list_lorebooks()]
+
+    def summary(self, canonical_id: str) -> dict[str, Any] | None:
+        book = self.store.get_lorebook(canonical_id)
+        if not book:
+            return None
+        # One Book read plus two indexed counts: no entry bodies are loaded.
+        return {
+            "name": str(book.get("name") or ""),
+            "state_token": lorebook_state_token(self.store, canonical_id, book=book),
+            "provenance": book_provenance(book),
+            "locked_reason": book_lock_reason(self.store, canonical_id),
+            "entries": self.store.count_book_entries(canonical_id),
         }
 
 

@@ -385,6 +385,7 @@ async def test_export_then_import_is_unchanged(sync_app) -> None:
     assert origin["canonical_id"] == rows["card-1"]["canonical_id"]
     assert origin["state_token"] == rows["card-1"]["state_token"]
     assert origin["provenance"]["external_id"] == "card-1"
+    assert origin["locked_reason"] is None and book_export["origin"]["locked_reason"] is None
     assert card_export["document"]["spec"] == "chara_card_v3"
     assert card_export["document"]["data"]["character_book"]["entries"][0]["id"] == "woods"
     assert book_export["format"] == "lorebook_v3"

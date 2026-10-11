@@ -1,4 +1,5 @@
-"""Content sync routes: ``/api/content/import/preview|commit`` and ``/api/content/export``.
+"""Content sync routes: ``/api/content/import/preview|commit``, ``/api/content/export``,
+``/api/content/status`` and ``/api/content/list``.
 
 Thin transport layer. It owns what only the request knows:
 
@@ -34,6 +35,8 @@ MAX_BODY_BYTES = 8 * 1024 * 1024
 MAX_ITEMS = 50
 #: Status rows are tiny; a client checks its whole library in a few calls.
 MAX_STATUS_ITEMS = 500
+#: List rows are status rows plus a name: the same page size.
+MAX_LIST_ITEMS = MAX_STATUS_ITEMS
 
 BODY_TOO_LARGE = "BODY_TOO_LARGE"
 TOO_MANY_ITEMS = "TOO_MANY_ITEMS"
@@ -226,8 +229,25 @@ async def api_content_status(request: web.Request) -> web.Response:
     return _respond(_get_api(request).content_status(body), instance_id=instance_id)
 
 
+async def api_content_list(request: web.Request) -> web.Response:
+    """Every card or Book in the owner's library, one page at a time.
+
+    Read-only: unlike preview it declares no source, so it never binds a
+    paired device's install id.
+    """
+
+    body, denied = await _read_request(request, max_items=MAX_LIST_ITEMS)
+    if denied is not None or body is None:
+        return denied or _error(400, "REQUEST_INVALID", "request must be an object")
+    instance_id, denied = _server_identity(request)
+    if denied is not None:
+        return denied
+    return _respond(_get_api(request).list_content(body, max_limit=MAX_LIST_ITEMS), instance_id=instance_id)
+
+
 def register_content(app: web.Application) -> None:
     app.router.add_post("/api/content/import/preview", api_content_import_preview)
     app.router.add_post("/api/content/import/commit", api_content_import_commit)
     app.router.add_post("/api/content/export", api_content_export)
     app.router.add_post("/api/content/status", api_content_status)
+    app.router.add_post("/api/content/list", api_content_list)
