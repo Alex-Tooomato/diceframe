@@ -1,4 +1,8 @@
-"""Unsupported compatibility combat slots reject before live transaction writes."""
+"""Unsupported combat_enemies slots reject before live transaction writes.
+
+The combat turn fields are a derived view of ruleset authority, so ruleset
+transactions (D&D batches, ruleset restore) no longer depend on this slot.
+"""
 
 import asyncio
 from copy import deepcopy
@@ -27,7 +31,7 @@ def unsupported_instance():
     return instance
 
 
-@pytest.mark.parametrize("raw", [None, [], "corrupt", {"schema_version": 1, "initiative_order": None}])
+@pytest.mark.parametrize("raw", [None, [], "corrupt", {"schema_version": 2, "combat_enemies": None}])
 def test_preflight_does_not_repair_slot(raw):
     instance = _make_populated_instance()
     instance.modules["legacy_combat"] = deepcopy(raw)
@@ -44,7 +48,7 @@ def test_preflight_does_not_materialize_missing_slot():
     assert live_state(instance) == before
 
 
-@pytest.mark.parametrize("schema", [99, None, "1"])
+@pytest.mark.parametrize("schema", [99, None, "2", 1])
 def test_preflight_rejects_unknown_schema_without_mutation(schema):
     instance = unsupported_instance()
     instance.modules["legacy_combat"]["schema_version"] = schema
@@ -89,28 +93,25 @@ async def test_advance_rejects_before_readiness_snapshots_or_economy_materializa
 
 
 @pytest.mark.parametrize("operation,args", [
-    ("begin", (["u1"],)), ("end", ()), ("reset", ()),
-    ("project_from_ruleset", ({"status": "active"},)),
-    ("restore_from_entity_snapshot", ({},)), ("restore_from_transaction", ({},)),
-    ("begin_combat", (["u1"],)), ("end_combat", ()),
+    ("reset", ()), ("restore_from_entity_snapshot", ({},)),
 ])
-def test_owner_and_aggregate_combat_entries_reject_before_mutation(operation, args):
+def test_owner_combat_entries_reject_before_mutation(operation, args):
     instance = unsupported_instance()
     before = deepcopy(live_state(instance))
     with pytest.raises(ModuleStateError, match="unsupported legacy_combat module schema"):
-        if operation in {"begin_combat", "end_combat"}:
-            getattr(instance, operation)(*args)
-        else:
-            getattr(legacy_combat, operation)(instance, *args)
+        getattr(legacy_combat, operation)(instance, *args)
     assert live_state(instance) == before
 
 
-def test_ruleset_restore_rejects_before_any_field_assignment():
+def test_ruleset_restore_does_not_depend_on_the_enemies_slot():
     instance = unsupported_instance()
-    before = deepcopy(live_state(instance))
-    with pytest.raises(ModuleStateError, match="unsupported legacy_combat module schema"):
-        instance.restore_ruleset_transaction({"ruleset_state": {"changed": True}})
-    assert live_state(instance) == before
+    slot = deepcopy(instance.modules["legacy_combat"])
+    instance.restore_ruleset_transaction({
+        "ruleset_state": {"changed": True}, "event_ledger": [], "players": deepcopy(instance.players),
+        "combat_state": "active", "combat_active": True, "initiative_order": ["u1"], "initiative_current": 1,
+    })
+    assert ruleset_runtime.state(instance) == {"changed": True}
+    assert instance.modules["legacy_combat"] == slot
 
 
 @pytest.mark.parametrize("direct", [False, True], ids=["aggregate", "owner"])
@@ -214,30 +215,15 @@ async def test_turn_services_reject_before_outbox_or_ai(tmp_path, monkeypatch, o
     fill.assert_not_called()
 
 
-@pytest.mark.parametrize("initialized", [False, True])
-def test_dnd_combat_batch_rejects_before_initialization_or_reducer(initialized, monkeypatch):
-    from src.rulesets.dnd2024.combat import Dnd2024CombatEngine
-    from src.rulesets.dnd2024.runtime import Dnd2024Runtime
+def test_dnd_combat_batch_does_not_touch_or_require_the_enemies_slot():
+    from tests.rulesets.test_dnd2024_combat import _instance, _start
 
-    runtime = Dnd2024Runtime()
-    engine = Dnd2024CombatEngine(runtime.load_bundle("en"))
-    instance = unsupported_instance()
-    ruleset_runtime.replace_state(instance, {})
-    if initialized:
-        engine.initialize_state(instance)
-    before = deepcopy(live_state(instance))
-
-    def forbidden_reducer(*args):
-        raise AssertionError("must reject before reduction")
-
-    monkeypatch.setattr(Dnd2024CombatEngine, "_reduce_event", forbidden_reducer)
-    batch = {
-        "batch_id": "batch_preflight", "intent_id": "preflight", "expected_version": 0,
-        "result_version": 1, "events": [{"type": "preflight"}],
-    }
-    with pytest.raises(ModuleStateError, match="unsupported legacy_combat module schema"):
-        engine.apply_batch(instance, batch)
-    assert live_state(instance) == before
+    engine, instance = _instance()
+    instance.modules["legacy_combat"] = {"schema_version": 99, "opaque": True}
+    _start(engine, instance)
+    assert ruleset_runtime.state(instance)["combat"]["status"] == "active"
+    assert legacy_combat.combat_state(instance) == "active"
+    assert instance.modules["legacy_combat"] == {"schema_version": 99, "opaque": True}
 
 
 def test_dnd_projection_and_duplicate_batch_preserve_authority():
@@ -256,33 +242,22 @@ def test_dnd_projection_and_duplicate_batch_preserve_authority():
     assert live_state(instance) == before
     assert ruleset_runtime.state(instance) == authority
 
-    # A replay may still write ruleset defaults, so it fails closed too.
-    instance.modules["legacy_combat"]["schema_version"] = 99
-    before = deepcopy(live_state(instance))
-    with pytest.raises(ModuleStateError, match="unsupported legacy_combat module schema"):
-        engine.apply_batch(instance, batch)
-    assert live_state(instance) == before
 
-
-@pytest.mark.parametrize("future_projection", [False, True])
-def test_duplicate_needing_defaults_preserves_repair_semantics(future_projection):
+@pytest.mark.parametrize("future_enemies_slot", [False, True])
+def test_duplicate_needing_defaults_preserves_repair_semantics(future_enemies_slot):
     from tests.rulesets.test_dnd2024_combat import _instance, _start
 
     engine, instance = _instance()
     batch = _start(engine, instance)
     del ruleset_runtime.state(instance)["combat_history"]
-    if future_projection:
+    if future_enemies_slot:
         instance.modules["legacy_combat"]["schema_version"] = 99
-    before = deepcopy(live_state(instance))
-    if future_projection:
-        with pytest.raises(ModuleStateError, match="unsupported legacy_combat module schema"):
-            engine.apply_batch(instance, batch)
-        assert live_state(instance) == before
-    else:
-        authority = ruleset_runtime.state(instance)
-        assert engine.apply_batch(instance, batch)["duplicate"] is True
-        assert ruleset_runtime.state(instance) is authority
-        assert ruleset_runtime.state(instance)["combat_history"] == []
+    slot = deepcopy(instance.modules["legacy_combat"])
+    authority = ruleset_runtime.state(instance)
+    assert engine.apply_batch(instance, batch)["duplicate"] is True
+    assert ruleset_runtime.state(instance) is authority
+    assert ruleset_runtime.state(instance)["combat_history"] == []
+    assert instance.modules["legacy_combat"] == slot
 
 
 def test_duplicate_keeps_ruleset_schema_validation():

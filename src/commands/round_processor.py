@@ -25,7 +25,6 @@ from src.commands.economy_effects import (
 )
 from src.commands.round_effects import (
     append_state_change_messages,
-    apply_combat_command,
     apply_confirmed_items,
     apply_growth_rewards,
     apply_memory_delta,
@@ -1010,9 +1009,6 @@ class RoundProcessor:
             combat_text = self._combat.resolve_combat(instance, actions_text, combat_model, rule)
             if combat_text:
                 actions_text = combat_text + "\n" + actions_text
-                if legacy_combat.combat_state(instance) == "none" and legacy_combat.combat_enemies(instance):
-                    init_text = self._combat.initiate_combat(instance)
-                    actions_text = init_text + "\n" + actions_text
 
         puzzle_text = self._puzzles.process_puzzles(instance, actions_text)
         if puzzle_text:
@@ -1170,7 +1166,6 @@ class RoundProcessor:
 
         apply_confirmed_items(instance, data)
         apply_puzzle_updates(instance, data)
-        apply_combat_command(instance, data)
         combat_requested = apply_ruleset_combat_signal(
             instance, data, runtime, director_proposal_data,
         )

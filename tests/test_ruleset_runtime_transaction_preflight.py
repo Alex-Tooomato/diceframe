@@ -10,7 +10,7 @@ from src.engine import instance_lifecycle, round_recovery, round_snapshots, turn
 from src.engine.game_instance import GameRegistry, GameState
 from src.engine.module_state import ModuleStateError
 from src.engine.modules import ruleset_runtime
-from src.engine.modules import legacy_combat, round_safety
+from src.engine.modules import round_safety
 from tests.test_game_instance_reset_characterization import _make_populated_instance
 from tests.test_legacy_combat_transaction_preflight import live_state
 
@@ -267,8 +267,6 @@ async def test_party_rest_rejects_before_session_or_character_mutation():
     from src.webui.services.ruleset_rest import LiveRulesetRestDependencies, resolve_live_party
 
     instance = unsupported_instance()
-    legacy_combat.replace_combat_active(instance, False)
-    legacy_combat.replace_combat_state(instance, "none")
     instance.players = {
         uid: {"character_name": uid, "character_sheet": {"hp": 5}}
         for uid in ("hero", "ally")

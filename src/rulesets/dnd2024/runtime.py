@@ -21,7 +21,7 @@ from src.adventures.graph_v2 import (
 )
 from src.engine import progression
 from src.engine.legacy_game_projection import project_legacy_game_context
-from src.engine.modules import adventure_runtime_state, ruleset_runtime
+from src.engine.modules import adventure_runtime_state, legacy_combat, ruleset_runtime
 from src.rulesets.dnd2024.adventure_migrations import (
     apply_unreleased_adventure_binding_migration,
 )
@@ -1496,3 +1496,27 @@ class Dnd2024Runtime:
         if from_version != 1:
             raise ValueError(f"unsupported D&D 2024 state schema version: {from_version}")
         return deepcopy(payload)
+
+
+def project_combat_view(instance: Any) -> dict[str, Any] | None:
+    """Read-only combat turn view derived from ``ruleset_state["combat"]``."""
+
+    combat = ruleset_runtime.state(instance).get("combat")
+    if not isinstance(combat, Mapping):
+        return None
+    active = combat.get("status") == "active"
+    try:
+        turn_index = int(combat.get("turn_index", 0) or 0)
+    except (TypeError, ValueError):
+        turn_index = 0
+    return {
+        "combat_state": "active" if active else "none",
+        "combat_active": active,
+        "initiative_order": list(combat.get("initiative") or []),
+        "initiative_current": turn_index,
+    }
+
+
+# Registered where the runtime is defined: any code path that can hold this
+# runtime also gets its combat view, with no dependency from src/engine.
+legacy_combat.register_combat_projector(Dnd2024Runtime.runtime_id, project_combat_view)
