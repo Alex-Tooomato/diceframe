@@ -13,6 +13,7 @@ from src.commands.game_handler import GameHandler
 from src.engine.game_instance import GameRegistry
 from src.lorebook.matcher import KeywordMatcher
 from src.webui.api import WebAPI
+from src.engine.modules import round_presentation
 
 
 @pytest.mark.asyncio
@@ -66,7 +67,7 @@ async def test_create_act_save_reload_keeps_state_consistent(game_env, create_tw
     assert narrative_notes.scene(reloaded) == "走廊"
     assert reloaded.get_character_sheet(gm_uid)["hp"] == hp_after
     assert set(reloaded.players) == {gm_uid, player_uid}
-    assert reloaded.quick_actions == ["搜索", "撤退"]
+    assert round_presentation.quick_actions(reloaded) == ["搜索", "撤退"]
     assert narration  # 回合叙事真实产生
     # 重载后可以继续推进（状态机没有损坏）
     game_env["llm"].responses.append("剧情继续。\n---\nSCENE:深处")

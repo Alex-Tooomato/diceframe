@@ -12,6 +12,7 @@ from src.commands.prompt_composer import PromptComposer
 from src.commands.round_processor import format_overreach_block, overreach_guard_enabled
 from src.engine.game_instance import GameInstance
 from src.llm.context_builder import build_context
+from src.engine.modules import world_reports
 
 
 def _make_multi_instance() -> GameInstance:
@@ -152,7 +153,7 @@ def test_format_overreach_block():
     inst = _make_multi_instance()
     assert format_overreach_block(inst) == ""
 
-    inst.last_overreach = [{"player": "a", "reason": "支配 NPC"}]
+    world_reports.replace_last_overreach(inst, [{"player": "a", "reason": "支配 NPC"}])
     block = format_overreach_block(inst)
     assert "【权限裁定·必须遵循】" in block
     assert "- 艾琳: 支配 NPC" in block

@@ -11,7 +11,7 @@ from src.engine.game_state_contracts import (
     PlayerContextView,
 )
 from src.engine.language import normalize_language
-from src.engine.modules import narrative_notes, table_settings
+from src.engine.modules import narrative_notes, round_presentation, table_settings
 
 if TYPE_CHECKING:
     from src.engine.game_instance import GameInstance
@@ -84,7 +84,7 @@ class GameContextProjector:
             "combat_enemies": instance.combat_enemies,
             "initiative_order": instance.initiative_order,
             "initiative_current": instance.initiative_current,
-            "quick_actions": instance.quick_actions,
+            "quick_actions": round_presentation.quick_actions(instance),
         }
         if away_names:
             state["attendance_note"] = (

@@ -21,6 +21,7 @@ from src.lorebook.matcher import KeywordMatcher
 from src.lorebook.store import LorebookStore
 from src.webui.api import WebAPI, can_modify_character
 from src.webui.session import SessionManager
+from src.engine.modules import health as health_state
 
 from webapi_harness import FakeLLMClient, web_api, write_world
 
@@ -139,7 +140,7 @@ async def test_resolve_payment_rejected_adds_health_event(web_api):
     # 拒绝不扣金币
     assert inst.players[uid]["character_sheet"]["gold"] == 30
     # 通知 GM：健康事件
-    assert any(e.get("code") == "economy_declined" for e in inst.health_events)
+    assert any(e.get("code") == "economy_declined" for e in health_state.health_events(inst))
     assert res["proposal"]["status"] == "declined"
     assert pending_proposals(inst) == []
 

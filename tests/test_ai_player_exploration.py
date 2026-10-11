@@ -60,7 +60,7 @@ from src.engine.world_state import apply_world_ops
 from src.rules.rule_system import RuleSystem
 from src.rulesets.registry import RulesetRuntimeRegistry
 from src.webui.services.turns import TurnDependencies, submit_action
-from src.engine.modules import private_channels, session_stats
+from src.engine.modules import private_channels, round_presentation, session_stats
 
 HUMAN_SHEET = {"hp": 10, "max_hp": 10, "attributes": {"str": 14, "dex": 10}}
 AI_SHEET = {"hp": 8, "max_hp": 8, "attributes": {"str": 8, "dex": 16}}
@@ -667,9 +667,9 @@ async def test_gm_hidden_truth_never_reaches_the_ai_prompt() -> None:
         {"op": "set_fact", "key": "secret:cult.leader", "value": "GM-SECRET-VALUE-7f2a",
          "visibility": "gm"},
     ])
-    instance.gm_directives = [{
+    round_presentation.replace_gm_directives(instance, [{
         "id": "d1", "text": "DIRECTIVE-TOKEN-9c1", "target_round": 1,
-    }]
+    }])
     private_channels.replace_private_log(instance, {
         "h1": [{"round": 1, "text": "OTHER-PRIVATE-1a2"}],
         "a1": [{"round": 1, "text": "OWN-PRIVATE-4d5"}],

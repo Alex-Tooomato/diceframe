@@ -15,6 +15,8 @@ from tests.test_progression_module import UNKNOWN_SLOTS, instance_with_state
 from tests.test_round_failure_recovery import _new_game
 from webapi_harness import web_api  # noqa: F401
 from src.engine.modules import checks
+from src.engine.modules import adventure_runtime_state
+from src.engine.modules import round_safety
 
 
 async def _drain(*tasks):
@@ -90,10 +92,10 @@ async def test_completion_preserves_log_snapshots_checks_and_timer_semantics(pen
         instance.pending_actions.clear()
     actions = deepcopy(instance.action_queue)
     next_actions = deepcopy(instance.pending_actions)
-    snapshot = deepcopy(instance.round_start_snapshot)
+    snapshot = deepcopy(round_safety.round_start_snapshot(instance))
     checks.replace_round_checks_prepared(instance, True)
     checks.replace_last_checks(instance, [{"id": "check", "result": "success"}])
-    instance.death_save_outcomes = {"7": {"gm": "stable"}, "8": {"gm": "next"}}
+    round_safety.replace_death_save_outcomes(instance, {"7": {"gm": "stable"}, "8": {"gm": "next"}})
     combat_extension_state.replace_current(instance, {"schema_version": 1, "pending_summaries": ["hit", "hit"]})
     combat_extension_state.round_snapshots(instance)["7"] = {"schema_version": 1, "phase": "before"}
     timer = asyncio.create_task(asyncio.Event().wait())
@@ -115,7 +117,7 @@ async def test_completion_preserves_log_snapshots_checks_and_timer_semantics(pen
         assert entry["pre_state_snapshot"] == pre_state
         assert entry["pre_combat_extension_snapshot"] == pre_combat
         assert entry["pre_world_state"] == instance.world_state
-        assert entry["pre_adventure_progress"] == instance.adventure_progress
+        assert entry["pre_adventure_progress"] == adventure_runtime_state.progress(instance)
         assert entry["swipes"] == [] and entry["current_swipe"] == 0
         assert entry["timestamp"] <= session_stats.last_activity(instance)
         assert session_stats.total_llm_calls(instance) == calls_before + 1
@@ -124,10 +126,10 @@ async def test_completion_preserves_log_snapshots_checks_and_timer_semantics(pen
         assert instance.state == GameState.ACTIVE_ACTION
         assert instance.round_number == 8
         assert not checks.round_checks_prepared(instance)
-        assert instance.round_start_snapshot == instance.round_entity_snapshot == {}
+        assert round_safety.round_start_snapshot(instance) == round_safety.round_entity_snapshot(instance) == {}
         assert instance.action_queue == next_actions
         assert instance.pending_actions == [] and instance.ready_players == set()
-        assert instance.death_save_outcomes == {"8": {"gm": "next"}}
+        assert round_safety.death_save_outcomes(instance) == {"8": {"gm": "next"}}
         assert instance._luck_timers == {"check": timer} and not timer.done()
         assert sum("Round 8 开始" in record.message for record in caplog.records) == 1
     finally:

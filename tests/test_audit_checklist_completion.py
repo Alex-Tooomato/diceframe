@@ -22,6 +22,7 @@ from src.lorebook.matcher import KeywordMatcher
 from src.lorebook.store import LorebookStore
 from src.memory.delta import MemoryStore
 from src.webui.api import WebAPI
+from src.engine.modules import health as health_state
 
 
 class ScriptedLLMClient:
@@ -223,7 +224,7 @@ async def test_logs_pagination_overflow_and_corrupted_save_backup_recovery(audit
 
     assert recovered is not None
     assert narrative_notes.scene(recovered) != "备份后的新场景"
-    assert any(e.get("code") == "SAVE_RECOVERED_FROM_BACKUP" for e in recovered.health_events)
+    assert any(e.get("code") == "SAVE_RECOVERED_FROM_BACKUP" for e in health_state.health_events(recovered))
 
 
 def test_tag_parser_ignores_prompt_injection_without_separator_and_invalid_values():

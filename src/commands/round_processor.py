@@ -179,7 +179,7 @@ def _build_recent_public_narration_context(
 
 def format_overreach_block(instance: GameInstance) -> str:
     """把本轮裁判的越权标注组装为可信裁定块（服务端组装，玩家不可注入）。"""
-    notes = list(getattr(instance, "last_overreach", []) or [])
+    notes = list(world_reports.last_overreach(instance) or [])
     if not notes:
         return ""
     lines = []
@@ -464,7 +464,7 @@ class RoundProcessor:
             time_advance = metadata.get("world_time_advance")
             if isinstance(time_advance, dict) and time_advance.get("minutes"):
                 before_world = deepcopy(getattr(instance, "world_state", None))
-                before_progress = deepcopy(getattr(instance, "adventure_progress", None))
+                before_progress = deepcopy(adventure_runtime_state.progress(instance))
                 try:
                     outcome = advance_world_time(
                         instance, int(time_advance["minutes"]),

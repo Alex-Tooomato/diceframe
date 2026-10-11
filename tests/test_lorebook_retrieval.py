@@ -30,6 +30,7 @@ from src.lorebook.retrieval import (
     present_npc_names,
 )
 from src.lorebook.store import LorebookStore
+from src.engine.modules import lorebook_runtime
 
 # ---- 测试替身 ---------------------------------------------------------------
 
@@ -77,12 +78,13 @@ def _instance(**overrides):
         "npcs": {},
         "players": {"p1": {"character_name": "莱拉"}},
         "world_state": fresh_world_state(),
-        "lorebook_timed_state": {},
         "log": [],
     }
+    timers = overrides.pop("lorebook_timed_state", {})
     data.update(overrides)
     scene = data.pop("scene")
-    instance = SimpleNamespace(**data, modules={})
+    # Lorebook timers live in the lorebook_runtime module slot (no facade).
+    instance = SimpleNamespace(**data, modules={"lorebook_runtime": {**lorebook_runtime.fresh(), "timers": timers}})
     narrative_notes.replace_scene(instance, scene)
     return instance
 
@@ -647,7 +649,7 @@ async def test_case_r_table_talk_observes_timers_without_mutating_them() -> None
     cooling = _entry("cooling", "码头", keywords=["码头"])
     cooling["cooldown"] = 2
     instance = _instance(lorebook_timed_state={})
-    before = copy.deepcopy(instance.lorebook_timed_state)
+    before = copy.deepcopy(lorebook_runtime.timers(instance))
 
     retriever = _retriever([sticky, cooling])
     hits = await _ids(
@@ -657,7 +659,7 @@ async def test_case_r_table_talk_observes_timers_without_mutating_them() -> None
 
     assert "sticky_lore" in hits
     assert "cooling" in hits
-    assert instance.lorebook_timed_state == before == {}
+    assert lorebook_runtime.timers(instance) == before == {}
 
 
 @pytest.mark.asyncio
@@ -671,7 +673,7 @@ async def test_normal_round_still_commits_timers() -> None:
 
     await retriever.retrieve(instance, "我去旧桥看看")
 
-    assert instance.lorebook_timed_state["sticky_lore"] == {
+    assert lorebook_runtime.timers(instance)["sticky_lore"] == {
         "sticky_remaining": 3,
         "pending_cooldown": 0,
         "activated_tick": 0,

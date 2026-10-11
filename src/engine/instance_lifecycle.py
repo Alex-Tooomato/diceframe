@@ -74,6 +74,7 @@ def reset_locked(instance: GameInstance, *, keep_seed: bool = True) -> None:
         ruleset_runtime, seat_activity, session_stats, table_settings,
     )
     from src.engine.modules import combat_extension_state
+    from src.engine.modules import health, lorebook_runtime, round_presentation
 
     session_stats.require_writable(instance)
     checks.require_writable(instance)
@@ -118,21 +119,21 @@ def reset_locked(instance: GameInstance, *, keep_seed: bool = True) -> None:
     session_stats.reset(instance)
     instance.puzzle_manager = None
     instance.plot_tracker = None
-    instance.pending_combat_results.clear()
+    round_presentation.pending_combat_results(instance).clear()
     combat_extension_state.replace_current(instance, {})
     combat_extension_state.round_snapshots(instance).clear()
-    instance.lorebook_timed_state.clear()
-    instance.health_events.clear()
-    instance.health_status.clear()
-    instance.quick_actions.clear()
+    lorebook_runtime.timers(instance).clear()
+    health.health_events(instance).clear()
+    health.health_status(instance).clear()
+    round_presentation.quick_actions(instance).clear()
     narrative_notes.confirmed_items(instance).clear()
     private_channels.private_log(instance).clear()
     private_channels.table_talk(instance).clear()
     checks.clear_round(instance)
     round_safety.clear_snapshots(instance)
-    instance.last_state_update = None
-    instance.last_token_budget_bump = None
-    instance.gm_directives.clear()
+    round_presentation.replace_last_state_update(instance, None)
+    round_presentation.replace_last_token_budget_bump(instance, None)
+    round_presentation.gm_directives(instance).clear()
     ruleset_runtime.reset(instance, saved_ruleset_runtime)
     instance.adventure_binding = saved_adventure_binding
     instance.state = GameState.CREATED

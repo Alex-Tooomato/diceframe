@@ -40,7 +40,7 @@ from src.engine.economy import (
 from src.engine.game_instance import GameState
 from src.engine.language import localized_text
 from src.engine.memory_outbox import pending_memory_deliveries, pending_memory_reversals
-from src.engine.modules import progression_state
+from src.engine.modules import progression_state, round_presentation
 from src.engine.player_control import SUBMISSION_BLOCK_CODES
 from src.engine.visibility_rules import proposal_visible_to
 from src.webui.services._common import MAX_ACTIONS_PER_TURN
@@ -231,7 +231,7 @@ def _round_payload(
 ) -> dict[str, Any]:
     payload: dict[str, Any] = {
         "narration": narration,
-        "quick_actions": list(instance.quick_actions),
+        "quick_actions": list(round_presentation.quick_actions(instance)),
         "economy_proposals": _visible_economy_proposals(instance, viewer_uid),
         "check_result": checks.last_check(instance),
         "check_results": list(checks.last_checks(instance)),
@@ -241,7 +241,7 @@ def _round_payload(
     if ok is not None:
         payload["ok"] = ok
     if include_recap:
-        payload["recap"] = instance.last_state_update
+        payload["recap"] = round_presentation.last_state_update(instance)
     return payload
 
 

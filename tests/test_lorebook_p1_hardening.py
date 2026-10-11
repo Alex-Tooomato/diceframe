@@ -18,6 +18,7 @@ from src.lorebook.matcher import KeywordMatcher
 from src.lorebook.retrieval import LoreRetriever
 from src.lorebook.store import LorebookStore
 from src.webui.api import WebAPI
+from src.engine.modules import lorebook_runtime
 
 
 def _build(entries: list[dict], *, rng=None) -> KeywordMatcher:
@@ -370,11 +371,14 @@ def _semantic_store(tmp_path: Path, entries: list[dict], *, recursive: bool = Fa
 
 def _instance(store: LorebookStore, timed_state: dict | None = None) -> SimpleNamespace:
     return SimpleNamespace(
-        world_id="w", language="zh-CN", modules={"narrative_notes": narrative_notes.fresh()}, npcs={}, players={},
+        world_id="w", language="zh-CN", npcs={}, players={},
         world_state={},
-        # An empty dict must still be handed through by identity, otherwise the
-        # retriever mutates a different object than the one the test inspects.
-        lorebook_timed_state=timed_state if timed_state is not None else {},
+        modules={
+            "narrative_notes": narrative_notes.fresh(),
+            # An empty dict must still be handed through by identity, otherwise the
+            # retriever mutates a different object than the one the test inspects.
+            "lorebook_runtime": {**lorebook_runtime.fresh(), "timers": timed_state if timed_state is not None else {}},
+        },
         lorebook_store=store,
         action_actor_uids=[],
     )

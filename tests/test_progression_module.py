@@ -28,7 +28,7 @@ from src.migrations.instance import (
     migrate_game_state_payload,
     rebind_imported_game_state_payload,
 )
-from src.engine.modules import checks, ruleset_runtime, session_stats
+from src.engine.modules import adventure_runtime_state, checks, round_safety, ruleset_runtime, session_stats
 
 
 UNKNOWN_SLOTS = [
@@ -49,10 +49,10 @@ def instance_with_state(slot=None):
     instance.pending_actions = [{"user_id": "gm", "text": "Follow"}]
     instance.ready_players = {"gm"}
     instance.log = [{"round": 6, "gm_response": "Before", "pre_state_snapshot": {"gm": {"hp": 15}}}]
-    instance.round_start_snapshot = {"gm": {"hp": 15}}
-    instance.round_entity_snapshot = {"npcs": {"guide": {"hp": 10}}}
+    round_safety.capture_players(instance, {"gm": {"hp": 15}})
+    round_safety.replace_entity_snapshot(instance, {"npcs": {"guide": {"hp": 10}}})
     combat_extension_state.round_snapshots(instance)["7"] = {"opaque": [1]}
-    instance.adventure_progress = {"active_nodes": ["gate"]}
+    adventure_runtime_state.replace_progress(instance, {"active_nodes": ["gate"]})
     ruleset_runtime.replace_state(instance, {"version": 4})
     ruleset_runtime.replace_event_ledger(instance, [{"id": "old"}])
     narrative_notes.replace_game_time(instance, "Third Age, dusk")

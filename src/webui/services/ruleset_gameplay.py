@@ -461,7 +461,7 @@ async def submit_intent(
                 return binding_error
             before = {
                 "world_state": deepcopy(getattr(instance, "world_state", None)),
-                "adventure_progress": deepcopy(getattr(instance, "adventure_progress", None)),
+                "adventure_progress": deepcopy(adventure_runtime_state.progress(instance)),
                 "economy": deepcopy(economy_state.state(instance)),
             }
             try:

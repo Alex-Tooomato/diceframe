@@ -15,6 +15,7 @@ from src.webui.services.turns import (
     resolve_luck_and_continue,
     submit_action,
 )
+from src.engine.modules import round_presentation
 
 
 class FakeInstance:
@@ -29,8 +30,8 @@ class FakeInstance:
         self.round_number = 1
         self.action_queue: list[dict] = []
         self.run_id = "run-test"
-        self.quick_actions = ["观察"]
-        self.last_state_update = {"scene": "门厅"}
+        round_presentation.replace_quick_actions(self, ["观察"])
+        round_presentation.replace_last_state_update(self, {"scene": "门厅"})
         table_settings.replace_solo_mode(self, False)
         self.dead: set[str] = set()
         self.pending_luck: list[dict] = []

@@ -151,12 +151,116 @@ def test_only_legacy_combat_owners_assign_fields() -> None:
     assert not violations, "\n".join(violations)
 
 
-def test_only_round_safety_owners_assign_fields() -> None:
-    owners = {
-        SRC / "engine" / "game_instance.py",
-        MODULES / "round_safety.py",
-        SRC / "engine" / "game_state_codec.py",
+def _module_writer_calls(path: Path, tree: ast.AST, module: str, writers: frozenset[str]) -> list[int]:
+    """Calls to ``<module>.<writer>(...)`` or a writer imported from the module by name.
+
+    The GameInstance compatibility setters for these slots are retired, so the
+    module write API is the only write path left; aliases of the module object
+    itself are not tracked (same limit as the combat/progression guards).
+    """
+    imported = {
+        alias.asname or alias.name
+        for node in ast.walk(tree)
+        if isinstance(node, ast.ImportFrom) and node.module == f"src.engine.modules.{module}"
+        for alias in node.names
+        if alias.name in writers
     }
+    return [
+        node.lineno for node in ast.walk(tree)
+        if isinstance(node, ast.Call)
+        and (
+            isinstance(node.func, ast.Attribute)
+            and isinstance(node.func.value, ast.Name)
+            and node.func.value.id == module
+            and node.func.attr in writers
+            or isinstance(node.func, ast.Name) and node.func.id in imported
+        )
+    ]
+
+
+# Slot write API per module -> files that may call it (besides the module).
+MODULE_API_WRITERS: dict[str, tuple[frozenset[str], frozenset[Path]]] = {
+    "round_safety": (
+        frozenset({
+            "capture_players", "replace_entity_snapshot", "replace_death_save_outcomes",
+            "clear_snapshots", "discard_round", "keep_death_saves_for",
+        }),
+        frozenset({
+            SRC / "engine" / "turn_state.py",
+            SRC / "engine" / "round_snapshots.py",
+            SRC / "engine" / "round_recovery.py",
+            SRC / "engine" / "instance_lifecycle.py",
+        }),
+    ),
+    "adventure_runtime_state": (
+        frozenset({"replace_progress", "replace_play_mode", "normalize_decoded_play_mode"}),
+        frozenset({
+            SRC / "engine" / "game_state_codec.py",
+            SRC / "engine" / "instance_lifecycle.py",
+            SRC / "engine" / "round_recovery.py",
+            SRC / "engine" / "round_snapshots.py",
+            SRC / "commands" / "game_lifecycle.py",
+            SRC / "commands" / "round_processor.py",
+            SRC / "webui" / "services" / "adventure_runtime.py",
+            SRC / "webui" / "services" / "game_lifecycle.py",
+            SRC / "webui" / "services" / "game_seed_lifecycle.py",
+            SRC / "webui" / "services" / "ruleset_gameplay.py",
+        }),
+    ),
+    "world_reports": (
+        frozenset({"replace_last_overreach", "replace_last_world_legality", "replace_last_world_events"}),
+        frozenset({SRC / "commands" / "round_processor.py"}),
+    ),
+    "round_presentation": (
+        frozenset({
+            "replace_gm_directives", "replace_quick_actions", "replace_last_state_update",
+            "replace_last_token_budget_bump", "replace_pending_combat_results",
+        }),
+        frozenset({SRC / "engine" / "game_instance.py", SRC / "engine" / "instance_lifecycle.py"}),
+    ),
+    "health": (
+        frozenset({"replace_health_events", "replace_health_status"}),
+        frozenset(),
+    ),
+    "lorebook_runtime": (
+        frozenset({"replace_timers"}),
+        frozenset(),
+    ),
+    "player_control_state": (
+        frozenset({"set_away_control_policy_value"}),
+        frozenset({SRC / "engine" / "player_control.py"}),
+    ),
+}
+
+
+@pytest.mark.parametrize("module", sorted(MODULE_API_WRITERS))
+def test_only_owners_call_module_write_api(module) -> None:
+    writers, owners = MODULE_API_WRITERS[module]
+    violations: list[str] = []
+    for path in sorted(SRC.rglob("*.py")):
+        if path == MODULES / f"{module}.py" or path in owners:
+            continue
+        tree = ast.parse(path.read_text(encoding="utf-8-sig"))
+        for line in _module_writer_calls(path, tree, module, writers):
+            violations.append(f"{path.relative_to(ROOT)}:{line}: {module} write API outside owner")
+    assert not violations, "\n".join(violations)
+
+
+def test_module_write_api_guard_matches_attribute_and_imported_calls() -> None:
+    tree = ast.parse(
+        "round_safety.capture_players(x, {})\n"
+        "from src.engine.modules.round_safety import replace_entity_snapshot as put\n"
+        "put(x, {})\n"
+        "round_safety.round_start_snapshot(x)\n"
+    )
+    writers, _owners = MODULE_API_WRITERS["round_safety"]
+    assert _module_writer_calls(SRC / "webui" / "routes" / "outsider.py", tree, "round_safety", writers) == [1, 3]
+
+
+def test_only_round_safety_owners_assign_fields() -> None:
+    # The GameInstance setters are retired (writes raise), so no file may assign
+    # these names; module-API writes are covered by test_only_owners_call_module_write_api.
+    owners = {MODULES / "round_safety.py"}
     violations: list[str] = []
     for path in sorted(SRC.rglob("*.py")):
         if path in owners:
@@ -172,11 +276,9 @@ def test_only_round_safety_owners_assign_fields() -> None:
 
 
 def test_only_adventure_runtime_owners_assign_fields() -> None:
-    owners = {
-        SRC / "engine" / "game_instance.py",
-        MODULES / "adventure_runtime_state.py",
-        SRC / "engine" / "game_state_codec.py",
-    }
+    # Setters retired: attribute/setattr writes are violations everywhere;
+    # module-API writes are covered by test_only_owners_call_module_write_api.
+    owners = {MODULES / "adventure_runtime_state.py"}
     fields = {"adventure_progress", "play_mode"}
     violations: list[str] = []
     for path in sorted(SRC.rglob("*.py")):

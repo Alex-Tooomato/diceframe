@@ -31,76 +31,41 @@ MODULES_DIR = "src/engine/modules/"
 REFLECTIVE_ACCESSORS = frozenset({"getattr", "setattr", "hasattr"})
 
 # Module-backed properties currently on GameInstance. Do not raise.
-MAX_MODULE_FACADES = 23
+MAX_MODULE_FACADES = 6
 
 # Keys are source file + property name, so edits inside a caller do not make
 # the baseline brittle. Do not add entries or raise counts.
 FACADE_USAGE: dict[tuple[str, str], int] = {
     ("src/commands/check_planner.py", "combat_enemies"): 3,
     ("src/commands/combat_resolver.py", "combat_enemies"): 2,
-    ("src/commands/combat_resolver.py", "pending_combat_results"): 1,
-    ("src/commands/round_actions.py", "gm_directives"): 1,
     ("src/commands/round_effects.py", "combat_state"): 1,
-    ("src/commands/round_processor.py", "adventure_progress"): 1,
     ("src/commands/round_processor.py", "combat_enemies"): 1,
     ("src/commands/round_processor.py", "combat_state"): 3,
-    ("src/commands/round_processor.py", "last_overreach"): 1,
     ("src/engine/checks.py", "combat_enemies"): 3,
     ("src/engine/checks.py", "combat_state"): 1,
     ("src/engine/game_context_projector.py", "combat_enemies"): 1,
     ("src/engine/game_context_projector.py", "combat_state"): 2,
     ("src/engine/game_context_projector.py", "initiative_current"): 1,
     ("src/engine/game_context_projector.py", "initiative_order"): 1,
-    ("src/engine/game_context_projector.py", "quick_actions"): 1,
-    ("src/engine/health.py", "health_events"): 4,
-    ("src/engine/health.py", "health_status"): 3,
-    ("src/engine/instance_lifecycle.py", "gm_directives"): 1,
-    ("src/engine/instance_lifecycle.py", "health_events"): 1,
-    ("src/engine/instance_lifecycle.py", "health_status"): 1,
-    ("src/engine/instance_lifecycle.py", "last_state_update"): 1,
-    ("src/engine/instance_lifecycle.py", "last_token_budget_bump"): 1,
-    ("src/engine/instance_lifecycle.py", "lorebook_timed_state"): 1,
-    ("src/engine/instance_lifecycle.py", "pending_combat_results"): 1,
-    ("src/engine/instance_lifecycle.py", "quick_actions"): 1,
     ("src/engine/plot_tracker.py", "round_number"): 2,
     ("src/engine/progression.py", "round_number"): 3,
-    ("src/engine/round_recovery.py", "adventure_progress"): 1,
-    ("src/engine/round_recovery.py", "round_entity_snapshot"): 2,
-    ("src/engine/round_recovery.py", "round_start_snapshot"): 4,
-    ("src/engine/round_snapshots.py", "adventure_progress"): 1,
     ("src/engine/round_snapshots.py", "combat_active"): 1,
     ("src/engine/round_snapshots.py", "combat_enemies"): 2,
     ("src/engine/round_snapshots.py", "combat_state"): 1,
     ("src/engine/round_snapshots.py", "initiative_current"): 1,
     ("src/engine/round_snapshots.py", "initiative_order"): 1,
-    ("src/engine/round_snapshots.py", "round_entity_snapshot"): 1,
-    ("src/engine/world/inspector.py", "last_world_events"): 1,
     ("src/llm/context_builder.py", "combat_state"): 1,
-    ("src/llm/world_prompt.py", "last_world_events"): 1,
-    ("src/llm/world_prompt.py", "last_world_legality"): 1,
-    ("src/lorebook/retrieval.py", "lorebook_timed_state"): 1,
     ("src/rulesets/automation.py", "combat_active"): 1,
     ("src/rulesets/automation.py", "combat_state"): 1,
     ("src/rulesets/automation.py", "initiative_current"): 1,
     ("src/rulesets/automation.py", "initiative_order"): 1,
-    ("src/rulesets/dnd2024/runtime.py", "adventure_progress"): 1,
-    ("src/rulesets/dnd2024/runtime.py", "play_mode"): 1,
-    ("src/webui/routes/sse.py", "quick_actions"): 1,
-    ("src/webui/services/adventure_runtime.py", "adventure_progress"): 2,
-    ("src/webui/services/adventures.py", "adventure_progress"): 1,
     ("src/webui/services/game_queries.py", "combat_active"): 1,
-    ("src/webui/services/game_queries.py", "last_token_budget_bump"): 1,
-    ("src/webui/services/game_queries.py", "play_mode"): 1,
-    ("src/webui/services/game_queries.py", "quick_actions"): 1,
-    ("src/webui/services/ruleset_gameplay.py", "adventure_progress"): 1,
     ("src/webui/services/ruleset_gameplay.py", "combat_active"): 2,
     ("src/webui/services/ruleset_gameplay.py", "combat_state"): 2,
     ("src/webui/services/ruleset_gameplay.py", "initiative_current"): 2,
     ("src/webui/services/ruleset_gameplay.py", "initiative_order"): 2,
     ("src/webui/services/ruleset_rest.py", "combat_active"): 1,
     ("src/webui/services/ruleset_rest.py", "combat_state"): 1,
-    ("src/webui/services/turns.py", "last_state_update"): 1,
-    ("src/webui/services/turns.py", "quick_actions"): 1,
 }
 
 
@@ -287,16 +252,20 @@ def test_retired_facade_write_fails_instead_of_shadowing() -> None:
         assert name not in vars(instance)
 
 
-def test_session_room_media_channel_facades_are_retired() -> None:
+ROUND4_MISC_RETIRED = frozenset({
+    "adventure_progress", "away_control_policy", "death_save_outcomes", "gm_directives",
+    "health_events", "health_status", "last_overreach", "last_state_update",
+    "last_token_budget_bump", "last_world_events", "last_world_legality",
+    "lorebook_timed_state", "pending_combat_results", "play_mode", "quick_actions",
+    "round_entity_snapshot", "round_start_snapshot",
+})
+
+
+def test_round4_misc_facades_are_gone() -> None:
     from src.engine.game_instance import RETIRED_MODULE_FACADES, GameInstance
 
-    names = {
-        "total_tokens", "started_at", "last_activity", "total_llm_calls",
-        "max_players", "player_access_open", "bot_bind_token", "has_room_password",
-        "scene_image", "map_background", "private_log", "table_talk",
-    }
-    instance = GameInstance(game_key=("web", "retired-session", "u"))
-    assert names <= RETIRED_MODULE_FACADES
-    for name in sorted(names):
-        assert not hasattr(GameInstance, name)
-        assert not hasattr(instance, name)
+    assert ROUND4_MISC_RETIRED <= RETIRED_MODULE_FACADES
+    instance = GameInstance(game_key=("web", "retired-misc", "u"))
+    for name in sorted(ROUND4_MISC_RETIRED):
+        assert not hasattr(GameInstance, name), name
+        assert not hasattr(instance, name), name

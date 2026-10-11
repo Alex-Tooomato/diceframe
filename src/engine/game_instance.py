@@ -25,14 +25,12 @@ from src.engine.contracts import (
     RoundLogEntry,
     StoryRecap,
     TableTalkExchange,
-    TokenBudgetBump,
 )
 from src.engine.game_state import GameState
 from src.engine.game_state_codec import GameStateCodec
 from src.engine.game_state_contracts import (
     GameContextView,
     GamePersistedState,
-    PlayerRollbackSnapshot,
 )
 from src.engine.language import DEFAULT_LANGUAGE, normalize_language
 from src.engine.module_state import ensure_module_states
@@ -41,12 +39,10 @@ from src.engine.modules import (
     checks,
     combat_extension_state,
     economy_state,
-    health,
     legacy_combat,
     lorebook_runtime,
     media,
     narrative_notes,
-    player_control_state,
     private_channels,
     progression_state,
     room_access,
@@ -66,7 +62,6 @@ from src.engine.player_control import (
     end_away_hosting,
     ensure_control,
     ensure_controls,
-    normalize_away_control_policy,
     set_control,
 )
 from src.engine.round_snapshots import (
@@ -135,9 +130,12 @@ def _same_adventure_binding(current: Any, candidate: Any) -> bool:
 # Compatibility properties deleted after their state moved into module slots.
 # Writing one of these names must fail instead of creating a shadow attribute.
 RETIRED_MODULE_FACADES = frozenset({
+    "adventure_progress",
+    "away_control_policy",
     "bot_bind_token",
     "combat_extension",
     "combat_extension_round_snapshots",
+    "death_save_outcomes",
     "confirmed_items",
     "dice_reveal_mode",
     "difficulty",
@@ -145,6 +143,9 @@ RETIRED_MODULE_FACADES = frozenset({
     "economy_reward_policy",
     "entry_point",
     "event_ledger",
+    "gm_directives",
+    "health_events",
+    "health_status",
     "game_time",
     "gm_style_override",
     "has_room_password",
@@ -152,14 +153,25 @@ RETIRED_MODULE_FACADES = frozenset({
     "last_activity",
     "last_check",
     "last_checks",
+    "last_overreach",
+    "last_state_update",
+    "last_token_budget_bump",
+    "last_world_events",
+    "last_world_legality",
+    "lorebook_timed_state",
     "luck_timeout_seconds",
     "manual_roll_requests",
+    "pending_combat_results",
+    "play_mode",
+    "quick_actions",
     "map_background",
     "max_players",
     "narrative_perspective",
     "player_access_open",
     "private_log",
     "round_checks_prepared",
+    "round_entity_snapshot",
+    "round_start_snapshot",
     "ruleset_runtime",
     "ruleset_state",
     "scene",
@@ -263,24 +275,6 @@ class GameInstance:
         super().__setattr__(name, value)
 
     @property
-    def adventure_progress(self) -> dict[str, Any]:
-        """Adventure v2 progress (FIX-04 §6.2); v1 campaign progress stays in ruleset_state."""
-        return adventure_runtime_state.progress(self)
-
-    @adventure_progress.setter
-    def adventure_progress(self, value: Any) -> None:
-        adventure_runtime_state.replace_progress(self, value)
-
-    @property
-    def play_mode(self) -> str:
-        """``free`` or ``adventure``; empty only for in-memory construction."""
-        return adventure_runtime_state.play_mode(self)
-
-    @play_mode.setter
-    def play_mode(self, value: Any) -> None:
-        adventure_runtime_state.replace_play_mode(self, value)
-
-    @property
     def combat_active(self) -> bool:
         return legacy_combat.combat_active(self)
 
@@ -319,122 +313,6 @@ class GameInstance:
     @initiative_current.setter
     def initiative_current(self, value: int) -> None:
         legacy_combat.replace_initiative_current(self, value)
-
-    @property
-    def round_start_snapshot(self) -> PlayerRollbackSnapshot:
-        """进入判定前的玩家状态；整轮撤回时退还本轮消耗。"""
-        return round_safety.round_start_snapshot(self)
-
-    @round_start_snapshot.setter
-    def round_start_snapshot(self, value: PlayerRollbackSnapshot) -> None:
-        round_safety.capture_players(self, value)
-
-    @property
-    def round_entity_snapshot(self) -> dict[str, Any]:
-        """旧版战斗实体快照；与 combat_extension 的权威战斗快照互补。"""
-        return round_safety.round_entity_snapshot(self)
-
-    @round_entity_snapshot.setter
-    def round_entity_snapshot(self, value: dict[str, Any]) -> None:
-        round_safety.replace_entity_snapshot(self, value)
-
-    @property
-    def death_save_outcomes(self) -> dict[str, dict[str, dict]]:
-        """Per-round/player death saves reused by narrative and API retries."""
-        return round_safety.death_save_outcomes(self)
-
-    @death_save_outcomes.setter
-    def death_save_outcomes(self, value: dict[str, dict[str, dict]]) -> None:
-        round_safety.replace_death_save_outcomes(self, value)
-
-    @property
-    def last_overreach(self) -> list:
-        # 本轮裁判标注的越权声明（仅多人局且开关启用时注入 GM 上下文）。
-        return world_reports.last_overreach(self)
-
-    @last_overreach.setter
-    def last_overreach(self, value: Any) -> None:
-        world_reports.replace_last_overreach(self, value)
-
-    @property
-    def last_world_legality(self) -> list:
-        # server 判定的行动合法性矛盾：player / code / location / current。
-        # 与替世界/他人声明事实的 overreach 分开，供可信裁定块与前端提示使用。
-        return world_reports.last_world_legality(self)
-
-    @last_world_legality.setter
-    def last_world_legality(self, value: Any) -> None:
-        world_reports.replace_last_world_legality(self, value)
-
-    @property
-    def last_world_events(self) -> list:
-        # 本轮确定性结算的定时事件：event_id / label / due_at / status / error。
-        return world_reports.last_world_events(self)
-
-    @last_world_events.setter
-    def last_world_events(self, value: Any) -> None:
-        world_reports.replace_last_world_events(self, value)
-
-    @property
-    def gm_directives(self) -> list[dict]:
-        # GM 私密指令：只注入 GM 上下文，不作为玩家/系统行动公开记录。
-        return round_presentation.gm_directives(self)
-
-    @gm_directives.setter
-    def gm_directives(self, value: Any) -> None:
-        round_presentation.replace_gm_directives(self, value)
-
-    @property
-    def quick_actions(self) -> list[str]:
-        # WebUI 快捷行动建议。
-        return round_presentation.quick_actions(self)
-
-    @quick_actions.setter
-    def quick_actions(self, value: Any) -> None:
-        round_presentation.replace_quick_actions(self, value)
-
-    @property
-    def last_state_update(self) -> dict | None:
-        # 最近一回合的 state_update（前端渲染用）。
-        return round_presentation.last_state_update(self)
-
-    @last_state_update.setter
-    def last_state_update(self, value: Any) -> None:
-        round_presentation.replace_last_state_update(self, value)
-
-    @property
-    def last_token_budget_bump(self) -> TokenBudgetBump | None:
-        # 最近一回合因输出截断触发的 token 预算升档（给 GM 的低打扰提示）。
-        return round_presentation.last_token_budget_bump(self)
-
-    @last_token_budget_bump.setter
-    def last_token_budget_bump(self, value: Any) -> None:
-        round_presentation.replace_last_token_budget_bump(self, value)
-
-    @property
-    def pending_combat_results(self) -> list[dict]:
-        # 战斗结算缓存（供 WebUI 展示）。
-        return round_presentation.pending_combat_results(self)
-
-    @pending_combat_results.setter
-    def pending_combat_results(self, value: Any) -> None:
-        round_presentation.replace_pending_combat_results(self, value)
-
-    @property
-    def health_events(self) -> list[dict]:
-        return health.health_events(self)
-
-    @health_events.setter
-    def health_events(self, value: Any) -> None:
-        health.replace_health_events(self, value)
-
-    @property
-    def health_status(self) -> dict:
-        return health.health_status(self)
-
-    @health_status.setter
-    def health_status(self, value: Any) -> None:
-        health.replace_health_status(self, value)
 
     def __post_init__(self) -> None:
         if not self.run_id:
@@ -848,7 +726,9 @@ class GameInstance:
         narrative_notes.summary(self)["narrative"] = narrative
 
     def set_quick_actions(self, actions: list[str]) -> None:
-        self.quick_actions = [str(action) for action in actions if str(action).strip()]
+        round_presentation.replace_quick_actions(
+            self, [str(action) for action in actions if str(action).strip()],
+        )
 
     def set_key_facts(self, facts: list) -> None:
         narrative_notes.replace_key_facts(self, list(facts))
@@ -874,7 +754,7 @@ class GameInstance:
             del entries[:-limit]
 
     def add_gm_directive(self, directive: dict) -> None:
-        self.gm_directives.append(directive)
+        round_presentation.gm_directives(self).append(directive)
 
     def clear_private_messages(self, uid: str) -> None:
         private_channels.private_log(self).pop(uid, None)
@@ -891,9 +771,9 @@ class GameInstance:
         checks.require_writable(self)
         checks.replace_last_check(self, None)
         checks.last_checks(self).clear()
-        self.last_overreach.clear()
-        self.last_world_legality.clear()
-        self.last_world_events.clear()
+        world_reports.last_overreach(self).clear()
+        world_reports.last_world_legality(self).clear()
+        world_reports.last_world_events(self).clear()
         self.round_unpriced_purchase_intents.clear()
         checks.replace_round_checks_prepared(self, prepared)
 
@@ -912,35 +792,36 @@ class GameInstance:
     def begin_round_processing(self) -> None:
         """清理仅属于上一轮展示的短期状态。"""
         progression.require_writable(self)
-        self.last_token_budget_bump = None
-        self.pending_combat_results.clear()
+        round_presentation.replace_last_token_budget_bump(self, None)
+        round_presentation.pending_combat_results(self).clear()
         self.update_lorebook_timed_state()
 
     def set_token_budget_bump(self, initial: int, used: int, *, kind: str = "narrative") -> None:
-        self.last_token_budget_bump = (
+        round_presentation.replace_last_token_budget_bump(
+            self,
             {"kind": kind, "from": initial, "to": used}
             if used > initial > 0
-            else None
+            else None,
         )
 
     def set_state_update_recap(self, state_update: dict | None) -> None:
-        self.last_state_update = state_update or None
+        round_presentation.replace_last_state_update(self, state_update or None)
 
     def consume_gm_directives(self, directive_ids: set[str]) -> None:
         if not directive_ids:
             return
-        self.gm_directives = [
+        round_presentation.replace_gm_directives(self, [
             directive
-            for directive in self.gm_directives
+            for directive in round_presentation.gm_directives(self)
             if str(directive.get("id") or "") not in directive_ids
-        ]
+        ])
 
     def record_llm_usage(self, tokens: int = 0, *, calls: int = 1) -> None:
         session_stats.require_writable(self)
         session_stats.record_llm_usage(self, tokens, calls=calls)
 
     def record_combat_result(self, result: dict) -> None:
-        self.pending_combat_results.append(result)
+        round_presentation.pending_combat_results(self).append(result)
 
     def capture_combat_extension_snapshot(
         self,
@@ -1625,22 +1506,6 @@ class GameInstance:
 
     # ---------- 序列化 --------------------------------------
 
-    @property
-    def away_control_policy(self) -> str:
-        return player_control_state.away_control_policy(self)
-
-    @away_control_policy.setter
-    def away_control_policy(self, value: Any) -> None:
-        player_control_state.set_away_control_policy_value(self, normalize_away_control_policy(value))
-
-    @property
-    def lorebook_timed_state(self) -> dict[str, dict]:
-        return lorebook_runtime.timers(self)
-
-    @lorebook_timed_state.setter
-    def lorebook_timed_state(self, value: Any) -> None:
-        lorebook_runtime.replace_timers(self, value)
-
     def update_lorebook_timed_state(self) -> None:
         """Tick persisted Lorebook timers, supporting the pre-v2 shape.
 
@@ -1648,8 +1513,9 @@ class GameInstance:
         the lifecycle *semantics* live in :mod:`src.lorebook.activation` so
         ``sticky → cooldown`` ordering is testable without a GameInstance.
         """
+        timed_state = lorebook_runtime.timers(self)
         expired: list[str] = []
-        for entry_id, state in self.lorebook_timed_state.items():
+        for entry_id, state in timed_state.items():
             if not isinstance(state, dict):
                 expired.append(entry_id)
                 continue
@@ -1663,7 +1529,7 @@ class GameInstance:
             else:
                 state["remaining"] = remaining
         for entry_id in expired:
-            self.lorebook_timed_state.pop(entry_id, None)
+            timed_state.pop(entry_id, None)
 
     # ---------- 序列化 --------------------------------------
 

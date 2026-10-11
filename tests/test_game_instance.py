@@ -9,7 +9,7 @@ from src.engine.character_utils import reset_character_for_restart
 from src.engine.game_instance import GameInstance, GameRegistry, GameState
 from src.engine.health import health_payload, mark_health_event, record_health_event
 from src.commands.progression_resolver import ProgressionResolver
-from src.engine.modules import checks, economy_state, media, private_channels, ruleset_runtime, session_stats, table_settings
+from src.engine.modules import checks, economy_state, health as health_state, media, private_channels, round_presentation, round_safety, ruleset_runtime, session_stats, table_settings
 
 
 def test_round_entity_snapshot_round_trips_and_defaults_empty() -> None:
@@ -20,8 +20,8 @@ def test_round_entity_snapshot_round_trips_and_defaults_empty() -> None:
     instance.capture_round_entity_snapshot()
 
     restored = GameInstance.from_dict(instance.to_dict())
-    assert restored.round_entity_snapshot["npcs"]["goblin"]["hp"] == 12
-    assert restored.round_entity_snapshot["combat_state"] == "active"
+    assert round_safety.round_entity_snapshot(restored)["npcs"]["goblin"]["hp"] == 12
+    assert round_safety.round_entity_snapshot(restored)["combat_state"] == "active"
 
     legacy = instance.to_dict()
     # Drop the key from wherever it is stored (top level before R8-c2).
@@ -29,7 +29,7 @@ def test_round_entity_snapshot_round_trips_and_defaults_empty() -> None:
     safety = (legacy.get("modules") or {}).get("round_safety")
     if isinstance(safety, dict):
         safety.pop("round_entity_snapshot", None)
-    assert GameInstance.from_dict(legacy).round_entity_snapshot == {}
+    assert round_safety.round_entity_snapshot(GameInstance.from_dict(legacy)) == {}
 
 
 def test_versioned_ruleset_state_is_optional_and_round_trips() -> None:
@@ -131,7 +131,7 @@ async def test_abort_round_processing_restores_action_phase_without_touching_que
 
     # 模拟判定入口到叙事失败之间的状态变更：扣血、死亡豁免、检定/幸运、骰值。
     instance.get_character_sheet("p1")["hp"] = 7
-    instance.death_save_outcomes[str(instance.round_number)] = {"p1": "fail"}
+    round_safety.death_save_outcomes(instance)[str(instance.round_number)] = {"p1": "fail"}
     instance.record_check({"check_id": "check-1", "luck_decision": "pending"})
     instance.complete_round_check_preparation()
     luck_timer = asyncio.create_task(asyncio.sleep(30))
@@ -145,8 +145,8 @@ async def test_abort_round_processing_restores_action_phase_without_touching_que
     assert checks.last_checks(instance) == []
     assert checks.last_check(instance) is None
     assert checks.round_checks_prepared(instance) is False
-    assert instance.death_save_outcomes == {}
-    assert instance.round_start_snapshot == {}
+    assert round_safety.death_save_outcomes(instance) == {}
+    assert round_safety.round_start_snapshot(instance) == {}
     assert instance._luck_timers == {}
     await asyncio.sleep(0)  # 让取消请求在事件循环中落地
     assert luck_timer.cancelled()
@@ -184,7 +184,7 @@ async def test_abort_restores_entities_and_drops_all_combat_caches() -> None:
     assert await instance.add_action("p1", "攻击哥布林")
     assert await instance.advance_round()
     assert instance.state == GameState.ACTIVE_JUDGMENT
-    assert instance.round_entity_snapshot["npcs"]["goblin"]["hp"] == 30
+    assert round_safety.round_entity_snapshot(instance)["npcs"]["goblin"]["hp"] == 30
 
     # 判定期间：p2 被打到 25（旧版 CombatResolver 用裸 uid 表示玩家目标），
     # 哥布林被打到 12。
@@ -218,7 +218,7 @@ async def test_abort_restores_entities_and_drops_all_combat_caches() -> None:
     assert instance.npcs["goblin"]["hp"] == 30
     assert "combat_outcome" not in instance.action_queue[0]
     assert "combat_outcome" not in instance.action_queue[1]
-    assert instance.round_entity_snapshot == {}
+    assert round_safety.round_entity_snapshot(instance) == {}
     # 骰值仍然保留，重试结果稳定。
     assert instance.action_queue[0]["dice_value"] == 15
     assert instance.action_queue[1]["dice_value"] == 18
@@ -245,7 +245,7 @@ async def test_abort_without_entity_snapshot_keeps_unverifiable_combat_cache() -
     instance.npcs = {"goblin": {"name": "哥布林", "hp": 12, "max_hp": 30}}
     assert await instance.add_action("p1", "攻击哥布林")
     assert await instance.advance_round()
-    instance.round_entity_snapshot.clear()  # 模拟改动前落盘的旧存档
+    round_safety.round_entity_snapshot(instance).clear()  # 模拟改动前落盘的旧存档
 
     instance.get_character_sheet("p2")["hp"] = 25
     instance.action_queue[0]["combat_outcome"] = {
@@ -461,13 +461,13 @@ class TestGameInstance:
         inst = GameInstance(game_key=("qq", "123", "bot1"))
         inst.players["u1"] = {"character_name": "剑士"}
         inst.round_number = 5
-        inst.quick_actions = ["调查脚印", "询问守卫"]
+        round_presentation.replace_quick_actions(inst, ["调查脚印", "询问守卫"])
         data = inst.to_dict()
         restored = GameInstance.from_dict(data)
         assert restored.game_key == inst.game_key
         assert restored.round_number == 5
         assert restored.players["u1"]["character_name"] == "剑士"
-        assert restored.quick_actions == ["调查脚印", "询问守卫"]
+        assert round_presentation.quick_actions(restored) == ["调查脚印", "询问守卫"]
 
     async def test_from_dict_prunes_unreferenced_ghost_players(self):
         data = {
@@ -1048,9 +1048,9 @@ def test_health_events_trim_to_limit():
     for idx in range(105):
         record_health_event(inst, "save", f"E{idx}", "info", f"event {idx}")
 
-    assert len(inst.health_events) == 100
-    assert inst.health_events[0]["code"] == "E5"
-    assert inst.health_events[-1]["code"] == "E104"
+    assert len(health_state.health_events(inst)) == 100
+    assert health_state.health_events(inst)[0]["code"] == "E5"
+    assert health_state.health_events(inst)[-1]["code"] == "E104"
 
 
 def test_reset_character_for_restart_preserves_zero_gold():
@@ -1442,11 +1442,11 @@ async def test_finished_round_keeps_an_independent_start_snapshot_for_rollback()
         "character_name": "调查员",
         "character_sheet": {"luck": 28},
     }
-    inst.round_start_snapshot = {"p1": {"luck": 30}}
+    round_safety.capture_players(inst, {"p1": {"luck": 30}})
 
     await inst.finish_judgment("本轮结束")
 
-    assert inst.round_start_snapshot == {}
+    assert round_safety.round_start_snapshot(inst) == {}
     assert inst.log[-1]["round_start_snapshot"]["p1"]["luck"] == 30
 
 

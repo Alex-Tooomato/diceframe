@@ -20,6 +20,7 @@ from src.webui.api import WebAPI, can_modify_character
 from src.webui.game_lifecycle_context import CreationTransaction
 from src.webui.session import SessionManager
 from src.engine.modules import ruleset_runtime
+from src.engine.modules import round_presentation
 
 
 class FakeLLMClient:
@@ -1453,7 +1454,7 @@ async def test_game_detail_exposes_multiplayer_status(web_api):
     inst = registry.get(api._parse_key(created["game_key"]))
     first_uid = created["players"][0]["user_id"]
     await inst.add_action(first_uid, "我观察门口")
-    inst.last_token_budget_bump = {"kind": "narrative", "from": 2048, "to": 4096}
+    round_presentation.replace_last_token_budget_bump(inst, {"kind": "narrative", "from": 2048, "to": 4096})
 
     detail = api.game_detail(created["game_key"])
     status = api.multiplayer_status(created["game_key"])
