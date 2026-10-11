@@ -28,7 +28,9 @@ from src.migrations.instance import (
     migrate_game_state_payload,
     rebind_imported_game_state_payload,
 )
-from src.engine.modules import adventure_runtime_state, checks, round_safety, ruleset_runtime, session_stats
+from src.engine.modules import (
+    adventure_runtime_state, checks, legacy_combat, round_safety, ruleset_runtime, session_stats,
+)
 
 
 UNKNOWN_SLOTS = [
@@ -73,10 +75,12 @@ def transaction_snapshot(instance, **extra):
         "last_activity": session_stats.last_activity(instance),
         "scene": narrative_notes.scene(instance),
     } | {
-        key: getattr(instance, key) for key in (
-            "players", "combat_state", "combat_active",
-            "initiative_order", "initiative_current", "log",
-        )
+        "combat_state": legacy_combat.combat_state(instance),
+        "combat_active": legacy_combat.combat_active(instance),
+        "initiative_order": legacy_combat.initiative_order(instance),
+        "initiative_current": legacy_combat.initiative_current(instance),
+    } | {
+        key: getattr(instance, key) for key in ("players", "log")
     } | extra)
 
 

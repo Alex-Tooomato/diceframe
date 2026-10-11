@@ -12,6 +12,7 @@ from src.commands.check_planner import _planner_context, normalize_check_specs, 
 from src.engine.checks import resolve_check_request
 from src.engine.game_instance import GameInstance
 from src.engine.modules import economy_state
+from src.engine.modules import legacy_combat
 from src.rules.rule_system import RuleSystem
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -1047,8 +1048,8 @@ def test_planner_npc_context_requires_an_explicit_resolved_npc(target, action, e
         "professor": {"character_name": "考古学系主任"},
     }
     narrative_notes.replace_scene(instance, "老汤姆和考古学系主任所在的旅店")
-    instance.combat_state = "active"
-    instance.combat_enemies = [{"name": "强盗", "hp": 10}]
+    legacy_combat.replace_combat_state(instance, "active")
+    legacy_combat.replace_combat_enemies(instance, [{"name": "强盗", "hp": 10}])
     instance.action_queue[0].update(text=action, target_text=target)
     before = deepcopy(instance.npcs)
     player = json.loads(_planner_context(instance, None))["players"][0]
@@ -1135,7 +1136,7 @@ def test_planner_npc_mentions_respect_latin_boundaries(name, action, expected) -
 def test_planner_npc_inference_rejects_player_and_enemy_ambiguity(action, target, expected) -> None:
     instance = make_instance()
     instance.npcs = {"keeper": {"name": "老汤姆", "relation": "friendly"}}
-    instance.combat_enemies = [{"name": "守卫", "hp": 10}]
+    legacy_combat.replace_combat_enemies(instance, [{"name": "守卫", "hp": 10}])
     instance.action_queue[0].update(text=action, target_text=target)
     player = json.loads(_planner_context(instance, None))["players"][0]
     assert ("npc_context" in player) is expected

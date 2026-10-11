@@ -11,6 +11,7 @@ from aiohttp.test_utils import TestClient, TestServer
 from src.engine.game_instance import GameInstance, GameRegistry, GameState
 from src.engine.module_state import ModuleStateError
 from src.engine.modules import narrative_notes as module
+from src.engine.modules import legacy_combat
 from src.migrations.instance import (
     CURRENT_INSTANCE_SCHEMA_VERSION,
     _migrate_v39_to_v40,
@@ -150,7 +151,7 @@ async def test_reset_clears_the_scene_with_the_other_notes():
 def _ruleset_snapshot(instance, scene):
     return {
         "ruleset_state": {}, "event_ledger": [], "players": {},
-        "combat_state": instance.combat_state, "combat_active": instance.combat_active,
+        "combat_state": legacy_combat.combat_state(instance), "combat_active": legacy_combat.combat_active(instance),
         "initiative_order": [], "initiative_current": 0, "scene": scene,
     }
 

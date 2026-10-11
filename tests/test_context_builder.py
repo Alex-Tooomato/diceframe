@@ -3,7 +3,10 @@
 import logging
 
 import pytest
-from src.engine.modules import checks, economy_state, narrative_notes, private_channels, progression_state, table_settings
+from src.engine.modules import (
+    checks, economy_state, legacy_combat, narrative_notes, private_channels, progression_state,
+    table_settings,
+)
 from src.llm.context_builder import (
     _INVENTORY_STATE_LIMIT,
     _KEY_ITEMS_STATE_LIMIT,
@@ -514,7 +517,7 @@ def _manual_roll_instance(requests):
     narrative_notes.replace_scene(instance, "测试场景")
     narrative_notes.replace_game_time(instance, "")
     table_settings.replace_difficulty(instance, "normal")
-    instance.combat_state = {}
+    legacy_combat.replace_combat_state(instance, {})
     private_channels.replace_private_log(instance, {})
     instance.modules = {}
     checks.replace_manual_roll_requests(instance, list(requests))

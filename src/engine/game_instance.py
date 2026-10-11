@@ -130,11 +130,14 @@ def _same_adventure_binding(current: Any, candidate: Any) -> bool:
 # Compatibility properties deleted after their state moved into module slots.
 # Writing one of these names must fail instead of creating a shadow attribute.
 RETIRED_MODULE_FACADES = frozenset({
+    "combat_active",
+    "combat_enemies",
     "adventure_progress",
     "away_control_policy",
     "bot_bind_token",
     "combat_extension",
     "combat_extension_round_snapshots",
+    "combat_state",
     "death_save_outcomes",
     "confirmed_items",
     "dice_reveal_mode",
@@ -143,6 +146,8 @@ RETIRED_MODULE_FACADES = frozenset({
     "economy_reward_policy",
     "entry_point",
     "event_ledger",
+    "initiative_current",
+    "initiative_order",
     "gm_directives",
     "health_events",
     "health_status",
@@ -273,46 +278,6 @@ class GameInstance:
                 f"GameInstance.{name} was removed; use its src.engine.modules owner"
             )
         super().__setattr__(name, value)
-
-    @property
-    def combat_active(self) -> bool:
-        return legacy_combat.combat_active(self)
-
-    @combat_active.setter
-    def combat_active(self, value: bool) -> None:
-        legacy_combat.replace_combat_active(self, value)
-
-    @property
-    def combat_enemies(self) -> list[dict[str, Any]]:
-        return legacy_combat.combat_enemies(self)
-
-    @combat_enemies.setter
-    def combat_enemies(self, value: list[dict[str, Any]]) -> None:
-        legacy_combat.replace_combat_enemies(self, value)
-
-    @property
-    def combat_state(self) -> str:
-        return legacy_combat.combat_state(self)
-
-    @combat_state.setter
-    def combat_state(self, value: str) -> None:
-        legacy_combat.replace_combat_state(self, value)
-
-    @property
-    def initiative_order(self) -> list[str]:
-        return legacy_combat.initiative_order(self)
-
-    @initiative_order.setter
-    def initiative_order(self, value: list[str]) -> None:
-        legacy_combat.replace_initiative_order(self, value)
-
-    @property
-    def initiative_current(self) -> int:
-        return legacy_combat.initiative_current(self)
-
-    @initiative_current.setter
-    def initiative_current(self, value: int) -> None:
-        legacy_combat.replace_initiative_current(self, value)
 
     def __post_init__(self) -> None:
         if not self.run_id:

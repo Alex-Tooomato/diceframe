@@ -21,7 +21,7 @@ from src.engine.dice import (
 )
 from src.engine.game_instance import GameInstance
 from src.engine.language import localized_text, normalize_language
-from src.engine.modules import ruleset_runtime, table_settings
+from src.engine.modules import legacy_combat, ruleset_runtime, table_settings
 from src.rules.rule_system import RuleSystem
 
 logger = logging.getLogger("trpg")
@@ -173,7 +173,7 @@ def find_action_opponent(instance: GameInstance, actor_uid: str, text: object) -
         add(npc_id, reference)
         add(npc.get("name"), reference)
         add(npc.get("character_name"), reference)
-    for index, enemy in enumerate(instance.combat_enemies):
+    for index, enemy in enumerate(legacy_combat.combat_enemies(instance)):
         reference = f"enemy:{index}"
         add(enemy.get("name"), reference)
         add(enemy.get("character_name"), reference)
@@ -183,8 +183,8 @@ def find_action_opponent(instance: GameInstance, actor_uid: str, text: object) -
         references = {reference for length, reference in matches if length == longest}
         return next(iter(references)) if len(references) == 1 else ""
 
-    if instance.combat_state != "none" and any(word in normalized for word in _GENERIC_ENEMY_WORDS):
-        for index, enemy in enumerate(instance.combat_enemies):
+    if legacy_combat.combat_state(instance) != "none" and any(word in normalized for word in _GENERIC_ENEMY_WORDS):
+        for index, enemy in enumerate(legacy_combat.combat_enemies(instance)):
             if int(enemy.get("hp", 1) or 0) > 0:
                 return f"enemy:{index}"
     return ""
@@ -544,7 +544,7 @@ def _opponent_details(instance: GameInstance, opponent_ref: str) -> tuple[str, d
             index = int(opponent_ref.split(":", 1)[1])
             if index < 0:
                 return "", {}
-            enemy = instance.combat_enemies[index]
+            enemy = legacy_combat.combat_enemies(instance)[index]
         except (ValueError, IndexError):
             return "", {}
         name = str(enemy.get("name") or enemy.get("character_name") or f"敌人{index + 1}")

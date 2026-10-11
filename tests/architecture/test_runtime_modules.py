@@ -129,26 +129,87 @@ def test_only_ruleset_runtime_owners_assign_binding() -> None:
     assert not violations, "\n".join(violations)
 
 
+LEGACY_COMBAT_FIELDS = frozenset({
+    "combat_active", "combat_enemies", "combat_state", "initiative_order", "initiative_current",
+})
+
+
+def _legacy_combat_attribute_writes(path: Path, tree: ast.AST) -> list[int]:
+    """``x.<field> = ...`` stores; local variables named ``combat_state`` are ast.Name, not matched."""
+    if path == MODULES / "legacy_combat.py":
+        return []
+    return [
+        node.lineno for node in ast.walk(tree)
+        if isinstance(node, ast.Attribute)
+        and isinstance(node.ctx, (ast.Store, ast.Del))
+        and node.attr in LEGACY_COMBAT_FIELDS
+    ]
+
+
 def test_only_legacy_combat_owners_assign_fields() -> None:
-    owners = {
-        SRC / "engine" / "game_instance.py",
-        MODULES / "legacy_combat.py",
-        SRC / "engine" / "game_state_codec.py",
-    }
     violations: list[str] = []
     for path in sorted(SRC.rglob("*.py")):
-        if path in owners:
-            continue
         tree = ast.parse(path.read_text(encoding="utf-8-sig"))
-        for node in ast.walk(tree):
-            if not isinstance(node, ast.Attribute) or not isinstance(node.ctx, (ast.Store, ast.Del)):
-                continue
-            if node.attr not in {
-                "combat_active", "combat_enemies", "combat_state", "initiative_order", "initiative_current",
-            }:
-                continue
-            violations.append(f"{path.relative_to(ROOT)}:{node.lineno}: legacy combat write outside owner")
+        for line in _legacy_combat_attribute_writes(path, tree):
+            violations.append(f"{path.relative_to(ROOT)}:{line}: legacy combat write outside owner")
     assert not violations, "\n".join(violations)
+
+
+# The GameInstance facades are gone, so writes go through the module API. Keep
+# each mutator with its existing caller; ``replace_*`` has no src caller.
+LEGACY_COMBAT_WRITE_CALLERS = {
+    "begin": {SRC / "engine" / "game_instance.py"},
+    "end": {SRC / "engine" / "game_instance.py"},
+    "restore_from_transaction": {SRC / "engine" / "game_instance.py"},
+    "restore_from_entity_snapshot": {SRC / "engine" / "round_snapshots.py"},
+    "reset": {SRC / "engine" / "instance_lifecycle.py"},
+    "project_from_ruleset": {SRC / "rulesets" / "dnd2024" / "combat" / "engine.py"},
+    **{f"replace_{field}": set() for field in LEGACY_COMBAT_FIELDS},
+}
+
+
+def _legacy_combat_write_calls(path: Path, tree: ast.AST) -> list[int]:
+    if path == MODULES / "legacy_combat.py":
+        return []
+    return [
+        node.lineno for node in ast.walk(tree)
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Attribute)
+        and isinstance(node.func.value, ast.Name)
+        and node.func.value.id == "legacy_combat"
+        and node.func.attr in LEGACY_COMBAT_WRITE_CALLERS
+        and path not in LEGACY_COMBAT_WRITE_CALLERS[node.func.attr]
+    ]
+
+
+def test_only_legacy_combat_owners_call_write_api() -> None:
+    violations: list[str] = []
+    for path in sorted(SRC.rglob("*.py")):
+        tree = ast.parse(path.read_text(encoding="utf-8-sig"))
+        for line in _legacy_combat_write_calls(path, tree):
+            violations.append(f"{path.relative_to(ROOT)}:{line}: legacy combat write call outside owner")
+    assert not violations, "\n".join(violations)
+
+
+def test_legacy_combat_guards_reject_writes_but_not_locals() -> None:
+    outsider = SRC / "webui" / "routes" / "outsider.py"
+    stores = ast.parse(
+        "instance.combat_state = 'active'\n"
+        "other.initiative_order += []\n"
+        "del self.combat_enemies\n"
+    )
+    assert len(_legacy_combat_attribute_writes(outsider, stores)) == 3
+    assert len(_legacy_combat_attribute_writes(SRC / "engine" / "game_instance.py", stores)) == 3
+    locals_only = ast.parse("combat_state = 'none'\nstate['combat_enemies'] = []\nx = y.combat_active\n")
+    assert not _legacy_combat_attribute_writes(outsider, locals_only)
+    calls = ast.parse(
+        "legacy_combat.replace_combat_state(x, 'active')\n"
+        "legacy_combat.project_from_ruleset(x, {})\n"
+        "legacy_combat.reset(x)\n"
+        "legacy_combat.combat_state(x)\n"
+    )
+    assert len(_legacy_combat_write_calls(outsider, calls)) == 3
+    assert _legacy_combat_write_calls(SRC / "engine" / "instance_lifecycle.py", calls) == [1, 2]
 
 
 def _module_writer_calls(path: Path, tree: ast.AST, module: str, writers: frozenset[str]) -> list[int]:

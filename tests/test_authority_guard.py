@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from src.engine.modules import table_settings
+from src.engine.modules import legacy_combat, table_settings
 from src.commands.check_planner import plan_round_checks
 from src.commands.madness_tracker import MadnessTracker
 from src.commands.player_state_applier import PlayerStateApplier
@@ -47,7 +47,7 @@ def test_whitelist_drops_non_actor_cross_player_changes():
 def test_whitelist_combat_allows_all_alive_players():
     inst = _make_multi_instance()
     inst.action_queue = [{"user_id": "a", "text": "我行动"}]
-    inst.combat_state = "active"
+    legacy_combat.replace_combat_state(inst, "active")
     applier = PlayerStateApplier(MadnessTracker())
 
     applier.apply_players(

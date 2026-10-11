@@ -10,7 +10,7 @@ from src.engine.game_instance import GameState
 from src.engine.health import health_payload
 from src.engine.language import DEFAULT_LANGUAGE, normalize_language
 from src.engine.modules import (
-    adventure_runtime_state, checks, economy_state, media, narrative_notes, private_channels,
+    adventure_runtime_state, checks, economy_state, legacy_combat, media, narrative_notes, private_channels,
     progression_state, room_access, round_presentation, ruleset_runtime, session_stats, table_settings,
 )
 from src.engine.player_control import away_control_policy
@@ -75,7 +75,7 @@ def list_games(dependencies: GameQueryDependencies) -> dict[str, Any]:
             "round_number": progression_state.round_value(instance),
             "player_count": len(instance.players),
             "max_players": max(1, int(room_access.max_players(instance) or 6)),
-            "combat_active": instance.combat_active,
+            "combat_active": legacy_combat.combat_active(instance),
             "scene": narrative_notes.scene(instance),
             "total_llm_calls": session_stats.total_llm_calls(instance),
             "total_tokens": session_stats.total_tokens(instance),

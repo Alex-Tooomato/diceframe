@@ -30,7 +30,7 @@ from src.rulesets.dnd2024.runtime import Dnd2024Runtime
 from src.rulesets.legacy_adapter import LegacyRulesetAdapter
 from src.rulesets.registry import RulesetRuntimeRegistry
 from src.webui.services import ruleset_gameplay
-from src.engine.modules import narrative_notes, ruleset_runtime, table_settings
+from src.engine.modules import legacy_combat, narrative_notes, ruleset_runtime, table_settings
 
 _RULE = RuleSystem({
     "rule_id": "test_dnd2024",
@@ -165,8 +165,8 @@ def _state_fingerprint(instance: GameInstance) -> tuple:
     return (
         copy.deepcopy(ruleset_runtime.state(instance)),
         copy.deepcopy(ruleset_runtime.event_ledger(instance)),
-        instance.combat_active,
-        instance.combat_state,
+        legacy_combat.combat_active(instance),
+        legacy_combat.combat_state(instance),
         instance.round_number,
     )
 

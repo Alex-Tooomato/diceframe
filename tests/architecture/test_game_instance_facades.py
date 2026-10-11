@@ -31,41 +31,13 @@ MODULES_DIR = "src/engine/modules/"
 REFLECTIVE_ACCESSORS = frozenset({"getattr", "setattr", "hasattr"})
 
 # Module-backed properties currently on GameInstance. Do not raise.
-MAX_MODULE_FACADES = 6
+MAX_MODULE_FACADES = 1
 
 # Keys are source file + property name, so edits inside a caller do not make
 # the baseline brittle. Do not add entries or raise counts.
 FACADE_USAGE: dict[tuple[str, str], int] = {
-    ("src/commands/check_planner.py", "combat_enemies"): 3,
-    ("src/commands/combat_resolver.py", "combat_enemies"): 2,
-    ("src/commands/round_effects.py", "combat_state"): 1,
-    ("src/commands/round_processor.py", "combat_enemies"): 1,
-    ("src/commands/round_processor.py", "combat_state"): 3,
-    ("src/engine/checks.py", "combat_enemies"): 3,
-    ("src/engine/checks.py", "combat_state"): 1,
-    ("src/engine/game_context_projector.py", "combat_enemies"): 1,
-    ("src/engine/game_context_projector.py", "combat_state"): 2,
-    ("src/engine/game_context_projector.py", "initiative_current"): 1,
-    ("src/engine/game_context_projector.py", "initiative_order"): 1,
     ("src/engine/plot_tracker.py", "round_number"): 2,
     ("src/engine/progression.py", "round_number"): 3,
-    ("src/engine/round_snapshots.py", "combat_active"): 1,
-    ("src/engine/round_snapshots.py", "combat_enemies"): 2,
-    ("src/engine/round_snapshots.py", "combat_state"): 1,
-    ("src/engine/round_snapshots.py", "initiative_current"): 1,
-    ("src/engine/round_snapshots.py", "initiative_order"): 1,
-    ("src/llm/context_builder.py", "combat_state"): 1,
-    ("src/rulesets/automation.py", "combat_active"): 1,
-    ("src/rulesets/automation.py", "combat_state"): 1,
-    ("src/rulesets/automation.py", "initiative_current"): 1,
-    ("src/rulesets/automation.py", "initiative_order"): 1,
-    ("src/webui/services/game_queries.py", "combat_active"): 1,
-    ("src/webui/services/ruleset_gameplay.py", "combat_active"): 2,
-    ("src/webui/services/ruleset_gameplay.py", "combat_state"): 2,
-    ("src/webui/services/ruleset_gameplay.py", "initiative_current"): 2,
-    ("src/webui/services/ruleset_gameplay.py", "initiative_order"): 2,
-    ("src/webui/services/ruleset_rest.py", "combat_active"): 1,
-    ("src/webui/services/ruleset_rest.py", "combat_state"): 1,
 }
 
 

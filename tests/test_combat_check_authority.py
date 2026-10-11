@@ -20,8 +20,7 @@ from src.engine.combat import calculate_attack_damage, resolve_attack
 from src.engine.game_instance import GameInstance, GameState, _snapshot_players
 from src.rules.rule_system import RuleSystem
 from src.engine.modules import checks as checks_module
-from src.engine.modules import round_presentation
-from src.engine.modules import round_safety
+from src.engine.modules import legacy_combat, round_presentation, round_safety
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -132,7 +131,7 @@ def test_deterministic_planner_marks_explicit_attack_and_binds_named_target() ->
 def test_ai_planner_can_bind_combat_enemy_reference() -> None:
     instance = GameInstance(game_key=("test", "enemy-attack-plan", "bot"), rule_id="dnd5e")
     instance.players = {"a": _player("甲")}
-    instance.combat_enemies = [_npc("Goblin")]
+    legacy_combat.replace_combat_enemies(instance, [_npc("Goblin")])
     instance.action_queue = [{"user_id": "a", "text": "I attack Goblin."}]
     rule = RuleSystem.load(ROOT / "templates" / "rules" / "dnd5e.json")
 
@@ -738,7 +737,7 @@ def test_combat_consumes_only_live_players_attack_checks() -> None:
 def test_negative_enemy_reference_is_rejected_instead_of_selecting_last_enemy() -> None:
     instance = GameInstance(game_key=("test", "negative-enemy", "bot"), rule_id="dnd5e")
     instance.players = {"a": _player("A")}
-    instance.combat_enemies = [_npc("Last Enemy", hp=30)]
+    legacy_combat.replace_combat_enemies(instance, [_npc("Last Enemy", hp=30)])
     instance.action_queue = [{
         "user_id": "a",
         "text": "A attacks an invalid enemy",
@@ -748,7 +747,7 @@ def test_negative_enemy_reference_is_rejected_instead_of_selecting_last_enemy() 
 
     CombatResolver().resolve_combat(instance, "ignored", "hp_based")
 
-    assert instance.combat_enemies[0]["hp"] == 30
+    assert legacy_combat.combat_enemies(instance)[0]["hp"] == 30
     assert round_presentation.pending_combat_results(instance) == []
 
 

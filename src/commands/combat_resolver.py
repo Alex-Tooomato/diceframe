@@ -15,7 +15,7 @@ from src.engine.constants import WEAPON_DAMAGE, canonical_item_key
 from src.engine.dice import roll_initiative
 from src.engine.game_instance import GameInstance
 from src.engine.language import localized_text
-from src.engine.modules import checks, progression_state, round_presentation, table_settings
+from src.engine.modules import checks, legacy_combat, progression_state, round_presentation, table_settings
 
 logger = logging.getLogger("trpg")
 
@@ -90,7 +90,7 @@ class CombatResolver:
                 index = int(target_ref.split(":", 1)[1])
                 if index < 0:
                     return None, "", ""
-                enemy = instance.combat_enemies[index]
+                enemy = legacy_combat.combat_enemies(instance)[index]
             except (ValueError, IndexError):
                 return None, "", ""
             name = str(enemy.get("character_name") or enemy.get("name") or f"敌人{index + 1}")
@@ -365,7 +365,7 @@ class CombatResolver:
                 initiative.total,
             )
 
-        for enemy in instance.combat_enemies:
+        for enemy in legacy_combat.combat_enemies(instance):
             enemy_id = enemy.get("name", enemy.get("character_name", "敌人"))
             dexterity = enemy.get("character_sheet", {}).get("attributes", {}).get("dex", 10)
             initiative = roll_initiative((dexterity - 10) // 2)

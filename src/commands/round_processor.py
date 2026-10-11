@@ -1006,11 +1006,11 @@ class RoundProcessor:
             if action.get("user_id") in instance.players
         )
         authoritative_combat = combat_model == "authoritative_event_batch"
-        if not authoritative_combat and (instance.combat_state != "none" or explicit_attack):
+        if not authoritative_combat and (legacy_combat.combat_state(instance) != "none" or explicit_attack):
             combat_text = self._combat.resolve_combat(instance, actions_text, combat_model, rule)
             if combat_text:
                 actions_text = combat_text + "\n" + actions_text
-                if instance.combat_state == "none" and instance.combat_enemies:
+                if legacy_combat.combat_state(instance) == "none" and legacy_combat.combat_enemies(instance):
                     init_text = self._combat.initiate_combat(instance)
                     actions_text = init_text + "\n" + actions_text
 
@@ -1149,7 +1149,7 @@ class RoundProcessor:
                     for action in instance.action_queue
                     if action.get("user_id") in instance.players
                 }
-                if str(getattr(instance, "combat_state", "none") or "none") != "none":
+                if str(legacy_combat.combat_state(instance) or "none") != "none":
                     allowed_uids |= set(instance.alive_players)
             queued_proposals = self._state_applier.apply_state_update(
                 instance, response.state_update, allowed_player_uids=allowed_uids,

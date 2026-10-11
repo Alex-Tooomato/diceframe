@@ -246,10 +246,10 @@ def test_dnd_projection_and_duplicate_batch_preserve_authority():
     engine, instance = _instance()
     batch = _start(engine, instance)
     authority = deepcopy(ruleset_runtime.state(instance))
-    assert instance.combat_state == "active"
-    assert instance.combat_active is True
-    assert instance.initiative_order == ruleset_runtime.state(instance)["combat"]["initiative"]
-    assert instance.initiative_order is not ruleset_runtime.state(instance)["combat"]["initiative"]
+    assert legacy_combat.combat_state(instance) == "active"
+    assert legacy_combat.combat_active(instance) is True
+    assert legacy_combat.initiative_order(instance) == ruleset_runtime.state(instance)["combat"]["initiative"]
+    assert legacy_combat.initiative_order(instance) is not ruleset_runtime.state(instance)["combat"]["initiative"]
     before = deepcopy(live_state(instance))
     result = engine.apply_batch(instance, batch)
     assert result["duplicate"] is True
