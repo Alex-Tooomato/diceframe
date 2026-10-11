@@ -201,6 +201,48 @@ def _tracks(card: dict[str, Any], declared: DeclaredSource) -> bool:
     )
 
 
+def _lock_reason(
+    dependencies: CardImportDependencies, card: dict[str, Any], declared: DeclaredSource | None,
+) -> str:
+    """Why a push may not update this server card (``""``: it may).
+
+    Without ``declared`` only the reasons that hold whoever pushes are
+    checked: the other-source reasons depend on the pushing install.
+    """
+
+    if is_plugin_card(card):
+        return LOCKED_PLUGIN_CARD
+    origin = card_provenance(card)
+    from_other_source = declared is not None and origin is not None and (
+        origin["source_kind"], origin["source_id"], origin["external_id"]
+    ) != (declared.source_kind, declared.source_id, declared.external_id)
+    if from_other_source and is_tracked_card(card):
+        return LOCKED_TRACKED_BY_OTHER_SOURCE
+    if from_other_source:
+        # A card another source pushed stays that source's lineage even after
+        # it was detached; a hint must not quietly re-track it here.
+        return LOCKED_DETACHED_FROM_OTHER_SOURCE
+    if _is_rules_aware(dependencies, card):
+        return LOCKED_RULESET_CARD
+    return ""
+
+
+def card_lock_reason(dependencies: CardImportDependencies, card: dict[str, Any]) -> str:
+    """The reason a push of this card's export would get (``""``: none).
+
+    Applies push's own predicates to what export sends, so list, export and
+    preview cannot disagree: a rules-aware export is ``unsupported`` before
+    any match, then the matched card's own locks apply. The other-source
+    reasons depend on the pushing install and are left to the client, which
+    sees the provenance.
+    """
+
+    pulled = _portable_card(dependencies, copy.deepcopy(card), [])
+    if _is_rules_aware(dependencies, pulled):
+        return RULESET_CARD_UNSUPPORTED
+    return _lock_reason(dependencies, card, None)
+
+
 def _parse_request(body: dict[str, Any]) -> tuple[DeclaredSource, dict[str, Any], str]:
     try:
         declared = declared_import_source(body.get("source"), body.get("external_id"))
@@ -340,21 +382,7 @@ def plan_card_import(
     server_modified = (
         content_digest(_without_provenance(matched)) != recorded if recorded else None
     )
-    lock_reason = ""
-    origin = card_provenance(matched)
-    from_other_source = origin is not None and (
-        origin["source_kind"], origin["source_id"], origin["external_id"]
-    ) != (declared.source_kind, declared.source_id, declared.external_id)
-    if is_plugin_card(matched):
-        lock_reason = LOCKED_PLUGIN_CARD
-    elif from_other_source and is_tracked_card(matched):
-        lock_reason = LOCKED_TRACKED_BY_OTHER_SOURCE
-    elif from_other_source:
-        # A card another source pushed stays that source's lineage even after
-        # it was detached; a hint must not quietly re-track it here.
-        lock_reason = LOCKED_DETACHED_FROM_OTHER_SOURCE
-    elif _is_rules_aware(dependencies, matched):
-        lock_reason = LOCKED_RULESET_CARD
+    lock_reason = _lock_reason(dependencies, matched, declared)
     unchanged = (
         server_modified is False
         and (provenance or {}).get("source_digest") == draft.digest
@@ -604,18 +632,35 @@ class CardSyncExporter:
         self.dependencies = dependencies
         self._status_snapshot: dict[str, dict[str, Any]] | None = None
 
-    def status(self, canonical_id: str) -> dict[str, Any] | None:
+    def _snapshot(self) -> dict[str, dict[str, Any]]:
         # An exporter lives for one request: read (and parse) the library once
-        # and answer every status row of that request from the snapshot.
+        # and answer every status or list row of that request from the snapshot.
         if self._status_snapshot is None:
             with self.dependencies.lock():
                 self._status_snapshot = {
                     str(row.get("id") or ""): row for row in self.dependencies.read_cards()
                 }
-        card = self._status_snapshot.get(canonical_id)
+        return self._status_snapshot
+
+    def status(self, canonical_id: str) -> dict[str, Any] | None:
+        card = self._snapshot().get(canonical_id)
         if card is None:
             return None
         return {"state_token": _state_token(card), "provenance": card_provenance(card)}
+
+    def ids(self) -> list[str]:
+        return [card_id for card_id in self._snapshot() if card_id]
+
+    def summary(self, canonical_id: str) -> dict[str, Any] | None:
+        card = self._snapshot().get(canonical_id)
+        if card is None:
+            return None
+        return {
+            "name": str(card.get("character_name") or ""),
+            "state_token": _state_token(card),
+            "provenance": card_provenance(card),
+            "locked_reason": card_lock_reason(self.dependencies, card),
+        }
 
     def export(self, canonical_id: str) -> dict[str, Any] | None:
         with self.dependencies.lock():
@@ -640,6 +685,7 @@ class CardSyncExporter:
             "document": write_card_v3(body, character_book=book),
             "state_token": _state_token(card),
             "provenance": provenance,
+            "locked_reason": card_lock_reason(self.dependencies, card),
             "warnings": warnings,
         }
 
@@ -649,6 +695,7 @@ __all__ = [
     "CardSyncExporter",
     "CardSyncImporter",
     "CardImportPlan",
+    "card_lock_reason",
     "commit_card_import",
     "plan_card_import",
     "preview_card_import",

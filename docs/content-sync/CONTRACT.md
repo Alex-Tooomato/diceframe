@@ -5,7 +5,7 @@ This is the server contract that offline clients use to push portable content in
 This document is the reference. Keep it current with the code; the server tests consume the fixtures under `fixtures/` and the schemas under `schemas/`.
 
 - Code: `src/webui/routes/content.py`, `src/webui/services/content_sync.py`, `src/content_modules/sync.py`, `src/content_modules/plan.py`, `src/lorebook/import_plan.py`, `src/lorebook/sync.py`, `src/webui/services/character_card_import.py`.
-- Tests: `tests/test_content_sync_api.py`, `tests/test_content_sync_fixtures.py`.
+- Tests: `tests/test_content_sync_api.py`, `tests/test_content_sync_list.py`, `tests/test_content_sync_fixtures.py`.
 
 ## Identity
 
@@ -61,9 +61,9 @@ World documents are not supported yet.
 
 **Master password.** A master-password owner may declare any device. A phone may log in with the password instead of pairing.
 
-**Confirm header.** Every `/api/content/*` request needs **`X-TRPG-Confirm: true`**; without it the server returns 403. Preview counts as a write because it can bind a device's install id. The header is the CSRF barrier.
+**Confirm header.** Every `/api/content/*` request needs **`X-TRPG-Confirm: true`**; without it the server returns 403. Preview counts as a write because it can bind a device's install id. The header is the CSRF barrier. Status, list and export are read-only and bind nothing, but need the header too.
 
-**Rate limit.** Requests count against the write rate limit; previews and status checks count too. Over the limit, the server returns 429 with `retry_after`.
+**Rate limit.** Requests count against the write rate limit; previews, status checks and list pages count too. Over the limit, the server returns 429 with `retry_after`.
 
 ## Limits
 
@@ -73,6 +73,8 @@ Each limit returns **413** with an error code:
 |---|---|---|
 | `BODY_TOO_LARGE` | body larger than 8 MB | while the body streams in, before parsing |
 | `TOO_MANY_ITEMS` | more than 50 items (500 for `/status`) | before planning |
+
+`/list` takes no items; its page size is bounded by `limit` (at most 500, see below).
 | `TOO_MANY_ENTRIES` | more than 2000 entries in one book, standalone or `character_book` | on the adapter's parsed draft, before planning |
 | `ENTRY_TOO_LARGE` | an entry larger than 32 KB | on the adapter's parsed draft, before planning |
 
@@ -198,7 +200,61 @@ Response:
 - Compare `state_token` with your mapped token to learn whether the server copy changed since your last push or pull, without exporting it.
 - `exists: false` means the server copy was deleted.
 - `provenance` is `null` for objects that never came from a source.
-- To discover server objects you have not mapped yet, use the owner lists `GET /api/character-cards` and `GET /api/lorebooks` (unchanged legacy shapes), then ask `/status` or `/export` for the ids you care about.
+- To discover server objects you have not mapped yet, use `POST /api/content/list`, then `/export` the ids you want. Do not use the owner UI lists `GET /api/character-cards` and `GET /api/lorebooks` for this: `GET /api/lorebooks` without parameters leaves out Books bound to a world, game or character, and neither shows `locked_reason`.
+
+## `POST /api/content/list` (discovery)
+
+Lists every object of one kind in the owner's library: all cards, and all Books whatever they are bound to (world, game, character, global or unbound). Read-only: it declares no source and never binds a paired device's install id.
+
+Request:
+
+```json
+{"kind": "lorebook", "cursor": null, "limit": 500}
+```
+
+- `kind` (required): `character_template` or `lorebook`, the kind names of `/status` and `/export`. Any other kind, or `lorebook` on a server with lorebooks disabled, gets 400 `KIND_NOT_SUPPORTED`; a missing or non-string kind gets 400 `REQUEST_INVALID`.
+- `cursor` (optional): `null`/absent for the first page, else the `next_cursor` of the previous page **for the same kind**. Treat it as opaque. Anything else gets 400 `CURSOR_INVALID`.
+- `limit` (optional): an integer from 1 to 500, default 500. Anything else (0, 501, a string, a boolean, a float) gets 400 `REQUEST_INVALID`.
+- Any other field gets 400 `REQUEST_INVALID`.
+
+Response:
+
+```json
+{"ok": true, "server_instance_id": "srv-...", "next_cursor": "eyJr...", "items": [
+  {"kind": "character_template", "canonical_id": "card_...", "name": "Mira",
+   "state_token": "sha256:...", "locked_reason": null,
+   "provenance": {"source_kind": "device", "source_id": "<install id>", "external_id": "card-7f3a",
+                  "link": "tracked", "...": "..."}},
+  {"kind": "lorebook", "canonical_id": "import:device:...", "name": "Atlas",
+   "state_token": "12", "provenance": null, "locked_reason": "PLUGIN_BOOK", "entries": 40}
+]}
+```
+
+- `name` is the card's `character_name` or the Book's name. `entries` (lorebooks only) is the Book's entry count.
+- `state_token` and `provenance` are exactly what `/status` returns for the same id, so a token from `list` compares equal to one from `/status`, `/export` or a commit row.
+- `locked_reason`: see [Locked items](#locked-items).
+- `next_cursor` is `null` on the last page. Otherwise request the next page with it.
+
+**Order and paging.** Items are ordered by `canonical_id` (plain code-point order), and the cursor records the last id listed. Paging is keyset, not offset:
+
+- An item never appears twice in one pass, even when items are added or removed between pages.
+- An item removed before its page is reached is not listed.
+- An item added with an id after the cursor is listed in a later page; one added with an id before the cursor is missed until the next full pass (start again with `cursor: null`).
+- A page may hold fewer than `limit` items, or none, while `next_cursor` is not `null`, if items were removed meanwhile. Stop only on `next_cursor: null`.
+
+## Locked items
+
+`/list` items and `/export` `origin` carry **`locked_reason`**: `null`, or the reason a push of this item's exported document gets from preview. A locked item is offered only `duplicate` / `skip`, or is `unsupported`. Use it to keep such items read-only on the device, or to warn before a push.
+
+| `locked_reason` | Kind | Meaning |
+|---|---|---|
+| `PLUGIN_CARD` | card | the card ships with an installed plugin; push may only `duplicate` / `skip` |
+| `RULESET_CARD_UNSUPPORTED` | card | a rules-aware card (`rule_binding` / `ruleset_character`); its export is `unsupported` for push in v1 |
+| `RULESET_CARD` | card | the server card is rules-aware but its export is not; push may only `duplicate` / `skip` |
+| `PLUGIN_BOOK` | lorebook | the Book holds plugin entries; push may only `duplicate` / `skip` |
+
+- The checks run in push's order, using the same predicates as preview: a rules-aware export is `unsupported` before any match is considered, so a rules-aware plugin card reports `RULESET_CARD_UNSUPPORTED`.
+- `locked_reason` covers only the reasons that hold whoever pushes. `TRACKED_BY_OTHER_SOURCE` and `DETACHED_FROM_OTHER_SOURCE` depend on the pushing install. Derive them from `provenance`: an item whose `provenance` names another source (any `source_kind` / `source_id` but your install) gets one of them when you push it with `canonical_hint`.
 
 ## `POST /api/content/export` (pull)
 
@@ -212,13 +268,15 @@ Response:
   "warnings": [],
   "origin": {"server_instance_id": "srv-...", "canonical_id": "card_...", "state_token": "sha256:...",
              "provenance": {"source_kind": "device", "source_id": "<install id>", "external_id": "card-7f3a",
-                            "link": "tracked", "...": "..."}}
+                            "link": "tracked", "...": "..."},
+             "locked_reason": null}
 }]}
 ```
 
 - Cards include their linked book as `character_book`.
 - Exported entries carry the ids they were pushed with. Importing an export unchanged gives `unchanged`.
 - If `origin.provenance` names this install, map `origin.canonical_id` back to `provenance.external_id`. Otherwise keep the pulled item as a new local item and pass `canonical_hint` when pushing it.
+- `origin.locked_reason` is the same value `/list` reports; see [Locked items](#locked-items).
 - An unknown id gets 404 `NOT_FOUND`.
 
 ## Conflicts
@@ -238,4 +296,6 @@ Codes not covered above that a client can receive from `/api/content/*`:
 | `CARD_V3_INVALID` | a card item's `document` is not a `chara_card_v3` envelope: wrong `spec`, no `data` object, or no `data.extensions.diceframe` body |
 | `CARD_IDENTITY_CONFLICT` | defensive: another card already tracks this identity when the item is written. Returned per item with 409; re-run preview |
 | `LOREBOOK_IDENTITY_CONFLICT` | the same, for a lorebook; per item with 409 |
+| `KIND_NOT_SUPPORTED` | 400: the `kind` has no importer, exporter or list here (for example `world`, or `lorebook` with lorebooks disabled) |
+| `CURSOR_INVALID` | 400 from `/list`: `cursor` is not a `next_cursor` the server issued for this `kind` |
 | `BOOK_NOT_IMPORTED` | **warning**, not an error: the card's `character_book` was skipped because lorebooks are disabled on this server |

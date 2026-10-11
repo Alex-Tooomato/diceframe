@@ -102,11 +102,19 @@ class KindImporter(Protocol):
 
 class KindExporter(Protocol):
     def export(self, canonical_id: str) -> dict[str, Any] | None:
-        """``{format, document, state_token, provenance, warnings}`` or ``None``."""
+        """``{format, document, state_token, provenance, locked_reason, warnings}`` or ``None``."""
         ...
 
     def status(self, canonical_id: str) -> dict[str, Any] | None:
         """``{state_token, provenance}`` without building the document, or ``None``."""
+        ...
+
+    def ids(self) -> list[str]:
+        """Every canonical id of this kind in the owner's library."""
+        ...
+
+    def summary(self, canonical_id: str) -> dict[str, Any] | None:
+        """``{name, state_token, provenance, locked_reason, ...}`` or ``None``."""
         ...
 
 
@@ -305,6 +313,7 @@ def export(
                 "canonical_id": canonical_id,
                 "state_token": exported["state_token"],
                 "provenance": exported.get("provenance"),
+                "locked_reason": exported.get("locked_reason") or None,
             },
         })
     return {"ok": True, "items": rows}
@@ -333,6 +342,37 @@ def status(exporters: Mapping[str, KindExporter], requested: list[tuple[str, str
     return {"ok": True, "items": rows}
 
 
+def list_page(
+    exporters: Mapping[str, KindExporter], kind: str, *, after: str, limit: int,
+) -> tuple[list[dict[str, Any]], str]:
+    """One page of every object of ``kind``, ordered by canonical id.
+
+    Returns the rows after ``after`` and the last listed id when more follow
+    (``""`` on the last page). Keyset paging on the id: an object added or
+    removed between pages never shifts another one, so nothing is listed
+    twice; one added before the cursor is only seen on the next full pass.
+    """
+
+    exporter = exporters.get(_schema(kind))
+    if exporter is None:
+        raise SyncItemError(KIND_NOT_SUPPORTED, f"content kind cannot be listed here: {kind!r}")
+    pending = sorted(canonical_id for canonical_id in set(exporter.ids()) if canonical_id > after)
+    rows: list[dict[str, Any]] = []
+    for canonical_id in pending:
+        if len(rows) == limit:
+            return rows, rows[-1]["canonical_id"]
+        found = exporter.summary(canonical_id)
+        if found is None:
+            continue  # removed while listing
+        rows.append({
+            "kind": kind,
+            "canonical_id": canonical_id,
+            **found,
+            "locked_reason": found.get("locked_reason") or None,
+        })
+    return rows, ""
+
+
 __all__ = [
     "CLIENT_REF_INVALID",
     "DUPLICATE_CLIENT_REF",
@@ -348,6 +388,7 @@ __all__ = [
     "check_book_limits",
     "commit",
     "export",
+    "list_page",
     "preview",
     "status",
 ]

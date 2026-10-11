@@ -8,6 +8,9 @@ and size limits are transport concerns and live in the route.
 
 from __future__ import annotations
 
+import base64
+import binascii
+import json
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from typing import Any
@@ -16,6 +19,9 @@ from src.content_modules import sync
 from src.content_modules.plan import declared_source_ref
 
 IMPORT_SOURCE_INVALID = "IMPORT_SOURCE_INVALID"
+CURSOR_INVALID = "CURSOR_INVALID"
+
+_LIST_FIELDS = frozenset({"kind", "cursor", "limit"})
 
 
 @dataclass(frozen=True)
@@ -115,11 +121,65 @@ def content_status(dependencies: ContentSyncDependencies, body: dict[str, Any]) 
         return _failure(exc)
 
 
+def _encode_cursor(kind: str, after: str) -> str:
+    raw = json.dumps({"kind": kind, "after": after}, separators=(",", ":"), ensure_ascii=False)
+    return base64.urlsafe_b64encode(raw.encode("utf-8")).decode("ascii").rstrip("=")
+
+
+def _decode_cursor(cursor: Any, kind: str) -> str:
+    """The last listed id; the cursor is opaque to clients and bound to its kind."""
+
+    if cursor is None:
+        return ""
+    if not isinstance(cursor, str) or not cursor or len(cursor) > 1024:
+        raise sync.SyncItemError(CURSOR_INVALID, "cursor must be a next_cursor from a previous page")
+    try:
+        decoded = json.loads(base64.urlsafe_b64decode(cursor + "=" * (-len(cursor) % 4)).decode("utf-8"))
+    except (binascii.Error, UnicodeDecodeError, ValueError):
+        decoded = None
+    if (
+        not isinstance(decoded, dict) or decoded.get("kind") != kind
+        or not isinstance(decoded.get("after"), str) or not decoded["after"]
+    ):
+        raise sync.SyncItemError(CURSOR_INVALID, "cursor must be a next_cursor from a previous page of this kind")
+    return decoded["after"]
+
+
+def parse_list_request(body: dict[str, Any], *, max_limit: int) -> tuple[str, str, int]:
+    """``(kind, after, limit)`` from a list request; fails closed on anything else."""
+
+    unknown = sorted(set(body) - _LIST_FIELDS)
+    if unknown:
+        raise sync.SyncItemError(sync.REQUEST_INVALID, f"unknown list request field(s): {unknown}")
+    kind = body.get("kind")
+    if not isinstance(kind, str) or not kind:
+        raise sync.SyncItemError(sync.REQUEST_INVALID, "kind must be a content kind")
+    limit = body.get("limit", max_limit)
+    if limit is None:
+        limit = max_limit
+    if isinstance(limit, bool) or not isinstance(limit, int) or not 1 <= limit <= max_limit:
+        raise sync.SyncItemError(sync.REQUEST_INVALID, f"limit must be an integer from 1 to {max_limit}")
+    return kind, _decode_cursor(body.get("cursor"), kind), limit
+
+
+def list_content(dependencies: ContentSyncDependencies, body: dict[str, Any], *, max_limit: int) -> dict[str, Any]:
+    """One page of the owner's library of one kind. Read-only."""
+
+    try:
+        kind, after, limit = parse_list_request(body, max_limit=max_limit)
+        rows, last = sync.list_page(dependencies.exporters(), kind, after=after, limit=limit)
+    except sync.SyncItemError as exc:
+        return _failure(exc)
+    return {"ok": True, "items": rows, "next_cursor": _encode_cursor(kind, last) if last else None}
+
+
 __all__ = [
     "ContentSyncDependencies",
     "commit_import",
     "content_status",
     "export_content",
+    "list_content",
     "parse_import_request",
+    "parse_list_request",
     "preview_import",
 ]

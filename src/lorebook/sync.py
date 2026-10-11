@@ -10,6 +10,7 @@ from src.content_modules.sync import KindPlan, SyncItem, SyncItemError, SyncSour
 from src.engine.world.contracts import canonical_id
 from src.lorebook.import_plan import (
     PreparedLorebook,
+    book_lock_reason,
     execute_lorebook_plan,
     plan_lorebook_import,
     prepare_lorebook_import,
@@ -111,6 +112,25 @@ class LorebookSyncExporter:
             "document": portable_lorebook_document(self.store, canonical_id),
             "state_token": lorebook_state_token(self.store, canonical_id),
             "provenance": book_provenance(book),
+            "locked_reason": book_lock_reason(self.store.list_book_entries(canonical_id)),
+        }
+
+    def ids(self) -> list[str]:
+        # Every Book, whatever it is bound to (world, game, character, global)
+        # or unbound: the owner's library, not one scope's view of it.
+        return [str(book["id"]) for book in self.store.list_lorebooks()]
+
+    def summary(self, canonical_id: str) -> dict[str, Any] | None:
+        book = self.store.get_lorebook(canonical_id)
+        if not book:
+            return None
+        entries = self.store.list_book_entries(canonical_id)
+        return {
+            "name": str(book.get("name") or ""),
+            "state_token": lorebook_state_token(self.store, canonical_id),
+            "provenance": book_provenance(book),
+            "locked_reason": book_lock_reason(entries),
+            "entries": len(entries),
         }
 
 

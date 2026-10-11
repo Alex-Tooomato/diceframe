@@ -1825,6 +1825,9 @@ class WebAPI:
     def content_status(self, body: dict[str, Any]) -> dict[str, Any]:
         return content_sync.content_status(self._content_sync_dependencies(), body)
 
+    def list_content(self, body: dict[str, Any], *, max_limit: int) -> dict[str, Any]:
+        return content_sync.list_content(self._content_sync_dependencies(), body, max_limit=max_limit)
+
     def export_content(self, body: dict[str, Any], *, server_instance_id: str) -> dict[str, Any]:
         return content_sync.export_content(
             self._content_sync_dependencies(), body, server_instance_id=server_instance_id,
