@@ -4,7 +4,7 @@
 
 - 玩家可回滚状态快照（``snapshot_players`` / ``restore_players``）；
 - 通用战斗扩展的按回合快照（capture / current / restore / discard）；
-- 判定入口的旧版战斗实体快照（npcs / combat_enemies / 战斗状态 / world_state）；
+- 判定入口的旧版战斗实体快照（npcs / 战斗视图记录 / world_state）；
 - 快照恢复后的过期战斗结算缓存清理（``drop_stale_combat_caches``）。
 
 边界：
@@ -359,7 +359,7 @@ def capture_round_entity_snapshot(instance: GameInstance) -> None:
 
     覆盖 `CombatResolver` 在判定阶段会直接改写的字段；combat_state /
     combat_active / initiative_* 只是派生战斗视图的只读记录，还原时不写回
-    （权威在 ruleset_state）；
+    （权威在 ruleset_state）。旧快照里的 ``combat_enemies`` 键已退役，还原时忽略；
     与 ``round_start_snapshot``（玩家）和 ``combat_extension_round_snapshots``
     （D&D2024 权威战斗扩展）互补，三者合起来才是"本轮改过的东西"。
     """
@@ -367,11 +367,9 @@ def capture_round_entity_snapshot(instance: GameInstance) -> None:
 
     round_safety.require_writable(instance)
     adventure_runtime_state.require_writable(instance)
-    legacy_combat.require_writable(instance)
     ruleset_runtime.require_writable(instance)
     round_safety.replace_entity_snapshot(instance, {
         "npcs": copy.deepcopy(instance.npcs),
-        "combat_enemies": copy.deepcopy(legacy_combat.combat_enemies(instance)),
         "combat_state": str(legacy_combat.combat_state(instance) or "none"),
         "combat_active": bool(legacy_combat.combat_active(instance)),
         "initiative_order": copy.deepcopy(list(legacy_combat.initiative_order(instance) or [])),
@@ -386,17 +384,15 @@ def capture_round_entity_snapshot(instance: GameInstance) -> None:
 
 def restore_round_entity_snapshot(instance: GameInstance) -> bool:
     """还原判定入口的旧版实体快照；没有快照时返回 False（不动状态）。"""
-    from src.engine.modules import adventure_runtime_state, legacy_combat, round_safety, ruleset_runtime
+    from src.engine.modules import adventure_runtime_state, round_safety, ruleset_runtime
 
     snapshot = round_safety.round_entity_snapshot(instance)
     if not isinstance(snapshot, dict) or not snapshot:
         return False
 
     adventure_runtime_state.require_writable(instance)
-    legacy_combat.require_writable(instance)
     ruleset_runtime.require_writable(instance)
     instance.npcs = copy.deepcopy(snapshot.get("npcs") or {})
-    legacy_combat.restore_from_entity_snapshot(instance, snapshot)
     # 世界真相按整轮语义回滚（ADR 0003）：本轮写入的 world ops 随本轮撤销。
     if "world_state" in snapshot:
         instance.world_state = ensure_world_state(snapshot.get("world_state"))
@@ -418,7 +414,7 @@ def drop_stale_combat_caches(instance: GameInstance, *, all_targets: bool = Fals
     状态；保留它会命中 ``CombatResolver`` 的缓存重放分支——既不重掷命中骰
     也不重新扣血——于是结算记录（伤害 5）与实际 HP（恢复后的满血）互相矛盾。
 
-    ``all_targets=True``（实体快照已完整还原，含 npcs/combat_enemies）时一律
+    ``all_targets=True``（实体快照已完整还原，含 npcs）时一律
     丢弃。旧存档没有实体快照（``all_targets=False``）时退化为按目标核对：
     只有该目标"本轮结算后的最终血量"与当前血量不一致才丢弃，血量没有被回滚
     的目标或目标已无法解析时保留缓存，避免重试重复扣血。
@@ -446,7 +442,8 @@ def entity_hp(instance: GameInstance, target_ref: str) -> int | None:
     """按战斗目标引用取当前血量；未知目标返回 None。
 
     旧版 ``CombatResolver`` 用裸 uid 表示玩家目标，战斗扩展用
-    ``player:<uid>`` / ``npc:<id>`` / ``enemy:<index>``，两种都要认。
+    ``player:<uid>`` / ``npc:<id>``，两种都要认。退役的 ``enemy:<index>``
+    与其它未知引用一样返回 None。
     """
     raw: Any = None
     if target_ref in instance.players:
@@ -459,15 +456,6 @@ def entity_hp(instance: GameInstance, target_ref: str) -> int | None:
         npc = instance.npcs.get(target_ref.removeprefix("npc:"))
         if isinstance(npc, Mapping):
             raw = npc.get("hp")
-    elif target_ref.startswith("enemy:"):
-        from src.engine.modules import legacy_combat
-
-        try:
-            enemy = legacy_combat.combat_enemies(instance)[int(target_ref.removeprefix("enemy:"))]
-        except (ValueError, IndexError):
-            return None
-        if isinstance(enemy, Mapping):
-            raw = enemy.get("hp")
     if raw is None:
         return None
     try:

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from copy import deepcopy
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -20,7 +21,8 @@ from src.engine.combat import calculate_attack_damage, resolve_attack
 from src.engine.game_instance import GameInstance, GameState, _snapshot_players
 from src.rules.rule_system import RuleSystem
 from src.engine.modules import checks as checks_module
-from src.engine.modules import legacy_combat, round_presentation, round_safety
+from src.engine import round_snapshots
+from src.engine.modules import round_presentation, round_safety
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -128,10 +130,10 @@ def test_deterministic_planner_marks_explicit_attack_and_binds_named_target() ->
     assert request["opponent"] == "npc:cultist"
 
 
-def test_ai_planner_can_bind_combat_enemy_reference() -> None:
+def test_ai_planner_binds_named_npc_target_reference() -> None:
     instance = GameInstance(game_key=("test", "enemy-attack-plan", "bot"), rule_id="dnd5e")
     instance.players = {"a": _player("甲")}
-    legacy_combat.replace_combat_enemies(instance, [_npc("Goblin")])
+    instance.npcs = {"goblin": _npc("Goblin")}
     instance.action_queue = [{"user_id": "a", "text": "I attack Goblin."}]
     rule = RuleSystem.load(ROOT / "templates" / "rules" / "dnd5e.json")
 
@@ -144,7 +146,17 @@ def test_ai_planner_can_bind_combat_enemy_reference() -> None:
     }])
 
     assert errors == []
-    assert planned[0][1]["opponent"] == "enemy:0"
+    assert planned[0][1]["opponent"] == "npc:goblin"
+
+
+@pytest.mark.parametrize("text", ["I attack the enemy.", "我攻击敌人。"])
+def test_generic_enemy_words_no_longer_resolve_a_target(text) -> None:
+    from src.engine.checks import find_action_opponent
+
+    instance = GameInstance(game_key=("test", "generic-enemy", "bot"), rule_id="dnd5e")
+    instance.players = {"a": _player("甲")}
+    instance.npcs = {"goblin": _npc("Goblin")}
+    assert find_action_opponent(instance, "a", text) == ""
 
 
 def test_attack_pipeline_rolls_exactly_once_and_combat_never_rerolls(monkeypatch) -> None:
@@ -734,21 +746,53 @@ def test_combat_consumes_only_live_players_attack_checks() -> None:
     assert [item["attacker_uid"] for item in round_presentation.pending_combat_results(instance)] == ["a"]
 
 
-def test_negative_enemy_reference_is_rejected_instead_of_selecting_last_enemy() -> None:
-    instance = GameInstance(game_key=("test", "negative-enemy", "bot"), rule_id="dnd5e")
+@pytest.mark.parametrize("target_ref", ["enemy:0", "enemy:-1", "enemy:x", "npc:missing", "ghost"])
+def test_retired_enemy_reference_is_ignored_like_an_unknown_target(target_ref) -> None:
+    instance = GameInstance(game_key=("test", "retired-enemy", "bot"), rule_id="dnd5e")
     instance.players = {"a": _player("A")}
-    legacy_combat.replace_combat_enemies(instance, [_npc("Last Enemy", hp=30)])
+    # A same-named NPC must not be picked up through the retired index form.
+    instance.npcs = {"0": _npc("Zero", hp=30)}
     instance.action_queue = [{
         "user_id": "a",
-        "text": "A attacks an invalid enemy",
-        "check_request": _request("negative", "a", "enemy:-1"),
+        "text": "A attacks",
+        "check_request": _request("retired", "a", target_ref),
     }]
-    checks_module.replace_last_checks(instance, [_result("negative", "a", "enemy:-1")])
+    checks_module.replace_last_checks(instance, [_result("retired", "a", target_ref)])
+    players_before = deepcopy(instance.players)
+
+    text = CombatResolver().resolve_combat(instance, "ignored", "hp_based")
+
+    assert instance.npcs["0"]["hp"] == 30
+    assert instance.players == players_before
+    assert round_presentation.pending_combat_results(instance) == []
+    assert "combat_outcome" not in instance.action_queue[0]
+    assert not text
+    assert round_snapshots.entity_hp(instance, target_ref) is None
+
+
+@pytest.mark.parametrize("target_ref,kind", [("npc:orc", "npc"), ("b", "player")])
+def test_generic_hp_based_attack_resolves_against_npc_and_player_uid(target_ref, kind) -> None:
+    instance = GameInstance(game_key=("test", "generic-targets", "bot"), rule_id="dnd5e")
+    instance.players = {"a": _player("A", weapon_damage=8), "b": _player("B", hp=24)}
+    instance.npcs = {"orc": _npc("Orc", hp=30)}
+    instance.action_queue = [{
+        "user_id": "a",
+        "text": "A attacks with 长剑",
+        "check_request": _request("hit", "a", target_ref),
+    }]
+    checks_module.replace_last_checks(instance, [_result("hit", "a", target_ref)])
 
     CombatResolver().resolve_combat(instance, "ignored", "hp_based")
 
-    assert legacy_combat.combat_enemies(instance)[0]["hp"] == 30
-    assert round_presentation.pending_combat_results(instance) == []
+    hp_after = instance.npcs["orc"]["hp"] if kind == "npc" else instance.get_character_sheet("b")["hp"]
+    hp_before = 30 if kind == "npc" else 24
+    assert hp_after < hp_before
+    records = round_presentation.pending_combat_results(instance)
+    assert len(records) == 1
+    assert records[0]["attacker_uid"] == "a"
+    assert records[0]["check_id"] == "hit"
+    assert records[0]["damage"] == hp_before - hp_after
+    assert round_snapshots.entity_hp(instance, target_ref) == hp_after
 
 
 def test_damage_calculation_is_pure_and_dice_system_aware() -> None:

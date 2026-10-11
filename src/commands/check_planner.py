@@ -28,7 +28,7 @@ from src.engine.economy import MAX_ECONOMY_AMOUNT
 from src.engine.game_instance import GameInstance
 from src.engine.language import localized_text
 from src.engine.modules import (
-    economy_state, legacy_combat, narrative_notes, progression_state, ruleset_runtime, table_settings,
+    economy_state, narrative_notes, progression_state, ruleset_runtime, table_settings,
 )
 from src.engine.world_events import MAX_ADVANCE_MINUTES
 from src.engine.world_legality import (
@@ -352,15 +352,11 @@ def _npc_context(
                 if any(query in name or name in query for name in names)
             }
     else:
-        # 同时提到其他玩家或敌人，也无法仅凭名字判断谁是受话者。
+        # 同时提到其他玩家，也无法仅凭名字判断谁是受话者。
         if any(
             _action_mentions_name(action, name)
             for player_id, player in instance.players.items() if player_id != uid
             for name in (player_id, player.get("character_name"))
-        ) or any(
-            _action_mentions_name(action, name)
-            for enemy in legacy_combat.combat_enemies(instance)
-            for name in (enemy.get("name"), enemy.get("character_name"))
         ):
             return None
         matches = {
@@ -520,13 +516,6 @@ def _match_opponent(instance: GameInstance, value: object) -> str:
         }
         if query in names:
             return f"npc:{npc_id}"
-    for index, enemy in enumerate(legacy_combat.combat_enemies(instance)):
-        names = {
-            str(enemy.get("name") or "").strip().casefold(),
-            str(enemy.get("character_name") or "").strip().casefold(),
-        }
-        if query in names:
-            return f"enemy:{index}"
     # 模型常把“考古学系主任”简称为“系主任”。仅在唯一匹配时接受双向包含，
     # 避免同场景有多个主任/守卫时猜错目标。
     if len(query) >= 2:
@@ -841,12 +830,6 @@ def _safety_net_subjects(
         if not isinstance(npc, dict):
             continue
         for value in (npc_id, npc.get("name"), npc.get("character_name")):
-            if str(value or "").strip():
-                foreign.add(str(value).strip())
-    for enemy in legacy_combat.combat_enemies(instance) or []:
-        if not isinstance(enemy, dict):
-            continue
-        for value in (enemy.get("name"), enemy.get("character_name")):
             if str(value or "").strip():
                 foreign.add(str(value).strip())
     # 长名优先，避免「阿」这类短名先命中。

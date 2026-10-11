@@ -1233,7 +1233,6 @@ class Dnd2024Runtime:
             "director": director,
             "policy": "Narrate resolved events only; never invent or mutate mechanics.",
         }
-        state.pop("combat_enemies", None)
         return state
 
     def director_proposal(

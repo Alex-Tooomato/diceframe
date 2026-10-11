@@ -14,7 +14,7 @@ from src.engine.character_utils import is_conscious, record_death_save_failures,
 from src.engine.constants import WEAPON_DAMAGE, canonical_item_key
 from src.engine.game_instance import GameInstance
 from src.engine.language import localized_text
-from src.engine.modules import checks, legacy_combat, progression_state, round_presentation, table_settings
+from src.engine.modules import checks, progression_state, round_presentation, table_settings
 
 logger = logging.getLogger("trpg")
 
@@ -84,21 +84,6 @@ class CombatResolver:
                 name = str(npc.get("character_name") or npc.get("name") or npc_id)
                 return npc, name, ""
             return None, "", ""
-        if target_ref.startswith("enemy:"):
-            try:
-                index = int(target_ref.split(":", 1)[1])
-                if index < 0:
-                    return None, "", ""
-                enemy = legacy_combat.combat_enemies(instance)[index]
-            except (ValueError, IndexError):
-                return None, "", ""
-            name = str(enemy.get("character_name") or enemy.get("name") or f"敌人{index + 1}")
-            state = (
-                enemy.get("character_sheet")
-                if "hp" not in enemy and isinstance(enemy.get("character_sheet"), dict)
-                else enemy
-            )
-            return state, name, ""
         return None, "", ""
 
     @staticmethod

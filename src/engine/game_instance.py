@@ -39,7 +39,6 @@ from src.engine.modules import (
     checks,
     combat_extension_state,
     economy_state,
-    legacy_combat,
     lorebook_runtime,
     media,
     narrative_notes,
@@ -869,7 +868,6 @@ class GameInstance:
                 checks.require_writable(self)
                 round_safety.require_writable(self)
                 adventure_runtime_state.require_writable(self)
-                legacy_combat.require_writable(self)
                 ruleset_runtime.require_writable(self)
                 economy_state.state(self)
                 combat_extension_state.current(self)
@@ -1321,7 +1319,6 @@ class GameInstance:
             checks.require_writable(self)
             round_safety.require_writable(self)
             adventure_runtime_state.require_writable(self)
-            legacy_combat.require_writable(self)
             ruleset_runtime.require_writable(self)
             if has_blocking_economy_decision(self):
                 return False
@@ -1336,7 +1333,6 @@ class GameInstance:
             checks.require_writable(self)
             round_safety.require_writable(self)
             adventure_runtime_state.require_writable(self)
-            legacy_combat.require_writable(self)
             ruleset_runtime.require_writable(self)
             if has_blocking_economy_decision(self):
                 return False
@@ -1352,7 +1348,6 @@ class GameInstance:
         checks.require_writable(self)
         round_safety.require_writable(self)
         adventure_runtime_state.require_writable(self)
-        legacy_combat.require_writable(self)
         ruleset_runtime.require_writable(self)
         return turn_state.do_advance_locked(self)
 
@@ -1450,7 +1445,6 @@ class GameInstance:
             session_stats.require_writable(self)
             checks.require_writable(self)
             round_safety.require_writable(self)
-            legacy_combat.require_writable(self)
             ruleset_runtime.require_writable(self)
             narrative_notes.require_writable(self)
             adventure_runtime_state.require_writable(self)

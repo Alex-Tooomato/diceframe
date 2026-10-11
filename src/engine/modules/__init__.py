@@ -8,7 +8,6 @@ from src.engine.modules import (  # noqa: F401
     combat_extension_state,
     economy_state,
     health,
-    legacy_combat,
     lorebook_runtime,
     media,
     narrative_notes,

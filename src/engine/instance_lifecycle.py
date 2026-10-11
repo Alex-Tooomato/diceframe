@@ -70,7 +70,7 @@ def reset_locked(instance: GameInstance, *, keep_seed: bool = True) -> None:
     ``tests/test_game_instance_reset_characterization.py`` 冻结。
     """
     from src.engine.modules import (
-        adventure_runtime_state, checks, legacy_combat, narrative_notes, private_channels, round_safety,
+        adventure_runtime_state, checks, narrative_notes, private_channels, round_safety,
         ruleset_runtime, seat_activity, session_stats, table_settings,
     )
     from src.engine.modules import combat_extension_state
@@ -79,7 +79,6 @@ def reset_locked(instance: GameInstance, *, keep_seed: bool = True) -> None:
     session_stats.require_writable(instance)
     checks.require_writable(instance)
     round_safety.require_writable(instance)
-    legacy_combat.require_writable(instance)
     ruleset_runtime.require_writable(instance)
     adventure_runtime_state.require_writable(instance)
     narrative_notes.require_writable(instance)
@@ -103,7 +102,6 @@ def reset_locked(instance: GameInstance, *, keep_seed: bool = True) -> None:
     instance.action_queue.clear()
     instance.pending_actions.clear()
     instance.ready_players.clear()
-    legacy_combat.reset(instance)
     narrative_notes.replace_scene(instance, "")
     narrative_notes.replace_game_time(instance, "")
     instance.log.clear()

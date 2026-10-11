@@ -1,20 +1,22 @@
-"""Read-only combat turn view plus the retired generic ``combat_enemies`` slot.
+"""Read-only combat turn view derived from the bound ruleset's authority.
 
-The four turn fields ``combat_state`` / ``combat_active`` /
-``initiative_order`` / ``initiative_current`` are NOT stored. They are derived
-on every read from the bound ruleset's own encounter authority through a
-projector the ruleset registers with :func:`register_combat_projector`
-(D&D 2024 projects ``ruleset_state["combat"]``). A game whose runtime has no
-registered projector (unbound, generic rulesets, unknown runtime ids) reads the
-neutral view: ``"none"`` / ``False`` / ``[]`` / ``0``.
+``combat_state`` / ``combat_active`` / ``initiative_order`` /
+``initiative_current`` are NOT stored anywhere. They are derived on every read
+from the bound ruleset's own encounter authority through a projector the
+ruleset registers with :func:`register_combat_projector` (D&D 2024 projects
+``ruleset_state["combat"]``). A game whose runtime has no registered projector
+(unbound, generic rulesets, unknown runtime ids) reads the neutral view:
+``"none"`` / ``False`` / ``[]`` / ``0``.
 
 ``src/engine`` must not import ``src/rulesets``; the registry is the seam.
 Projectors are resolved through :func:`ruleset_runtime.bound_runtime_id`, a
 read that never materializes or repairs a module slot.
 
-The persisted slot (schema 2) only holds ``combat_enemies``. No production
-code appends to it any more; it is restored by round entity snapshots and
-cleared on reset until it is retired.
+This module owns no persisted state. The former ``modules["legacy_combat"]``
+slot (and its generic ``combat_enemies`` list) was retired; instance
+migration v42 -> v43 drops it from old saves. Generic hp_based /
+lethal_narrative combat targets players by uid and NPCs by ``npc:<id>``. A
+future generic encounter authority is a separate design, not this module.
 """
 
 from __future__ import annotations
@@ -23,13 +25,7 @@ from collections.abc import Callable, Mapping
 from copy import deepcopy
 from typing import Any
 
-from src.engine.module_state import (
-    ModuleStateError, ModuleStateSpec, get_module_state, register_module_state,
-)
 from src.engine.modules import ruleset_runtime
-
-MODULE_NAME = "legacy_combat"
-SCHEMA_VERSION = 2
 
 CombatProjector = Callable[[Any], "Mapping[str, Any] | None"]
 
@@ -94,53 +90,3 @@ def initiative_order(instance: Any) -> list[Any]:
 
 def initiative_current(instance: Any) -> int:
     return view(instance)["initiative_current"]
-
-
-def fresh() -> dict[str, Any]:
-    return {"schema_version": SCHEMA_VERSION, "combat_enemies": []}
-
-
-def ensure(raw: Any) -> dict[str, Any]:
-    if not isinstance(raw, dict):
-        return fresh()
-    if raw.get("schema_version") != SCHEMA_VERSION:
-        return raw
-    if not isinstance(raw.get("combat_enemies"), list):
-        raw["combat_enemies"] = []
-    return raw
-
-
-def require_writable(instance: Any) -> None:
-    """Read-only transaction preflight; never repair or materialize a slot."""
-    modules = getattr(instance, "modules", None)
-    if not isinstance(modules, dict):
-        raise ModuleStateError("instance has no module state container")
-    slot = modules.get(MODULE_NAME)
-    if not isinstance(slot, dict):
-        return
-    if slot.get("schema_version") != SCHEMA_VERSION:
-        raise ModuleStateError(f"unsupported legacy_combat module schema: {slot.get('schema_version')!r}")
-
-
-def combat_enemies(instance: Any) -> list:
-    return get_module_state(instance, MODULE_NAME)["combat_enemies"]
-
-
-def replace_combat_enemies(instance: Any, value: list) -> None:
-    get_module_state(instance, MODULE_NAME)["combat_enemies"] = value
-
-
-def restore_from_entity_snapshot(instance: Any, snapshot: dict[str, Any]) -> None:
-    """Restore only the stored enemies; the turn view follows its authority."""
-    require_writable(instance)
-    state = get_module_state(instance, MODULE_NAME)
-    state["combat_enemies"] = deepcopy(snapshot.get("combat_enemies") or [])
-
-
-def reset(instance: Any) -> None:
-    require_writable(instance)
-    get_module_state(instance, MODULE_NAME)["combat_enemies"].clear()
-
-
-SPEC = ModuleStateSpec(name=MODULE_NAME, schema_version=SCHEMA_VERSION, fresh=fresh, ensure=ensure)
-register_module_state(SPEC)

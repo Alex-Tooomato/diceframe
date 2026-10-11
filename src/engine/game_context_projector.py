@@ -81,7 +81,6 @@ class GameContextProjector:
             "away_players": away_names,
             "npcs": instance.npcs,
             "combat_state": legacy_combat.combat_state(instance),
-            "combat_enemies": legacy_combat.combat_enemies(instance),
             "initiative_order": legacy_combat.initiative_order(instance),
             "initiative_current": legacy_combat.initiative_current(instance),
             "quick_actions": round_presentation.quick_actions(instance),
