@@ -270,9 +270,10 @@ async def test_locked_reason_matches_what_a_push_of_the_export_gets(sync_app) ->
     origins = {row["origin"]["canonical_id"]: row["origin"]["locked_reason"] for row in exported["items"]}
     assert origins == {**{k: v["locked_reason"] for k, v in cards.items()},
                        **{k: v["locked_reason"] for k, v in books.items()}}
+    pushed_ids = {item["client_ref"]: item["canonical_hint"] for item in pushed}
     reasons = {
-        row["origin"]["canonical_id"]: plan["reason"] or None
-        for row, plan in zip(exported["items"], [row for row in preview["items"] if "." not in row["client_ref"]])
+        pushed_ids[plan["client_ref"]]: plan["reason"] or None
+        for plan in preview["items"] if plan["client_ref"] in pushed_ids
     }
     assert reasons == origins
 
@@ -291,6 +292,36 @@ async def test_a_hinted_rules_aware_server_card_is_ruleset_card(sync_app) -> Non
                                   {"source": {"kind": "device", "id": "install-z"}, "items": [item]})
     assert preview["items"][0]["reason"] == "RULESET_CARD"
     assert preview["items"][0]["allowed"] == ["duplicate", "skip"]
+
+
+@pytest.mark.asyncio
+async def test_a_plugin_lock_wins_over_a_rules_aware_server_copy(sync_app) -> None:
+    """Push order: a free draft hinted at a rules-aware plugin card is
+    ``PLUGIN_CARD``, not ``RULESET_CARD``."""
+
+    app, api, _lorebook = sync_app
+    _write_cards(api, [{**DND_BODY, "id": "card_pack", "source_plugin": "pack", "plugin_content_id": "thorn"}])
+    item = {"client_ref": "c", "kind": "character_template",
+            "document": _items()[0]["document"], "canonical_hint": "card_pack"}
+    async with TestClient(TestServer(app)) as client:
+        _s, preview = await _post(client, "/api/content/import/preview",
+                                  {"source": {"kind": "device", "id": "install-z"}, "items": [item]})
+    assert preview["items"][0]["reason"] == "PLUGIN_CARD"
+    assert preview["items"][0]["allowed"] == ["duplicate", "skip"]
+
+
+def test_book_store_helpers_agree_with_the_entries(web_api) -> None:
+    _api, lorebook, *_ = web_api
+    _server_book(lorebook, "plugin-book", entries={"plugin": "From a pack", "town": "Town"})
+    _server_book(lorebook, "free-book", entries={"town": "Town", "keep": "Keep"})
+    lorebook.create_lorebook({"id": "empty-book", "name": "Empty"})
+    for book_id in ("plugin-book", "free-book", "empty-book", "missing"):
+        entries = lorebook.list_book_entries(book_id)
+        assert lorebook.count_book_entries(book_id) == len(entries)
+        assert lorebook.book_has_plugin_entries(book_id) == any(
+            str(row.get("source_plugin") or "") for row in entries
+        )
+    assert lorebook.book_has_plugin_entries("plugin-book") is True
 
 
 # ---- Read-only -------------------------------------------------------------------

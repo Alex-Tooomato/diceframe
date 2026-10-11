@@ -73,10 +73,10 @@ Each limit returns **413** with an error code:
 |---|---|---|
 | `BODY_TOO_LARGE` | body larger than 8 MB | while the body streams in, before parsing |
 | `TOO_MANY_ITEMS` | more than 50 items (500 for `/status`) | before planning |
-
-`/list` takes no items; its page size is bounded by `limit` (at most 500, see below).
 | `TOO_MANY_ENTRIES` | more than 2000 entries in one book, standalone or `character_book` | on the adapter's parsed draft, before planning |
 | `ENTRY_TOO_LARGE` | an entry larger than 32 KB | on the adapter's parsed draft, before planning |
+
+`/list` takes no items; its page size is bounded by `limit` (at most 500, see below).
 
 A malformed or pathologically nested body gets 400 `REQUEST_INVALID`.
 

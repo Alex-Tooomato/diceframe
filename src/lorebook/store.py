@@ -817,6 +817,19 @@ class LorebookStore:
             self._bump_book_revision_locked(self.primary_world_book_id(world_id))
             self._commit_locked()
 
+    def count_book_entries(self, book_id: str) -> int:
+        with self._lock:
+            return LorebookEntry.select().where(LorebookEntry.book_id == book_id).count()
+
+    def book_has_plugin_entries(self, book_id: str) -> bool:
+        """Any entry of this Book came from a plugin (non-empty source_plugin)."""
+        with self._lock:
+            return LorebookEntry.select().where(
+                (LorebookEntry.book_id == book_id)
+                & LorebookEntry.source_plugin.is_null(False)
+                & (LorebookEntry.source_plugin != ""),
+            ).exists()
+
     def count_entries_by_plugin(self, plugin_id: str) -> int:
         with self._lock:
             return LorebookEntry.select().where(

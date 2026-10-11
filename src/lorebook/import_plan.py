@@ -149,13 +149,11 @@ def _book_bindings(store: Any, book_id: str) -> list[dict[str, str]]:
     ]
 
 
-def book_lock_reason(entries: list[dict[str, Any]]) -> str:
+def book_lock_reason(store: Any, book_id: str) -> str:
     """The lock that holds whoever pushes: a Book with plugin entries is the
-    plugin's (``""`` when free)."""
+    plugin's (``""`` when free). Preview, list and export all use this."""
 
-    if any(str(row.get("source_plugin") or "") for row in entries):
-        return LOCKED_PLUGIN_BOOK
-    return ""
+    return LOCKED_PLUGIN_BOOK if store.book_has_plugin_entries(book_id) else ""
 
 
 def _hint_lock_reason(store: Any, book: dict[str, Any], declared: DeclaredSource) -> str:
@@ -165,7 +163,7 @@ def _hint_lock_reason(store: Any, book: dict[str, Any], declared: DeclaredSource
     (tracked, legacy-linked or detached), stays that source's lineage.
     """
 
-    if reason := book_lock_reason(store.list_book_entries(str(book["id"]))):
+    if reason := book_lock_reason(store, str(book["id"])):
         return reason
     if not str(book.get("source_id") or ""):
         return ""  # created on this server: free to adopt
