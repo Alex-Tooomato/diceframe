@@ -357,7 +357,9 @@ def discard_combat_extension_snapshots_from(instance: GameInstance, round_number
 def capture_round_entity_snapshot(instance: GameInstance) -> None:
     """判定入口快照旧版战斗实体与战斗状态。
 
-    覆盖 `CombatResolver` / `initiate_combat` 在判定阶段会直接改写的字段；
+    覆盖 `CombatResolver` 在判定阶段会直接改写的字段；combat_state /
+    combat_active / initiative_* 只是派生战斗视图的只读记录，还原时不写回
+    （权威在 ruleset_state）；
     与 ``round_start_snapshot``（玩家）和 ``combat_extension_round_snapshots``
     （D&D2024 权威战斗扩展）互补，三者合起来才是"本轮改过的东西"。
     """

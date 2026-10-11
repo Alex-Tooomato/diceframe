@@ -13,6 +13,7 @@ from src.engine.checks import resolve_check_request
 from src.engine.game_instance import GameInstance
 from src.engine.modules import economy_state
 from src.engine.modules import legacy_combat
+from tests.test_legacy_combat_module import bind_dnd_combat
 from src.rules.rule_system import RuleSystem
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -1048,7 +1049,7 @@ def test_planner_npc_context_requires_an_explicit_resolved_npc(target, action, e
         "professor": {"character_name": "考古学系主任"},
     }
     narrative_notes.replace_scene(instance, "老汤姆和考古学系主任所在的旅店")
-    legacy_combat.replace_combat_state(instance, "active")
+    bind_dnd_combat(instance, {"status": "active", "initiative": [], "turn_index": 0})
     legacy_combat.replace_combat_enemies(instance, [{"name": "强盗", "hp": 10}])
     instance.action_queue[0].update(text=action, target_text=target)
     before = deepcopy(instance.npcs)

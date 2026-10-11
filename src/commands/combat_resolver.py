@@ -12,7 +12,6 @@ from typing import Any
 from src.engine.combat import AttackResult, resolve_attack, _check_succeeded
 from src.engine.character_utils import is_conscious, record_death_save_failures, sync_death_from_hp
 from src.engine.constants import WEAPON_DAMAGE, canonical_item_key
-from src.engine.dice import roll_initiative
 from src.engine.game_instance import GameInstance
 from src.engine.language import localized_text
 from src.engine.modules import checks, legacy_combat, progression_state, round_presentation, table_settings
@@ -21,7 +20,7 @@ logger = logging.getLogger("trpg")
 
 
 class CombatResolver:
-    """处理战斗目标、权威检定消费、伤害和先攻顺序。"""
+    """处理战斗目标、权威检定消费与伤害。"""
 
     @staticmethod
     def _authoritative_attack_check(
@@ -348,36 +347,3 @@ class CombatResolver:
             [result.check_id for result, _ in results],
         )
         return "\n".join(lines)
-
-    def initiate_combat(self, instance: GameInstance) -> str:
-        """初始化战斗先攻顺序。返回战斗开始公告文本。"""
-        combatants: list[tuple[str, int]] = []
-
-        for uid in instance.alive_players:
-            character_sheet = instance.get_character_sheet(uid)
-            dexterity = character_sheet.get("attributes", {}).get("dex", 10)
-            initiative = roll_initiative((dexterity - 10) // 2)
-            combatants.append((uid, initiative.total))
-            logger.info(
-                "先攻: %s dex=%d roll=%d",
-                instance.players[uid].get("character_name", uid),
-                dexterity,
-                initiative.total,
-            )
-
-        for enemy in legacy_combat.combat_enemies(instance):
-            enemy_id = enemy.get("name", enemy.get("character_name", "敌人"))
-            dexterity = enemy.get("character_sheet", {}).get("attributes", {}).get("dex", 10)
-            initiative = roll_initiative((dexterity - 10) // 2)
-            combatants.append((enemy_id, initiative.total))
-
-        combatants.sort(key=lambda item: -item[1])
-        instance.begin_combat([combatant[0] for combatant in combatants])
-
-        order_text = " → ".join(
-            f"{instance.players[uid].get('character_name', uid)}({score})"
-            if uid in instance.players else f"{uid}({score})"
-            for uid, score in combatants
-        )
-        logger.info("战斗开始: order=%s", order_text)
-        return f"⚔ 战斗开始！先攻顺序: {order_text}"

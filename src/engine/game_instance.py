@@ -597,14 +597,14 @@ class GameInstance:
             "round_start_snapshot", "round_entity_snapshot", "death_save_outcomes",
         )):
             round_safety.require_writable(self)
-        legacy_combat.require_writable(self)
         ruleset_runtime.require_writable(self)
         if "round_number" in snapshot:
             progression.require_writable(self)
             restored_round = int(snapshot["round_number"])
         ruleset_runtime.restore_from_transaction(self, snapshot)
         self.players = copy.deepcopy(snapshot["players"])
-        legacy_combat.restore_from_transaction(self, snapshot)
+        # The combat turn view is derived from the restored ruleset_state; the
+        # snapshot's combat_* / initiative_* keys are informational only.
         if "scene" in snapshot and snapshot["scene"] is not None:
             narrative_notes.replace_scene(self, str(snapshot["scene"]))
         if "last_activity" in snapshot:
@@ -806,12 +806,6 @@ class GameInstance:
     def discard_combat_extension_snapshots_from(self, round_number: int) -> None:
         """Drop live snapshots belonging to a discarded history branch."""
         round_snapshots.discard_combat_extension_snapshots_from(self, round_number)
-
-    def begin_combat(self, initiative_order: list[str]) -> None:
-        legacy_combat.begin(self, initiative_order)
-
-    def end_combat(self) -> None:
-        legacy_combat.end(self)
 
     def record_save_success(self) -> None:
         self._save_fail_count = 0

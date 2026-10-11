@@ -28,7 +28,7 @@ from src.password_hashing import hash_password
 
 logger = logging.getLogger("trpg")
 
-CURRENT_INSTANCE_SCHEMA_VERSION = 41
+CURRENT_INSTANCE_SCHEMA_VERSION = 42
 
 # 内置 freeform_coc 在 Currency Model V2 中把 base_unit 从「美元」升级为
 # 「美分」（1 amount = 1 美分），存量 CoC 存档的所有 canonical 金额必须 ×100
@@ -976,6 +976,34 @@ def _migrate_v40_to_v41(payload: dict[str, Any]) -> dict[str, Any]:
     return payload
 
 
+def _migrate_v41_to_v42(payload: dict[str, Any]) -> dict[str, Any]:
+    """Drop the stored combat turn copies from the legacy_combat slot (v1 -> v2).
+
+    ``combat_state`` / ``combat_active`` / ``initiative_order`` /
+    ``initiative_current`` became a read-only view derived from the bound
+    ruleset's own authority (D&D 2024: ``ruleset_state["combat"]``), so the
+    stored copies are discarded, never reinterpreted. ``combat_enemies`` is
+    kept as-is (coerced to a list). A missing or malformed slot is created
+    empty; a slot of any other schema is left untouched.
+    """
+    modules = payload.get("modules")
+    if not isinstance(modules, dict):
+        modules = {}
+    slot = modules.get("legacy_combat")
+    if isinstance(slot, dict):
+        if slot.get("schema_version") == 1:
+            enemies = slot.get("combat_enemies")
+            modules["legacy_combat"] = {
+                "schema_version": 2,
+                "combat_enemies": enemies if isinstance(enemies, list) else [],
+            }
+    else:
+        modules["legacy_combat"] = {"schema_version": 2, "combat_enemies": []}
+    payload["modules"] = modules
+    payload["instance_schema_version"] = 42
+    return payload
+
+
 def migrate_game_state_payload(data: Mapping[str, Any]) -> dict[str, Any]:
     """Apply sequential, idempotent migrations to one persisted save payload."""
 
@@ -1103,6 +1131,9 @@ def migrate_game_state_payload(data: Mapping[str, Any]) -> dict[str, Any]:
     if version == 40:
         payload = _migrate_v40_to_v41(payload)
         version = 41
+    if version == 41:
+        payload = _migrate_v41_to_v42(payload)
+        version = 42
     payload["instance_schema_version"] = version
     return payload
 

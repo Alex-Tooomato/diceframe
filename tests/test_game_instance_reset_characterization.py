@@ -27,6 +27,7 @@ from src.engine.modules import (
     adventure_runtime_state, health, lorebook_runtime, round_presentation, round_safety, world_reports,
 )
 from src.engine.player_control import away_control_policy, set_away_control_policy
+import src.rulesets.dnd2024  # noqa: F401  (registers the D&D combat view projector)
 
 
 def _make_populated_instance() -> GameInstance:
@@ -54,7 +55,11 @@ def _make_populated_instance() -> GameInstance:
         "content_version": "2024-01",
         "state_schema_version": 3,
     })
-    ruleset_runtime.replace_state(instance, {"state_schema_version": 3, "campaign": {"party": []}})
+    # The combat turn view is derived from the bound D&D authority.
+    ruleset_runtime.replace_state(instance, {
+        "state_schema_version": 3, "campaign": {"party": []},
+        "combat": {"status": "active", "initiative": ["u1"], "turn_index": 1},
+    })
     instance.adventure_binding = {
         "adventure_id": "adv-1",
         "version": "1",
@@ -81,11 +86,7 @@ def _make_populated_instance() -> GameInstance:
     instance.pending_actions = [{"user_id": "u2", "text": "pending"}]
     instance.ready_players = {"u1"}
     instance.away_players = {"u2"}
-    legacy_combat.replace_combat_active(instance, True)
     legacy_combat.replace_combat_enemies(instance, [{"hp": 3}])
-    legacy_combat.replace_combat_state(instance, "active")
-    legacy_combat.replace_initiative_order(instance, ["u1"])
-    legacy_combat.replace_initiative_current(instance, 1)
     room_access.replace_max_players(instance, 9)
     instance.gm_uid = "gm1"
     room_access.replace_player_access_open(instance, False)
@@ -253,6 +254,10 @@ async def test_reset_without_seed_clears_seed_code() -> None:
 @pytest.mark.asyncio
 async def test_reset_clears_runtime_and_narrative_state() -> None:
     instance = _make_populated_instance()
+    assert legacy_combat.view(instance) == {
+        "combat_state": "active", "combat_active": True,
+        "initiative_order": ["u1"], "initiative_current": 1,
+    }
     await instance.reset(keep_seed=True)
 
     assert instance.players == {}

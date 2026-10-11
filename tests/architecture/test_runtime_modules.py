@@ -156,16 +156,26 @@ def test_only_legacy_combat_owners_assign_fields() -> None:
 
 
 # The GameInstance facades are gone, so writes go through the module API. Keep
-# each mutator with its existing caller; ``replace_*`` has no src caller.
+# each mutator with its existing caller; ``replace_*`` has no src caller. The
+# four turn fields are a derived read-only view, so only the stored
+# ``combat_enemies`` has writers left.
 LEGACY_COMBAT_WRITE_CALLERS = {
-    "begin": {SRC / "engine" / "game_instance.py"},
-    "end": {SRC / "engine" / "game_instance.py"},
-    "restore_from_transaction": {SRC / "engine" / "game_instance.py"},
     "restore_from_entity_snapshot": {SRC / "engine" / "round_snapshots.py"},
     "reset": {SRC / "engine" / "instance_lifecycle.py"},
-    "project_from_ruleset": {SRC / "rulesets" / "dnd2024" / "combat" / "engine.py"},
-    **{f"replace_{field}": set() for field in LEGACY_COMBAT_FIELDS},
+    "replace_combat_enemies": set(),
 }
+
+LEGACY_COMBAT_VIEW_FIELDS = frozenset({
+    "combat_active", "combat_state", "initiative_order", "initiative_current",
+})
+
+# Writers of the stored turn copies were removed when the fields became a
+# derived view; none of these may come back, under any module.
+RETIRED_LEGACY_COMBAT_WRITERS = frozenset({
+    "begin", "end", "project_from_ruleset", "restore_from_transaction",
+    "begin_combat", "end_combat",
+    *(f"replace_{field}" for field in LEGACY_COMBAT_VIEW_FIELDS),
+})
 
 
 def _legacy_combat_write_calls(path: Path, tree: ast.AST) -> list[int]:
@@ -177,8 +187,13 @@ def _legacy_combat_write_calls(path: Path, tree: ast.AST) -> list[int]:
         and isinstance(node.func, ast.Attribute)
         and isinstance(node.func.value, ast.Name)
         and node.func.value.id == "legacy_combat"
-        and node.func.attr in LEGACY_COMBAT_WRITE_CALLERS
-        and path not in LEGACY_COMBAT_WRITE_CALLERS[node.func.attr]
+        and (
+            node.func.attr in RETIRED_LEGACY_COMBAT_WRITERS
+            or (
+                node.func.attr in LEGACY_COMBAT_WRITE_CALLERS
+                and path not in LEGACY_COMBAT_WRITE_CALLERS[node.func.attr]
+            )
+        )
     ]
 
 
@@ -188,6 +203,51 @@ def test_only_legacy_combat_owners_call_write_api() -> None:
         tree = ast.parse(path.read_text(encoding="utf-8-sig"))
         for line in _legacy_combat_write_calls(path, tree):
             violations.append(f"{path.relative_to(ROOT)}:{line}: legacy combat write call outside owner")
+    assert not violations, "\n".join(violations)
+
+
+def _retired_combat_writer_definitions(tree: ast.AST) -> list[tuple[int, str]]:
+    retired = {f"replace_{field}" for field in LEGACY_COMBAT_VIEW_FIELDS}
+    retired |= {"begin_combat", "end_combat", "project_from_ruleset"}
+    return [
+        (node.lineno, node.name) for node in ast.walk(tree)
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and node.name in retired
+    ]
+
+
+def test_combat_turn_view_writers_do_not_reappear() -> None:
+    from src.engine.modules import legacy_combat
+
+    for name in RETIRED_LEGACY_COMBAT_WRITERS:
+        assert not hasattr(legacy_combat, name), name
+    violations: list[str] = []
+    for path in sorted(SRC.rglob("*.py")):
+        tree = ast.parse(path.read_text(encoding="utf-8-sig"))
+        for line, name in _retired_combat_writer_definitions(tree):
+            violations.append(f"{path.relative_to(ROOT)}:{line}: combat view writer {name} reintroduced")
+    assert not violations, "\n".join(violations)
+
+
+# Only the owner (and save migrations) may address the persisted slot by name;
+# everything else goes through the module API.
+LEGACY_COMBAT_SLOT_OWNERS = {MODULES / "legacy_combat.py", SRC / "migrations" / "instance.py"}
+
+
+def _legacy_combat_slot_references(path: Path, tree: ast.AST) -> list[int]:
+    if path in LEGACY_COMBAT_SLOT_OWNERS:
+        return []
+    return [
+        node.lineno for node in ast.walk(tree)
+        if isinstance(node, ast.Constant) and node.value == "legacy_combat"
+    ]
+
+
+def test_only_legacy_combat_owner_addresses_its_slot() -> None:
+    violations: list[str] = []
+    for path in sorted(SRC.rglob("*.py")):
+        tree = ast.parse(path.read_text(encoding="utf-8-sig"))
+        for line in _legacy_combat_slot_references(path, tree):
+            violations.append(f"{path.relative_to(ROOT)}:{line}: legacy_combat slot addressed outside owner")
     assert not violations, "\n".join(violations)
 
 
@@ -203,13 +263,19 @@ def test_legacy_combat_guards_reject_writes_but_not_locals() -> None:
     locals_only = ast.parse("combat_state = 'none'\nstate['combat_enemies'] = []\nx = y.combat_active\n")
     assert not _legacy_combat_attribute_writes(outsider, locals_only)
     calls = ast.parse(
-        "legacy_combat.replace_combat_state(x, 'active')\n"
-        "legacy_combat.project_from_ruleset(x, {})\n"
+        "legacy_combat.replace_combat_enemies(x, [])\n"
         "legacy_combat.reset(x)\n"
+        "legacy_combat.replace_combat_state(x, 'active')\n"
         "legacy_combat.combat_state(x)\n"
     )
     assert len(_legacy_combat_write_calls(outsider, calls)) == 3
-    assert _legacy_combat_write_calls(SRC / "engine" / "instance_lifecycle.py", calls) == [1, 2]
+    # The lifecycle owner may reset, but nobody may call a retired view writer.
+    assert _legacy_combat_write_calls(SRC / "engine" / "instance_lifecycle.py", calls) == [1, 3]
+    definitions = ast.parse("def replace_initiative_order(x, v):\n    pass\ndef combat_state(x):\n    pass\n")
+    assert _retired_combat_writer_definitions(definitions) == [(1, "replace_initiative_order")]
+    slot = ast.parse("instance.modules['legacy_combat'] = {}\nname = 'legacy combat'\n")
+    assert _legacy_combat_slot_references(outsider, slot) == [1]
+    assert not _legacy_combat_slot_references(SRC / "migrations" / "instance.py", slot)
 
 
 def _module_writer_calls(path: Path, tree: ast.AST, module: str, writers: frozenset[str]) -> list[int]:
