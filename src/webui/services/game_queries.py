@@ -9,7 +9,7 @@ from typing import Any, Callable
 from src.engine.game_instance import GameState
 from src.engine.health import health_payload
 from src.engine.language import DEFAULT_LANGUAGE, normalize_language
-from src.engine.modules import checks, economy_state, progression_state, ruleset_runtime, table_settings
+from src.engine.modules import checks, economy_state, narrative_notes, progression_state, ruleset_runtime, table_settings
 from src.engine.player_control import away_control_policy
 from src.engine.visibility_rules import manual_roll_visible_to, proposal_visible_to
 from src.llm.parser import sanitize_narration
@@ -73,7 +73,7 @@ def list_games(dependencies: GameQueryDependencies) -> dict[str, Any]:
             "player_count": len(instance.players),
             "max_players": max(1, int(getattr(instance, "max_players", 6) or 6)),
             "combat_active": instance.combat_active,
-            "scene": instance.scene,
+            "scene": narrative_notes.scene(instance),
             "total_llm_calls": instance.total_llm_calls,
             "total_tokens": instance.total_tokens,
             "started_at": instance.started_at,
@@ -193,7 +193,7 @@ def game_detail(
         "state": instance.state.value,
         "round_number": progression_state.round_value(instance),
         "player_count": len(instance.players),
-        "scene": instance.scene,
+        "scene": narrative_notes.scene(instance),
         "total_llm_calls": instance.total_llm_calls,
         "total_tokens": instance.total_tokens,
         "started_at": instance.started_at,
@@ -372,12 +372,12 @@ def _public_recap(instance: Any) -> dict[str, Any]:
     ]
     return {
         "narrative": clean_public_narration(
-            (getattr(instance, "summary", {}) or {}).get("narrative") or ""
+            (narrative_notes.summary(instance) or {}).get("narrative") or ""
         ),
-        "key_facts": list(getattr(instance, "key_facts", []) or [])[-8:],
+        "key_facts": list(narrative_notes.key_facts(instance) or [])[-8:],
         "recent_rounds": recent_rounds,
         "pending_actions": pending_actions,
-        "current_scene": instance.scene,
+        "current_scene": narrative_notes.scene(instance),
         "round_number": progression_state.round_value(instance),
     }
 

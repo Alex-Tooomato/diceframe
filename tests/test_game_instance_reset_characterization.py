@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import pytest
 
+from src.engine.modules import narrative_notes
 from src.engine.game_instance import GameInstance, GameState
 from src.engine.modules import economy_state
 from src.engine.modules import room_access
@@ -90,11 +91,11 @@ def _make_populated_instance() -> GameInstance:
     room_access.issue_room_token(instance, token="room-token")
     instance.private_log = {"u1": [{"role": "gm", "text": "hi"}]}
     instance.table_talk = [{"speaker": "u1", "text": "tt"}]
-    instance.scene = "老桥"
-    instance.game_time = "14:00"
+    narrative_notes.replace_scene(instance, "老桥")
+    narrative_notes.replace_game_time(instance, "14:00")
     instance.log = [{"round": 4, "gm_response": "叙事"}]
-    instance.summary = {"narrative": "sum"}
-    instance.key_facts = ["fact"]
+    narrative_notes.replace_summary(instance, {"narrative": "sum"})
+    narrative_notes.replace_key_facts(instance, ["fact"])
     instance.world_state = {
         "schema_version": 1,
         "revision": 5,
@@ -141,7 +142,7 @@ def _make_populated_instance() -> GameInstance:
     combat_extension_state.replace_current(instance, {"schema_version": 1, "pools": {"p1": {}}})
     combat_extension_state.replace_round_snapshots(instance, {"4": {"schema_version": 1}})
     instance.pending_luck_after_recovery = True
-    instance.confirmed_items = ["sword"]
+    narrative_notes.replace_confirmed_items(instance, ["sword"])
     return instance
 
 
@@ -189,14 +190,11 @@ EXPECTED_PRESERVED_RULESET_BINDING = {
 EXPECTED_CLEARED = {
     "npcs": {},
     "log": [],
-    "summary": {},
-    "key_facts": [],
     "pending_combat_results": [],
     "lorebook_timed_state": {},
     "health_events": [],
     "health_status": {},
     "quick_actions": [],
-    "confirmed_items": [],
     "private_log": {},
     "table_talk": [],
     "gm_directives": [],
@@ -262,8 +260,8 @@ async def test_reset_clears_runtime_and_narrative_state() -> None:
     assert instance.combat_state == "none"
     assert instance.initiative_order == []
     assert instance.initiative_current == 0
-    assert instance.scene == ""
-    assert instance.game_time == ""
+    assert narrative_notes.scene(instance) == ""
+    assert narrative_notes.game_time(instance) == ""
     assert instance.world_state == fresh_world_state()
     # Progress and world truth belong to the same run: never keep "node
     # completed" after the world that recorded its consequences is wiped.
@@ -285,6 +283,9 @@ async def test_reset_clears_runtime_and_narrative_state() -> None:
     assert instance.last_token_budget_bump is None
     for key, expected_empty in EXPECTED_CLEARED.items():
         assert getattr(instance, key) == expected_empty, f"reset 必须清空 {key}"
+    assert narrative_notes.summary(instance) == {}, "reset 必须清空 summary"
+    assert narrative_notes.key_facts(instance) == [], "reset 必须清空 key_facts"
+    assert narrative_notes.confirmed_items(instance) == [], "reset 必须清空 confirmed_items"
     assert ruleset_runtime.event_ledger(instance) == [], "reset 必须清空 event_ledger"
 
 

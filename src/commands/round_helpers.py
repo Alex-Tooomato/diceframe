@@ -6,7 +6,7 @@ import re
 
 from src.engine.constants import COMBAT_INTENT_KEYWORDS
 from src.engine.game_instance import GameInstance
-from src.engine.modules import table_settings
+from src.engine.modules import narrative_notes, table_settings
 
 _DECISION_KEYWORDS = ("是否", "选择", "赌上", "决定", "要么")
 
@@ -34,7 +34,7 @@ def _current_scene_has_multiple_npcs(instance: GameInstance) -> bool:
     用当前场景文本而非累计 NPC 总数，避免历史 NPC 堆积触发多余的局势分析。
     名字长度不足 2 的单字名称容易与场景文本误匹配，不予计数。
     """
-    scene_text = str(getattr(instance, "scene", "") or "")
+    scene_text = str(narrative_notes.scene(instance) or "")
     if not scene_text:
         return False
     present = 0

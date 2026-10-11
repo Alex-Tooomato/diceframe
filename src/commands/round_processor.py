@@ -660,7 +660,7 @@ class RoundProcessor:
         """后台执行摘要压缩，不阻塞回合返回。
 
         叙事已在 finish_judgment 推送，用户无需等待摘要。asyncio 单线程下
-        instance.summary 的赋值在 await 间原子，下轮读到旧/新摘要均合法；
+        narrative_notes.summary 的赋值在 await 间原子，下轮读到旧/新摘要均合法；
         关机 save_all_active 会落盘。round_number 在调度时快照，避免日志读到被推进的值。
         """
         try:
@@ -776,7 +776,7 @@ class RoundProcessor:
             self._generate_scene_image_background(
                 game_key, expected_run_id, completed_round, prompt,
                 normalized_panels, compressed_count, character_appearances,
-                str(getattr(instance, "scene", "") or ""),
+                str(narrative_notes.scene(instance) or ""),
             )
         )
         self._scene_image_tasks[task_key] = task
@@ -835,7 +835,7 @@ class RoundProcessor:
                     self.llm_client,
                     narration=str(entry.get("gm_response") or ""),
                     actions=entry.get("actions") or [],
-                    current_scene=current_scene or str(getattr(current, "scene", "") or ""),
+                    current_scene=current_scene or str(narrative_notes.scene(current) or ""),
                     players=getattr(current, "players", {}),
                     global_prompt=prompt,
                     declared_panels=panels,
@@ -853,7 +853,7 @@ class RoundProcessor:
                 "round": round_number,
                 "run_id": expected_run_id,
                 "source_revision": source_revision,
-                "scene": current_scene or str(getattr(current, "scene", "") or ""),
+                "scene": current_scene or str(narrative_notes.scene(current) or ""),
                 "narration": str(entry.get("gm_response") or "")[:1600],
                 "actions": str(entry.get("actions") or "")[:1200],
                 "panels": panels,
@@ -914,7 +914,7 @@ class RoundProcessor:
                     panels,
                     narration=str(entry.get("gm_response") or ""),
                     actions=entry.get("actions") or [],
-                    current_scene=current_scene or str(getattr(current, "scene", "") or ""),
+                    current_scene=current_scene or str(narrative_notes.scene(current) or ""),
                     source_revision=source_revision,
                 )
             try:
@@ -1240,7 +1240,7 @@ class RoundProcessor:
                     completed["scene_panels"],
                     narration=str(completed.get("gm_response") or ""),
                     actions=completed.get("actions") or [],
-                    current_scene=str(getattr(instance, "scene", "") or ""),
+                    current_scene=str(narrative_notes.scene(instance) or ""),
                     source_revision=storyboard_source_revision(completed),
                 )
         combat_narrative.consume_pending_events(instance, pending_combat_event_ids)

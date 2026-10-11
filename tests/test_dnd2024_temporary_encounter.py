@@ -30,7 +30,7 @@ from src.rulesets.dnd2024.runtime import Dnd2024Runtime
 from src.rulesets.legacy_adapter import LegacyRulesetAdapter
 from src.rulesets.registry import RulesetRuntimeRegistry
 from src.webui.services import ruleset_gameplay
-from src.engine.modules import ruleset_runtime, table_settings
+from src.engine.modules import narrative_notes, ruleset_runtime, table_settings
 
 _RULE = RuleSystem({
     "rule_id": "test_dnd2024",
@@ -225,7 +225,8 @@ def test_balance_rejects_legal_but_deadly_attack_values() -> None:
 @pytest.mark.asyncio
 async def test_plan_requires_tool_call_and_validates_output() -> None:
     instance = SimpleNamespace(
-        players={"p1": {}}, scene="矿井深处", language="en", log=[],
+        players={"p1": {}}, language="en", log=[],
+        modules={"narrative_notes": {**narrative_notes.fresh(), "scene": "矿井深处"}},
         record_llm_usage=lambda tokens: None,
     )
     proposal = await plan_temporary_encounter(

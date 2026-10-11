@@ -104,10 +104,10 @@ def reset_locked(instance: GameInstance, *, keep_seed: bool = True) -> None:
     instance.ready_players.clear()
     legacy_combat.reset(instance)
     narrative_notes.replace_scene(instance, "")
-    instance.game_time = ""
+    narrative_notes.replace_game_time(instance, "")
     instance.log.clear()
-    instance.summary.clear()
-    instance.key_facts.clear()
+    narrative_notes.summary(instance).clear()
+    narrative_notes.key_facts(instance).clear()
     # 世界真相属于这一轮 run：重置与重开都从空世界重新开始。
     instance.world_state = fresh_world_state()
     # Adventure v2 进度与世界状态同属这一轮 run（完成节点的后果写在 world_state
@@ -125,7 +125,7 @@ def reset_locked(instance: GameInstance, *, keep_seed: bool = True) -> None:
     instance.health_events.clear()
     instance.health_status.clear()
     instance.quick_actions.clear()
-    instance.confirmed_items.clear()
+    narrative_notes.confirmed_items(instance).clear()
     instance.private_log.clear()
     instance.table_talk.clear()
     checks.clear_round(instance)

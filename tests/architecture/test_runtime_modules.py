@@ -226,7 +226,42 @@ def test_only_narrative_notes_owners_assign_scene() -> None:
                 and node.args[1].value == "scene"
             ):
                 violations.append(f"{path.relative_to(ROOT)}:{node.lineno}: scene setattr outside owner")
+        violations.extend(
+            f"{path.relative_to(ROOT)}:{line}: scene module write outside owner"
+            for line in _scene_module_writes(path, tree)
+        )
     assert not violations, "\n".join(violations)
+
+
+# The facade is gone, so the module API is the write path: besides the
+# aggregate (``set_scene``) only reset clears the label with the other notes.
+SCENE_MODULE_WRITERS = {
+    SRC / "engine" / "game_instance.py",
+    MODULES / "narrative_notes.py",
+    SRC / "engine" / "instance_lifecycle.py",
+}
+
+
+def _scene_module_writes(path: Path, tree: ast.AST) -> list[int]:
+    if path in SCENE_MODULE_WRITERS:
+        return []
+    return [
+        node.lineno
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Attribute)
+        and node.func.attr == "replace_scene"
+        and isinstance(node.func.value, ast.Name)
+        and node.func.value.id == "narrative_notes"
+    ]
+
+
+def test_scene_guard_rejects_module_writes_outside_owners() -> None:
+    tree = ast.parse("narrative_notes.replace_scene(instance, 'Gate')")
+    for path in ("commands/state_update_applier.py", "rulesets/dnd2024/runtime.py"):
+        assert _scene_module_writes(SRC / path, tree)
+    for owner in SCENE_MODULE_WRITERS:
+        assert not _scene_module_writes(owner, tree)
 
 
 def test_only_checks_owners_assign_fields() -> None:

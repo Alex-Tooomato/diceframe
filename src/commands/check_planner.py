@@ -27,7 +27,7 @@ from src.engine.dice import d20_dc_cap
 from src.engine.economy import MAX_ECONOMY_AMOUNT
 from src.engine.game_instance import GameInstance
 from src.engine.language import localized_text
-from src.engine.modules import economy_state, progression_state, ruleset_runtime, table_settings
+from src.engine.modules import economy_state, narrative_notes, progression_state, ruleset_runtime, table_settings
 from src.engine.world_events import MAX_ADVANCE_MINUTES
 from src.engine.world_legality import (
     MAX_ROUTE_HOPS,
@@ -456,7 +456,7 @@ def _planner_context(instance: GameInstance, rule: RuleSystem | None) -> str:
         ruleset["max_check_dc"] = d20_dc_cap(rule)
     payload = {
         "round": progression_state.round_value(instance),
-        "scene": str(instance.scene or "")[:500],
+        "scene": str(narrative_notes.scene(instance) or "")[:500],
         "recent_narration": [
             sanitize_narration(str(entry.get("gm_response") or ""))[:1000]
             for entry in instance.log[-2:]

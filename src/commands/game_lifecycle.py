@@ -31,6 +31,7 @@ from src.engine.character_utils import reset_character_for_restart
 from src.engine.economy import queue_effect_group
 from src.engine.game_instance import GameInstance, GameRegistry, GameState
 from src.engine.language import localized_text, normalize_language
+from src.engine.modules import narrative_notes
 from src.engine.narrative_perspective import narrative_perspective_instruction
 from src.llm.parser import normalize_tag_protocol, sanitize_narration
 from src.rulesets.contracts import RunLifecycleRuntime
@@ -497,6 +498,7 @@ class GameLifecycle:
             for e in recent_log
         )
 
+        current_scene = narrative_notes.scene(instance)
         resume_prompt = localized_text(
             instance.language,
             {
@@ -505,7 +507,7 @@ class GameLifecycle:
                     "Write a brief 'Previously on...' continuation in English, under 80 words. "
                     "Summarize the latest events and naturally lead into the current scene.\n\n"
                     f"Recent log:\n{history_text}\n\n"
-                    f"Current scene: {instance.scene}\n"
+                    f"Current scene: {current_scene}\n"
                     f"Alive players: {', '.join(instance.alive_players) if instance.alive_players else 'none'}\n\n"
                     "Output narration only, without a JSON block."
                 ),
@@ -513,7 +515,7 @@ class GameLifecycle:
                     f"你是 TRPG 的 GM，游戏刚刚从暂停中恢复。请生成一段不超过100字的「上回说到」续接叙事，"
                     f"概括最近发生的事情并自然推进到当前场景。\n\n"
                     f"最近日志：\n{history_text}\n\n"
-                    f"当前场景：{instance.scene}\n"
+                    f"当前场景：{current_scene}\n"
                     f"存活玩家：{', '.join(instance.alive_players) if instance.alive_players else '无'}\n\n"
                     f"请直接输出叙事文本（不要 JSON 块）。"
                 ),
@@ -522,7 +524,7 @@ class GameLifecycle:
                     "「これまでのあらすじ」として、80 語以内の日本語の続きのナレーションを書くこと。"
                     "直近の出来事をまとめ、現在のシーンへ自然につなぐこと。\n\n"
                     f"最近のログ：\n{history_text}\n\n"
-                    f"現在のシーン：{instance.scene}\n"
+                    f"現在のシーン：{current_scene}\n"
                     f"生存プレイヤー：{', '.join(instance.alive_players) if instance.alive_players else 'なし'}\n\n"
                     "ナレーションのみを出力し、JSON ブロックを付けないこと。"
                 ),
@@ -531,7 +533,7 @@ class GameLifecycle:
                     "Schreibe eine kurze 'Bisher geschah...'-Fortsetzung auf Deutsch, unter 80 Wörtern. "
                     "Fasse die letzten Ereignisse zusammen und leite natürlich zur aktuellen Szene über.\n\n"
                     f"Letztes Protokoll:\n{history_text}\n\n"
-                    f"Aktuelle Szene: {instance.scene}\n"
+                    f"Aktuelle Szene: {current_scene}\n"
                     f"Lebende Spieler: {', '.join(instance.alive_players) if instance.alive_players else 'keine'}\n\n"
                     "Gib nur die Erzählung aus, ohne JSON-Block."
                 ),
@@ -548,13 +550,14 @@ class GameLifecycle:
             resume_narration = sanitize_narration(response.narration or response.content)
         except Exception:
             logger.exception("续接叙事生成失败")
+            current_scene = narrative_notes.scene(instance)
             resume_narration = localized_text(
                 instance.language,
                 {
-                    "en": f"The GM is back online. Current scene: {instance.scene}. Continue when ready.",
-                    "zh-CN": f"GM 已重新上线。当前场景：{instance.scene}。输入 /go 继续冒险。",
-                    "ja": f"GM は再起動した。現在のシーン：{instance.scene}。/go で冒険を続行。",
-                    "de": f"Der GM ist wieder online. Aktuelle Szene: {instance.scene}. Fahre fort, wenn du bereit bist.",
+                    "en": f"The GM is back online. Current scene: {current_scene}. Continue when ready.",
+                    "zh-CN": f"GM 已重新上线。当前场景：{current_scene}。输入 /go 继续冒险。",
+                    "ja": f"GM は再起動した。現在のシーン：{current_scene}。/go で冒険を続行。",
+                    "de": f"Der GM ist wieder online. Aktuelle Szene: {current_scene}. Fahre fort, wenn du bereit bist.",
                 },
             )
 

@@ -5,7 +5,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from src.engine.modules import table_settings
+from src.engine.modules import narrative_notes, table_settings
 from src.bots.bridge_core.commands import kp_question
 from src.commands.kp_questions import KPQuestionResponder, build_kp_question_prompt
 from src.engine.game_instance import GameInstance
@@ -299,8 +299,8 @@ async def test_player_safe_context_excludes_hidden_and_other_player_data() -> No
         "actions": [{"user_id": "p1", "text": "查看公开徽记"}],
         "gm_response": "所有人都看见了大学徽记。",
     }]
-    instance.summary = {"narrative": "队伍公开进入了旧宅。"}
-    instance.key_facts = [{"content": "旧宅正门已经锁上。"}]
+    narrative_notes.replace_summary(instance, {"narrative": "队伍公开进入了旧宅。"})
+    narrative_notes.replace_key_facts(instance, [{"content": "旧宅正门已经锁上。"}])
     instance.private_log = {
         "p1": [{"round": 2, "text": "你独自闻到海水味。"}],
         "p2": [{"round": 2, "text": "另一玩家看见了密道。"}],

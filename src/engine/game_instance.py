@@ -137,13 +137,16 @@ def _same_adventure_binding(current: Any, candidate: Any) -> bool:
 RETIRED_MODULE_FACADES = frozenset({
     "combat_extension",
     "combat_extension_round_snapshots",
+    "confirmed_items",
     "dice_reveal_mode",
     "difficulty",
     "economy",
     "economy_reward_policy",
     "entry_point",
     "event_ledger",
+    "game_time",
     "gm_style_override",
+    "key_facts",
     "last_check",
     "last_checks",
     "luck_timeout_seconds",
@@ -152,8 +155,10 @@ RETIRED_MODULE_FACADES = frozenset({
     "round_checks_prepared",
     "ruleset_runtime",
     "ruleset_state",
+    "scene",
     "seed_code",
     "solo_mode",
+    "summary",
 })
 
 
@@ -463,48 +468,6 @@ class GameInstance:
     @pending_combat_results.setter
     def pending_combat_results(self, value: Any) -> None:
         round_presentation.replace_pending_combat_results(self, value)
-
-    @property
-    def summary(self) -> dict:
-        return narrative_notes.summary(self)
-
-    @summary.setter
-    def summary(self, value: Any) -> None:
-        narrative_notes.replace_summary(self, value)
-
-    @property
-    def key_facts(self) -> list:
-        return narrative_notes.key_facts(self)
-
-    @key_facts.setter
-    def key_facts(self, value: Any) -> None:
-        narrative_notes.replace_key_facts(self, value)
-
-    @property
-    def confirmed_items(self) -> list:
-        # CONFIRMED 标签累积，注入 LLM 上下文防重复讨论。
-        return narrative_notes.confirmed_items(self)
-
-    @confirmed_items.setter
-    def confirmed_items(self, value: Any) -> None:
-        narrative_notes.replace_confirmed_items(self, value)
-
-    @property
-    def scene(self) -> str:
-        """Free-text current scene label; stored in ``modules.narrative_notes``."""
-        return narrative_notes.scene(self)
-
-    @scene.setter
-    def scene(self, value: Any) -> None:
-        narrative_notes.replace_scene(self, value)
-
-    @property
-    def game_time(self) -> str:
-        return narrative_notes.game_time(self)
-
-    @game_time.setter
-    def game_time(self, value: Any) -> None:
-        narrative_notes.replace_game_time(self, value)
 
     @property
     def health_events(self) -> list[dict]:
@@ -881,7 +844,7 @@ class GameInstance:
         self.players = copy.deepcopy(snapshot["players"])
         legacy_combat.restore_from_transaction(self, snapshot)
         if "scene" in snapshot and snapshot["scene"] is not None:
-            self.scene = str(snapshot["scene"])
+            narrative_notes.replace_scene(self, str(snapshot["scene"]))
         if "last_activity" in snapshot:
             self.last_activity = str(snapshot["last_activity"])
         if "log" in snapshot:
@@ -963,22 +926,23 @@ class GameInstance:
         return True
 
     def set_summary_narrative(self, narrative: str) -> None:
-        self.summary["narrative"] = narrative
+        narrative_notes.summary(self)["narrative"] = narrative
 
     def set_quick_actions(self, actions: list[str]) -> None:
         self.quick_actions = [str(action) for action in actions if str(action).strip()]
 
     def set_key_facts(self, facts: list) -> None:
-        self.key_facts = list(facts)
+        narrative_notes.replace_key_facts(self, list(facts))
 
     def add_confirmed_items(self, items: list[str], *, limit: int = 50) -> None:
-        existing = set(self.confirmed_items)
+        confirmed = narrative_notes.confirmed_items(self)
+        existing = set(confirmed)
         for item in items:
             if item not in existing:
-                self.confirmed_items.append(item)
+                confirmed.append(item)
                 existing.add(item)
-        if len(self.confirmed_items) > limit:
-            del self.confirmed_items[:-limit]
+        if len(confirmed) > limit:
+            del confirmed[:-limit]
 
     def append_private_message(self, uid: str, message: dict) -> None:
         self.private_log.setdefault(uid, []).append(message)
