@@ -1,4 +1,4 @@
-"""Combat turn view (derived, read-only) and the stored combat_enemies slot."""
+"""Combat turn view (derived, read-only) and retirement of the legacy_combat slot."""
 
 from copy import deepcopy
 from dataclasses import fields
@@ -8,15 +8,16 @@ import pytest
 
 import src.rulesets.dnd2024  # noqa: F401  (registers the D&D combat view projector)
 from src.engine.game_instance import GameInstance
-from src.engine.module_state import ModuleStateError
+from src.engine.module_state import registered_module_states
 from src.engine.modules import legacy_combat as module
-from src.engine.modules import ruleset_runtime
+from src.engine.modules import round_safety, ruleset_runtime
 from src.migrations.instance import (
-    CURRENT_INSTANCE_SCHEMA_VERSION, _migrate_v32_to_v33, _migrate_v41_to_v42,
+    CURRENT_INSTANCE_SCHEMA_VERSION, _migrate_v41_to_v42, _migrate_v42_to_v43,
     migrate_game_state_payload,
 )
 
 DND_RUNTIME = "core:dnd2024"
+SLOT = "legacy_combat"
 VIEW_FIELDS = ("combat_state", "combat_active", "initiative_order", "initiative_current")
 NEUTRAL = {"combat_state": "none", "combat_active": False, "initiative_order": [], "initiative_current": 0}
 ENEMIES = [{"name": "guard", "hp": 12}]
@@ -27,6 +28,7 @@ LEGACY_VALUES = {
     "initiative_order": ["u1", "guard"],
     "initiative_current": 1,
 }
+ACTIVE_COMBAT = {"status": "active", "initiative": ["player:u1", "enemy:goblin"], "turn_index": 1}
 
 
 def new_instance(**kwargs):
@@ -43,9 +45,6 @@ def bind_dnd_combat(instance, combat=None):
         state["combat"] = combat
     ruleset_runtime.replace_state(instance, state)
     return instance
-
-
-ACTIVE_COMBAT = {"status": "active", "initiative": ["player:u1", "enemy:goblin"], "turn_index": 1}
 
 
 # ---------- derived view --------------------------------------------------
@@ -106,11 +105,11 @@ def test_view_follows_authority_changes_immediately():
     assert module.combat_active(instance) is False
 
 
-def test_view_ignores_the_legacy_combat_slot_entirely():
+def test_view_ignores_a_stale_legacy_combat_slot():
     instance = bind_dnd_combat(new_instance(), deepcopy(ACTIVE_COMBAT))
-    instance.modules[module.MODULE_NAME] = {"schema_version": 99, "opaque": True}
+    instance.modules[SLOT] = {"schema_version": 99, "opaque": True}
     assert module.combat_state(instance) == "active"
-    assert instance.modules[module.MODULE_NAME] == {"schema_version": 99, "opaque": True}
+    assert instance.modules[SLOT] == {"schema_version": 99, "opaque": True}
 
 
 # ---------- projector registry --------------------------------------------
@@ -154,7 +153,7 @@ def test_dnd_runtime_registers_its_projector_on_import():
     assert module.combat_projector_for(Dnd2024Runtime.runtime_id) is project_combat_view
 
 
-def test_bound_dnd_instance_reports_view_after_import_only(tmp_path):
+def test_bound_dnd_instance_reports_view_after_import_only():
     """A fresh interpreter that only imports the runtime package projects D&D combat."""
     import subprocess
     import sys
@@ -179,81 +178,22 @@ def test_bound_dnd_instance_reports_view_after_import_only(tmp_path):
     assert result.stdout.strip() == "active ['x']"
 
 
-# ---------- stored slot (schema 2: combat_enemies only) -------------------
+# ---------- no persisted slot ---------------------------------------------
 
 
-def test_fresh_slot_holds_only_enemies():
-    assert module.fresh() == {"schema_version": 2, "combat_enemies": []}
+def test_module_owns_no_state_slot():
+    assert SLOT not in {spec.name for spec in registered_module_states()}
     instance = new_instance()
-    assert instance.modules[module.MODULE_NAME] == module.fresh()
-
-
-@pytest.mark.parametrize("value", [None, {}, "x", 3])
-def test_ensure_repairs_invalid_enemies(value):
-    raw = {"schema_version": 2, "combat_enemies": value}
-    assert module.ensure(raw) is raw
-    assert raw == {"schema_version": 2, "combat_enemies": []}
-
-
-@pytest.mark.parametrize("raw", [None, [], 12, "bad"])
-def test_missing_or_malformed_slots_materialize_defaults(raw):
-    instance = new_instance(modules={module.MODULE_NAME: raw})
-    assert instance.modules[module.MODULE_NAME] == module.fresh()
-    assert module.ensure(raw) == module.fresh()
-    assert module.ensure({"schema_version": 2}) == module.fresh()
-
-
-def test_enemy_list_contents_are_preserved():
-    raw = {"schema_version": 2, "combat_enemies": [None, 4, "opaque", {"hp": 1}]}
-    enemies = raw["combat_enemies"]
-    assert module.ensure(raw) is raw
-    assert raw["combat_enemies"] is enemies
-
-
-@pytest.mark.parametrize("raw", [{"schema_version": 1, **LEGACY_VALUES}, {"schema_version": 99, "opaque": [1]}])
-def test_non_current_slot_is_preserved_and_access_fails_closed(raw):
-    raw = deepcopy(raw)
-    assert module.ensure(raw) is raw
-    instance = new_instance(modules={module.MODULE_NAME: raw})
-    before = deepcopy(instance.modules)
-    with pytest.raises(ModuleStateError):
-        module.combat_enemies(instance)
-    with pytest.raises(ModuleStateError):
-        module.replace_combat_enemies(instance, [])
-    with pytest.raises(ModuleStateError, match="unsupported legacy_combat module schema"):
-        module.require_writable(instance)
-    assert instance.modules == before
-    encoded = instance.to_dict()
-    assert encoded["modules"][module.MODULE_NAME] == raw
-
-
-def test_future_instance_version_is_rejected():
-    with pytest.raises(ValueError, match="unsupported game instance schema"):
-        GameInstance.from_dict({"instance_schema_version": CURRENT_INSTANCE_SCHEMA_VERSION + 1})
-
-
-def test_enemies_use_live_slot_and_roundtrip_has_one_storage_owner():
-    instance = new_instance()
-    other = new_instance()
-    module.replace_combat_enemies(instance, deepcopy(ENEMIES))
-    slot = instance.modules[module.MODULE_NAME]
-    assert slot is not other.modules[module.MODULE_NAME]
-    assert not LEGACY_VALUES.keys() & {item.name for item in fields(instance)}
-    assert not LEGACY_VALUES.keys() & vars(instance).keys()
-    assert module.combat_enemies(instance) is slot["combat_enemies"]
-    assert module.combat_enemies(instance) is not module.combat_enemies(other)
-    module.combat_enemies(instance)[0]["hp"] -= 3
-    encoded = instance.to_dict()
-    assert not LEGACY_VALUES.keys() & encoded.keys()
-    assert encoded["modules"][module.MODULE_NAME] == {"schema_version": 2, "combat_enemies": [{"name": "guard", "hp": 9}]}
-    restored = GameInstance.from_dict(deepcopy(encoded))
-    assert restored.modules[module.MODULE_NAME] == slot
-    instance.replace_persisted_state_from(restored)
-    assert instance.modules[module.MODULE_NAME] == slot
+    assert SLOT not in instance.modules
+    assert SLOT not in instance.to_dict().get("modules", {})
+    for name in ("MODULE_NAME", "SCHEMA_VERSION", "SPEC", "fresh", "ensure", "require_writable",
+                 "combat_enemies", "replace_combat_enemies", "restore_from_entity_snapshot", "reset"):
+        assert not hasattr(module, name), name
 
 
 def test_retired_combat_facades_are_not_game_instance_attributes():
     instance = new_instance()
+    assert not LEGACY_VALUES.keys() & {item.name for item in fields(instance)}
     for key in LEGACY_VALUES:
         assert not hasattr(GameInstance, key)
         assert not hasattr(instance, key)
@@ -264,42 +204,37 @@ def test_retired_combat_facades_are_not_game_instance_attributes():
     for name in ("begin", "end", "project_from_ruleset", "restore_from_transaction",
                  *(f"replace_{field}" for field in VIEW_FIELDS)):
         assert not hasattr(module, name)
-    assert instance.modules[module.MODULE_NAME] == module.fresh()
 
 
 # ---------- restore / reset -----------------------------------------------
 
 
-def test_entity_restore_only_touches_enemies_and_deepcopies():
+def test_entity_snapshot_records_view_and_restore_ignores_old_enemy_and_turn_keys():
     instance = bind_dnd_combat(new_instance(), deepcopy(ACTIVE_COMBAT))
-    module.replace_combat_enemies(instance, deepcopy(ENEMIES))
-    authority = deepcopy(ruleset_runtime.state(instance))
-    snapshot = {
-        "combat_enemies": [{"hp": 7}], "combat_state": "none",
-        "combat_active": False, "initiative_order": [], "initiative_current": 0,
+    instance.npcs = {"goblin": {"hp": 5}}
+    instance.capture_round_entity_snapshot()
+    snapshot = round_safety.round_entity_snapshot(instance)
+    assert "combat_enemies" not in snapshot
+    assert {key: snapshot[key] for key in VIEW_FIELDS} == {
+        "combat_state": "active", "combat_active": True,
+        "initiative_order": ACTIVE_COMBAT["initiative"], "initiative_current": 1,
     }
-    module.restore_from_entity_snapshot(instance, snapshot)
-    assert module.combat_enemies(instance) == [{"hp": 7}]
-    assert module.combat_enemies(instance) is not snapshot["combat_enemies"]
-    module.combat_enemies(instance)[0]["hp"] = 1
-    assert snapshot["combat_enemies"][0]["hp"] == 7
-    # The stored turn keys of the snapshot are informational; authority wins.
+    # An old persisted snapshot still carries the retired keys.
+    round_safety.replace_entity_snapshot(instance, {
+        "npcs": {"goblin": {"hp": 9}}, "combat_enemies": deepcopy(ENEMIES),
+        "combat_state": "none", "combat_active": False, "initiative_order": [], "initiative_current": 0,
+    })
+    authority = deepcopy(ruleset_runtime.state(instance))
+    assert instance.restore_round_entity_snapshot() is True
+    assert instance.npcs == {"goblin": {"hp": 9}}
+    assert SLOT not in instance.modules
     assert module.combat_state(instance) == "active"
     assert ruleset_runtime.state(instance) == authority
-    assert instance.modules[module.MODULE_NAME] == {"schema_version": 2, "combat_enemies": [{"hp": 1}]}
-
-
-def test_entity_restore_defaults_enemies_to_empty():
-    instance = new_instance()
-    module.replace_combat_enemies(instance, deepcopy(ENEMIES))
-    module.restore_from_entity_snapshot(instance, {})
-    assert instance.modules[module.MODULE_NAME] == module.fresh()
 
 
 def test_transaction_restore_takes_view_from_restored_ruleset_state():
     instance = bind_dnd_combat(new_instance(), deepcopy(ACTIVE_COMBAT))
     instance.players = {}
-    module.replace_combat_enemies(instance, deepcopy(ENEMIES))
     snapshot = {
         "ruleset_state": {"state_schema_version": 1, "combat": {"status": "ended", "initiative": [], "turn_index": 0}},
         "event_ledger": [],
@@ -310,7 +245,6 @@ def test_transaction_restore_takes_view_from_restored_ruleset_state():
     }
     instance.restore_ruleset_transaction(snapshot)
     assert module.view(instance) == NEUTRAL
-    assert module.combat_enemies(instance) == ENEMIES
     snapshot["ruleset_state"]["combat"] = deepcopy(ACTIVE_COMBAT)
     snapshot["combat_state"] = "none"
     instance.restore_ruleset_transaction(snapshot)
@@ -319,66 +253,72 @@ def test_transaction_restore_takes_view_from_restored_ruleset_state():
 
 
 @pytest.mark.asyncio
-async def test_reset_clears_enemies_preserving_list_identity_and_view_turns_neutral():
+async def test_reset_turns_the_view_neutral_without_a_slot():
     instance = bind_dnd_combat(new_instance(), deepcopy(ACTIVE_COMBAT))
-    module.replace_combat_enemies(instance, deepcopy(ENEMIES))
-    enemies = module.combat_enemies(instance)
     await instance.reset()
-    assert instance.modules[module.MODULE_NAME] == module.fresh()
-    assert module.combat_enemies(instance) is enemies
     assert module.view(instance) == NEUTRAL
+    assert SLOT not in instance.modules
 
 
 # ---------- migrations ----------------------------------------------------
 
 
-def test_v32_payload_migrates_through_to_enemies_only_slot():
+def test_v32_payload_migrates_through_to_no_slot():
     original = {"instance_schema_version": 32, **deepcopy(LEGACY_VALUES), "opaque": {"items": [1]}}
     before = deepcopy(original)
     migrated = migrate_game_state_payload(original)
     assert original == before
-    assert migrated["instance_schema_version"] == CURRENT_INSTANCE_SCHEMA_VERSION
-    assert migrated["modules"][module.MODULE_NAME] == {"schema_version": 2, "combat_enemies": ENEMIES}
+    assert migrated["instance_schema_version"] == CURRENT_INSTANCE_SCHEMA_VERSION == 43
+    assert SLOT not in migrated["modules"]
     assert not LEGACY_VALUES.keys() & migrated.keys()
     assert migrate_game_state_payload(migrated) == migrated
-    step = _migrate_v32_to_v33(deepcopy(original))
-    assert _migrate_v32_to_v33(deepcopy(step)) == step
-    migrated["modules"][module.MODULE_NAME]["combat_enemies"][0]["hp"] = 1
-    assert original == before
 
 
-def v41_payload(slot, **extra):
-    modules = {} if slot is None else {module.MODULE_NAME: slot}
+def payload_at(version, slot, **extra):
+    modules = {} if slot is None else {SLOT: slot}
     return {"game_key": ["test", "legacy-combat", "bot"], "state": "waiting",
-            "instance_schema_version": 41, "modules": modules, **extra}
+            "instance_schema_version": version, "modules": modules, **extra}
 
 
 def test_v41_to_v42_strips_stored_turn_copies_and_keeps_enemies():
-    original = v41_payload({"schema_version": 1, **deepcopy(LEGACY_VALUES)})
-    before = deepcopy(original)
-    migrated = migrate_game_state_payload(original)
-    assert original == before
-    assert migrated["instance_schema_version"] == 42 == CURRENT_INSTANCE_SCHEMA_VERSION
-    assert migrated["modules"][module.MODULE_NAME] == {"schema_version": 2, "combat_enemies": ENEMIES}
-    assert migrate_game_state_payload(migrated) == migrated
+    original = payload_at(41, {"schema_version": 1, **deepcopy(LEGACY_VALUES)})
     step = _migrate_v41_to_v42(deepcopy(original))
+    assert step["modules"][SLOT] == {"schema_version": 2, "combat_enemies": ENEMIES}
+    assert step["instance_schema_version"] == 42
     assert _migrate_v41_to_v42(deepcopy(step)) == step
 
 
-@pytest.mark.parametrize("slot,expected", [
-    (None, {"schema_version": 2, "combat_enemies": []}),
-    ("corrupt", {"schema_version": 2, "combat_enemies": []}),
-    ({"schema_version": 1}, {"schema_version": 2, "combat_enemies": []}),
-    ({"schema_version": 1, "combat_enemies": {"bad": 1}}, {"schema_version": 2, "combat_enemies": []}),
-    ({"schema_version": 2, "combat_enemies": [1]}, {"schema_version": 2, "combat_enemies": [1]}),
-    ({"schema_version": 99, "opaque": [1]}, {"schema_version": 99, "opaque": [1]}),
+@pytest.mark.parametrize("version", [41, 42])
+@pytest.mark.parametrize("slot", [
+    None, "corrupt", {"schema_version": 1, **LEGACY_VALUES},
+    {"schema_version": 2, "combat_enemies": ENEMIES}, {"schema_version": 99, "opaque": [1]},
 ])
-def test_v41_to_v42_slot_shapes(slot, expected):
-    migrated = migrate_game_state_payload(v41_payload(deepcopy(slot)))
-    assert migrated["modules"][module.MODULE_NAME] == expected
+def test_old_saves_drop_the_slot_whatever_its_shape(version, slot):
+    original = payload_at(version, deepcopy(slot))
+    before = deepcopy(original)
+    migrated = migrate_game_state_payload(original)
+    assert original == before
+    assert migrated["instance_schema_version"] == 43
+    assert SLOT not in migrated["modules"]
+    assert migrate_game_state_payload(migrated) == migrated
 
 
-def test_v41_dnd_save_with_active_stored_combat_reads_view_from_ruleset_state():
+def test_v42_to_v43_drops_enemies_without_creating_npcs():
+    npcs = {"keeper": {"name": "Keeper", "hp": 4}}
+    original = payload_at(42, {"schema_version": 2, "combat_enemies": [
+        {"name": "Goblin", "hp": 7}, {"actor_id": "enemy:1", "character_name": "Orc", "hp": 9},
+    ]}, npcs=deepcopy(npcs))
+    step = _migrate_v42_to_v43(deepcopy(original))
+    assert SLOT not in step["modules"]
+    assert step["npcs"] == npcs
+    assert _migrate_v42_to_v43(deepcopy(step)) == step
+    restored = GameInstance.from_dict(original)
+    assert restored.npcs == npcs
+    assert SLOT not in restored.modules
+    assert SLOT not in restored.to_dict()["modules"]
+
+
+def test_old_dnd_save_with_active_stored_combat_reads_view_from_ruleset_state():
     ruleset_slot = {
         "schema_version": 1,
         "binding": {"id": DND_RUNTIME, "version": 1, "content_version": "test", "state_schema_version": 1},
@@ -386,17 +326,17 @@ def test_v41_dnd_save_with_active_stored_combat_reads_view_from_ruleset_state():
         "event_ledger": [],
     }
     # The stored copies disagree with the authority on purpose.
-    payload = v41_payload({"schema_version": 1, **deepcopy(LEGACY_VALUES)})
+    payload = payload_at(41, {"schema_version": 1, **deepcopy(LEGACY_VALUES)})
     payload["modules"]["ruleset_runtime"] = ruleset_slot
     restored = GameInstance.from_dict(payload)
-    assert restored.modules[module.MODULE_NAME] == {"schema_version": 2, "combat_enemies": ENEMIES}
+    assert SLOT not in restored.modules
     assert module.view(restored) == {
         "combat_state": "active", "combat_active": True,
         "initiative_order": ["player:u9"], "initiative_current": 0,
     }
 
 
-def test_v41_non_dnd_save_with_active_stored_combat_reads_neutral():
-    restored = GameInstance.from_dict(v41_payload({"schema_version": 1, **deepcopy(LEGACY_VALUES)}))
+def test_old_non_dnd_save_with_active_stored_combat_reads_neutral():
+    restored = GameInstance.from_dict(payload_at(41, {"schema_version": 1, **deepcopy(LEGACY_VALUES)}))
     assert module.view(restored) == NEUTRAL
-    assert module.combat_enemies(restored) == ENEMIES
+    assert SLOT not in restored.modules

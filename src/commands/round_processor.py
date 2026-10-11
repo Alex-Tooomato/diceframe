@@ -533,7 +533,6 @@ class RoundProcessor:
         checks.require_writable(instance)
         round_safety.require_writable(instance)
         adventure_runtime_state.require_writable(instance)
-        legacy_combat.require_writable(instance)
         ruleset_runtime.require_writable(instance)
         narrative_notes.require_writable(instance)
         if has_blocking_economy_decision(instance):
@@ -938,7 +937,6 @@ class RoundProcessor:
         checks.require_writable(instance)
         round_safety.require_writable(instance)
         adventure_runtime_state.require_writable(instance)
-        legacy_combat.require_writable(instance)
         ruleset_runtime.require_writable(instance)
         narrative_notes.require_writable(instance)
         expected_run_id = instance.run_id

@@ -90,7 +90,6 @@ class GameContextView(TypedDict, total=False):
     away_players: list[str]
     npcs: dict[str, OpaqueState]
     combat_state: str
-    combat_enemies: list[OpaqueState]
     initiative_order: list[str]
     initiative_current: int
     quick_actions: list[str]

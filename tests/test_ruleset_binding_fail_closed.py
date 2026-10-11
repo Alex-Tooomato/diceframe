@@ -13,7 +13,7 @@ from src.rules.rule_system import RuleSystem
 from src.rulesets.builtin import build_default_ruleset_registry
 from src.rulesets.dnd2024 import advancement_access
 from src.webui.services import ruleset_advancement, ruleset_rest
-from tests.test_legacy_combat_transaction_preflight import live_state
+from tests.test_ruleset_runtime_transaction_preflight import live_state
 
 
 RUNTIME_ID = "core:dnd2024"

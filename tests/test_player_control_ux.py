@@ -37,7 +37,6 @@ from typing import Any
 
 import pytest
 
-from src.engine.modules import legacy_combat
 from src.commands.ai_player import AI_ACTION_SOURCE
 from src.engine.game_instance import GameInstance, GameState
 from src.engine.player_control import (
@@ -423,7 +422,7 @@ async def test_gm_switch_changes_only_the_control_record(web_api) -> None:
     uid = uids[1]
     instance.players[uid]["character_sheet"]["hp"] = 7
     instance.ready_players.add(uid)
-    legacy_combat.replace_combat_enemies(instance, [{"actor_id": "enemy:1", "hp": 9}])
+    instance.npcs = {"orc": {"name": "Orc", "hp": 9}}
     sheet_before = dict(instance.players[uid]["character_sheet"])
     sheet_name_before = instance.players[uid]["character_name"]
     player_keys_before = set(instance.players[uid])
@@ -433,7 +432,7 @@ async def test_gm_switch_changes_only_the_control_record(web_api) -> None:
     assert dict(instance.players[uid]["character_sheet"]) == sheet_before
     assert instance.players[uid]["character_sheet"]["hp"] == 7
     assert instance.ready_players == {uid}
-    assert legacy_combat.combat_enemies(instance) == [{"actor_id": "enemy:1", "hp": 9}]
+    assert instance.npcs == {"orc": {"name": "Orc", "hp": 9}}
     # 席位本身没有被重建：键集合不变，角色名不变。
     assert set(instance.players[uid]) == player_keys_before
     assert instance.players[uid]["character_name"] == sheet_name_before

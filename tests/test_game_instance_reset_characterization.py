@@ -86,7 +86,6 @@ def _make_populated_instance() -> GameInstance:
     instance.pending_actions = [{"user_id": "u2", "text": "pending"}]
     instance.ready_players = {"u1"}
     instance.away_players = {"u2"}
-    legacy_combat.replace_combat_enemies(instance, [{"hp": 3}])
     room_access.replace_max_players(instance, 9)
     instance.gm_uid = "gm1"
     room_access.replace_player_access_open(instance, False)
@@ -266,7 +265,6 @@ async def test_reset_clears_runtime_and_narrative_state() -> None:
     assert instance.pending_actions == []
     assert instance.ready_players == set()
     assert legacy_combat.combat_active(instance) is False
-    assert legacy_combat.combat_enemies(instance) == []
     assert legacy_combat.combat_state(instance) == "none"
     assert legacy_combat.initiative_order(instance) == []
     assert legacy_combat.initiative_current(instance) == 0

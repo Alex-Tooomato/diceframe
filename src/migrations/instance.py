@@ -28,7 +28,7 @@ from src.password_hashing import hash_password
 
 logger = logging.getLogger("trpg")
 
-CURRENT_INSTANCE_SCHEMA_VERSION = 42
+CURRENT_INSTANCE_SCHEMA_VERSION = 43
 
 # 内置 freeform_coc 在 Currency Model V2 中把 base_unit 从「美元」升级为
 # 「美分」（1 amount = 1 美分），存量 CoC 存档的所有 canonical 金额必须 ×100
@@ -1004,6 +1004,22 @@ def _migrate_v41_to_v42(payload: dict[str, Any]) -> dict[str, Any]:
     return payload
 
 
+def _migrate_v42_to_v43(payload: dict[str, Any]) -> dict[str, Any]:
+    """Retire the legacy_combat slot and its generic ``combat_enemies``.
+
+    No production path ever populated ``combat_enemies``; the combat turn
+    fields are a view derived from ruleset authority. The slot is dropped
+    whatever its schema or contents. Enemies are never guessed into NPCs.
+    """
+    modules = payload.get("modules")
+    if not isinstance(modules, dict):
+        modules = {}
+    modules.pop("legacy_combat", None)
+    payload["modules"] = modules
+    payload["instance_schema_version"] = 43
+    return payload
+
+
 def migrate_game_state_payload(data: Mapping[str, Any]) -> dict[str, Any]:
     """Apply sequential, idempotent migrations to one persisted save payload."""
 
@@ -1134,6 +1150,9 @@ def migrate_game_state_payload(data: Mapping[str, Any]) -> dict[str, Any]:
     if version == 41:
         payload = _migrate_v41_to_v42(payload)
         version = 42
+    if version == 42:
+        payload = _migrate_v42_to_v43(payload)
+        version = 43
     payload["instance_schema_version"] = version
     return payload
 

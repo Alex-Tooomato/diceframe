@@ -125,7 +125,7 @@ def abort_round_processing_locked(instance: GameInstance) -> bool:
     if instance.state != GameState.ACTIVE_JUDGMENT:
         return False
     from src.engine.modules import (
-        adventure_runtime_state, checks, legacy_combat, round_safety, ruleset_runtime, session_stats,
+        adventure_runtime_state, checks, round_safety, ruleset_runtime, session_stats,
     )
     from src.engine.modules import combat_extension_state
 
@@ -133,7 +133,6 @@ def abort_round_processing_locked(instance: GameInstance) -> bool:
     checks.require_writable(instance)
     round_safety.require_writable(instance)
     adventure_runtime_state.require_writable(instance)
-    legacy_combat.require_writable(instance)
     ruleset_runtime.require_writable(instance)
     restored = False
     if round_safety.round_start_snapshot(instance):
@@ -146,7 +145,7 @@ def abort_round_processing_locked(instance: GameInstance) -> bool:
         if not instance.restore_combat_extension_snapshot(combat_snapshot):
             combat_extension_state.replace_current(instance, {})
         restored = True
-    # 旧版战斗路径直接改写的实体（npcs/combat_enemies/战斗状态）。
+    # 旧版战斗路径直接改写的实体（npcs/world_state/adventure 进度）。
     entities_restored = instance.restore_round_entity_snapshot()
     restored = restored or entities_restored
     if restored:
