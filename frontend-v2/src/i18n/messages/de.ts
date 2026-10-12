@@ -2518,6 +2518,7 @@ export const de = {
     SEAT_TOKEN_INVALID: 'Der Platz-Schlüssel ist ungültig oder wurde ersetzt. Bitte die SL um einen neuen Link.',
     SEAT_TOKEN_EXISTS: 'Dieser Platz hat bereits einen Schlüssel. Nutze den Link deiner SL.',
     SEAT_NOT_BOUND: 'Dieses Gerät ist keinem Platz in diesem Spiel zugeordnet.',
+    PLAYER_ACCESS_CLOSED: 'Die SL hat den Spielerzugang zu diesem Spiel geschlossen. Bitte die SL, ihn wieder zu öffnen, und versuche es dann erneut.',
     hub_connection_unavailable: 'DiceFrame Hub war nicht erreichbar. Prüfe dein Netzwerk und versuche es erneut.',
     game_not_found: 'Spiel nicht gefunden',
     player_not_in_game: 'Nicht Teil dieses Spiels — über den Einladungslink beitreten',

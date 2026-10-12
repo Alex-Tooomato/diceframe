@@ -21,7 +21,8 @@ from src.llm.parser import sanitize_narration
 from src.webui.connection_pool import ConnectionPool
 from src.webui.routes._common import MAX_ACTION_CHARS, _get_api
 from src.webui.services.turns import economy_decision_pending_payload
-from src.webui.sse_ticket import SSE_GRANT_KEY, SseGrant
+from src.webui.access_control import ACCESS_CONTROL_KEY
+from src.webui.sse_ticket import SSE_GRANT_KEY, OwnerGrant, SseGrant
 
 logger = logging.getLogger("trpg")
 
@@ -190,7 +191,8 @@ async def sse_play(request: web.Request) -> web.StreamResponse:
 
     # Credentials are checked once, when the stream opens; re-check what it was
     # granted under every tick so rotation, removal, a room password change or
-    # a closed player entrance also cuts off a stream that is already open.
+    # a closed player entrance also cuts off a stream that is already open
+    # (and, for the owner, a revoked pairing or a changed access password).
     # A stream opened with headers instead of a ticket is granted the same way.
     if request.get("sse_ticket_authenticated"):
         grant = request.get(SSE_GRANT_KEY)
@@ -237,7 +239,7 @@ async def sse_play(request: web.Request) -> web.StreamResponse:
             if not current:
                 break
             inst = current
-            revoked = _revocation(inst, user_id, grant)
+            revoked = _revocation(request, inst, user_id, grant)
             if revoked is not None:
                 data = json.dumps(revoked, ensure_ascii=False)
                 await resp.write(f"event: revoked\ndata: {data}\n\n".encode())
@@ -382,21 +384,27 @@ def _room_password_marker(inst) -> str:
     return str(room_access.room_password_hash(inst) or "")
 
 
-def _ticket_grant(request: web.Request, inst, user_id: str) -> SseGrant | None:
-    """Snapshot the credentials a share-link stream rests on.
+def _owner_grant(request: web.Request) -> OwnerGrant | None:
+    access = request.get(ACCESS_CONTROL_KEY)
+    return access.owner_grant(request) if access is not None else None
 
-    None for the owner and for a request outside a share link (no access
-    password, local session), which has no share credential to lose.
+
+def _ticket_grant(request: web.Request, inst, user_id: str) -> SseGrant | OwnerGrant | None:
+    """Snapshot the credentials a stream rests on.
+
+    A share-link stream rests on its seat credential and the room password.
+    The owner, and a request outside a share link (a local session on a
+    server without an access password), rest on the owner credential.
     """
     if request.get("owner_authenticated"):
-        return None
+        return _owner_grant(request)
     share_request = bool(
         request.get("seat_token_uid")
         or request.query.get("user")
         or request.query.get("share", "") in {"1", "true", "yes"}
     )
     if not share_request:
-        return None
+        return _owner_grant(request)
     seat_credential = ""
     if request.get("seat_token_uid") == user_id:
         seat_credential = room_access.seat_credential_hash(inst, user_id)
@@ -406,12 +414,17 @@ def _ticket_grant(request: web.Request, inst, user_id: str) -> SseGrant | None:
     )
 
 
-def _revocation(inst, user_id: str, grant: SseGrant | None) -> dict | None:
+def _revocation(
+    request: web.Request, inst, user_id: str, grant: SseGrant | OwnerGrant | None,
+) -> dict | None:
     """Why an open stream may no longer serve ``user_id`` (None while it may)."""
     if user_id not in inst.players:
         return {"error_code": "SEAT_TOKEN_INVALID", "error": "席位已被移除"}
     if grant is None:
         return None
+    if isinstance(grant, OwnerGrant):
+        access = request.get(ACCESS_CONTROL_KEY)
+        return access.owner_revocation(request.app, grant) if access is not None else None
     if not room_access.player_access_open(inst):
         return {"error_code": "PLAYER_ACCESS_CLOSED", "error": "本局玩家入口已关闭"}
     if grant.seat_credential and room_access.seat_credential_hash(inst, user_id) != grant.seat_credential:

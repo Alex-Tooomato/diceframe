@@ -23,7 +23,23 @@ class SseGrant:
     room_password_hash: str = ""
 
 
-#: The grant a ticket-opened stream was issued under (None for the owner).
+@dataclass(frozen=True)
+class OwnerGrant:
+    """The owner credential a stream was opened with; it must stay valid.
+
+    ``paired_device_id`` is the paired device whose token authenticated the
+    owner ('' for the access password, or a server without one).
+    ``access_password_hash`` is the stored access password hash at that time
+    ('' when none was configured). A device-token owner is bound to its
+    pairing only: changing the access password keeps pairings.
+    """
+
+    paired_device_id: str = ""
+    access_password_hash: str = ""
+
+
+#: The grant a ticket-opened stream was issued under (None for a stream with
+#: no credential to re-check, e.g. one served without the access middleware).
 SSE_GRANT_KEY = web.RequestKey("sse_grant", object)
 
 
@@ -32,7 +48,7 @@ class SseTicket:
     game_key: str
     user_id: str
     expires_at: float
-    grant: SseGrant | None = None
+    grant: SseGrant | OwnerGrant | None = None
 
 
 class SseTicketStore:
@@ -54,7 +70,7 @@ class SseTicketStore:
             self._tickets.pop(oldest, None)
 
     def issue(
-        self, game_key: str, user_id: str, grant: SseGrant | None = None,
+        self, game_key: str, user_id: str, grant: SseGrant | OwnerGrant | None = None,
     ) -> tuple[str, int]:
         now = time.monotonic()
         self._purge(now)

@@ -2523,6 +2523,7 @@ export const en = {
     SEAT_TOKEN_INVALID: 'This seat credential is invalid or was replaced. Ask your GM for a new link.',
     SEAT_TOKEN_EXISTS: 'This seat already has a credential. Use the link from your GM.',
     SEAT_NOT_BOUND: 'This device is not bound to a seat in this game.',
+    PLAYER_ACCESS_CLOSED: 'The GM has closed the player entrance for this game. Ask the GM to reopen it, then retry.',
     hub_connection_unavailable: 'Could not reach DiceFrame Hub. Check your network and try again.',
     game_not_found: 'Game not found',
     player_not_in_game: 'Not part of this game — join via the invite link',

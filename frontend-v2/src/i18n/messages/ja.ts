@@ -2521,6 +2521,7 @@ export const ja = {
     SEAT_TOKEN_INVALID: '席の認証情報が無効か、更新されています。GM に新しいリンクをもらってください',
     SEAT_TOKEN_EXISTS: 'この席にはすでに認証情報があります。GM のリンクを使ってください',
     SEAT_NOT_BOUND: 'この端末はこの卓の席に紐づいていません',
+    PLAYER_ACCESS_CLOSED: 'GM がこのゲームのプレイヤー入場を閉じました。GM に再開してもらってから再試行してください。',
     hub_connection_unavailable: 'DiceFrame Hub に接続できません。ネットワークを確認して再試行してください。',
     game_not_found: 'ゲームが見つかりません',
     player_not_in_game: 'この卓に参加していません。招待リンクから参加してください',
