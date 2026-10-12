@@ -1193,7 +1193,10 @@ onBeforeUnmount(() => {
       </div>
     </header>
 
-    <div v-if="game.error.value" class="error-banner">{{ game.error.value }}</div>
+    <div v-if="game.error.value" class="error-banner" :role="game.accessClosed.value ? 'alert' : undefined">
+      {{ game.error.value }}
+      <button v-if="game.accessClosed.value" class="play-secondary-action" @click="game.retryAccess()">{{ t('retry') }}</button>
+    </div>
     <div v-else-if="!game.detail.value" class="play-loading">
       <span class="spinner"></span>
       <h2>{{ t('enteringTable') }}</h2>

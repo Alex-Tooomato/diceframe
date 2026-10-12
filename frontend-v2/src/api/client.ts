@@ -34,6 +34,18 @@ export function isNotFoundError(error: unknown): boolean {
   return error instanceof ApiError && error.status === 404
 }
 
+/**
+ * The GM closed this game's player entrance. The server reports it as
+ * PLAYER_ACCESS_CLOSED; a P2P host's bridge rejects with the bare code
+ * `player_access_closed`.
+ */
+export function isPlayerAccessClosedError(error: unknown): boolean {
+  if (error instanceof ApiError) {
+    return error.code === 'PLAYER_ACCESS_CLOSED' || error.code === 'player_access_closed'
+  }
+  return error instanceof Error && error.message === 'player_access_closed'
+}
+
 export function errorCodeOf(data: unknown): string | undefined {
   if (data && typeof data === 'object' && 'error_code' in data) {
     const code = (data as { error_code?: unknown }).error_code

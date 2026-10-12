@@ -1,7 +1,8 @@
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import type { Ref } from 'vue'
 import { useRoute } from 'vue-router'
-import { api, gameEventSource, hasAccessToken, isNotFoundError } from '@/api/client'
+import { api, gameEventSource, hasAccessToken, isNotFoundError, isPlayerAccessClosedError } from '@/api/client'
+import { i18n } from '@/i18n'
 import type { CharacterListResponse, GameDetail, GameLogResponse, LogEntry, CheckRevealRecord, LorebookResponse, LoreEntry, MapData, Player, PrivateLogResponse, PrivateMessage, TableTalkExchange, TableTalkResponse } from '@/api/types'
 import type { LoreKeywords } from '@/utils/renderer'
 import { clearCurrentGame, gameFromQuery, queryString, readCurrentGame, rememberCurrentGame } from '@/stores/gameContext'
@@ -33,6 +34,8 @@ export function useGame(){
   const rulesetStateSignal = ref(0)
   const privateMessages = ref<PrivateMessage[]>([]), tableTalk = ref<TableTalkExchange[]>([]), map = ref<MapData>({locations:[]}), lore = ref<LoreKeywords>({}), loreEntries = ref<LoreEntry[]>([]), loading=ref(false), error=ref('')
   const checkReveals = ref<Record<string, CheckRevealRecord>>({}), diceRevealMode = ref<'auto'|'click'>('click')
+  // The GM closed the player entrance: stop reconnecting/polling until the player retries.
+  const accessClosed = ref(false)
   let source:EventSource|null=null
   let unsubscribePeerEvents:(()=>void)|null=null
   let pollTimer:number|undefined
@@ -47,7 +50,10 @@ export function useGame(){
   const player = computed(()=>players.value.find(p=>p.user_id===actorId.value) || players.value[0])
 
   function rememberGame(key: string) {
-    if (currentGame.value !== key) eventCursor = ''
+    if (currentGame.value !== key) {
+      eventCursor = ''
+      accessClosed.value = false
+    }
     currentGame.value = key
     rememberCurrentGame(key, detail.value?.world_name || '')
   }
@@ -115,6 +121,38 @@ export function useGame(){
     }
   }
 
+  function stopLiveUpdates() {
+    connectVersion++
+    source?.close()
+    source = null
+    unsubscribePeerEvents?.()
+    unsubscribePeerEvents = null
+    clearRefreshTimer()
+    if (pollTimer) {
+      clearInterval(pollTimer)
+      pollTimer = undefined
+    }
+    if (reconnectTimer) {
+      clearTimeout(reconnectTimer)
+      reconnectTimer = undefined
+    }
+  }
+
+  /** Retrying against a closed entrance only repeats the same 403; wait for the player. */
+  function closeForPlayerAccess() {
+    accessClosed.value = true
+    stopLiveUpdates()
+    liveNarration.value = ''
+    error.value = i18n.global.t('apiErrors.PLAYER_ACCESS_CLOSED')
+  }
+
+  async function retryAccess() {
+    accessClosed.value = false
+    error.value = ''
+    await refresh()
+    if (!accessClosed.value) await connect()
+  }
+
   async function refresh(silent=false){
     const gameKey = currentGame.value
     if(!gameKey)return
@@ -171,6 +209,10 @@ export function useGame(){
         clearMissingGame(gameKey)
         return
       }
+      if (isPlayerAccessClosedError(e)) {
+        if (currentGame.value === gameKey) closeForPlayerAccess()
+        return
+      }
       if(!silent || !detail.value) error.value=errorMessage(e)
     }finally{if(!silent)loading.value=false}
   }
@@ -182,7 +224,7 @@ export function useGame(){
     if(reconnectTimer){clearTimeout(reconnectTimer);reconnectTimer=undefined}
     if(pollTimer){clearInterval(pollTimer);pollTimer=undefined}
     const gameKey=currentGame.value
-    if(!gameKey)return
+    if(!gameKey || accessClosed.value)return
     const peerGame = activePeerGameClient()
     if (peerGame?.gameKey === gameKey) {
       unsubscribePeerEvents = peerGame.subscribe(scheduleSilentRefresh)
@@ -214,13 +256,26 @@ export function useGame(){
         }
         scheduleSilentRefresh()
       }
+      next.addEventListener('revoked', (ev: MessageEvent) => {
+        if (source !== next) return
+        let payload: { error_code?: string } | null = null
+        try { payload = JSON.parse(ev.data) } catch { payload = null }
+        // Other revocations reconnect as usual: the next ticket request is
+        // refused and the client sends the player to re-join or log in.
+        if (payload?.error_code === 'PLAYER_ACCESS_CLOSED') closeForPlayerAccess()
+      })
       source.onerror=()=>{
+        if(source!==next)return
         source?.close(); source=null
         if(!pollTimer)pollTimer=window.setInterval(() => void refresh(true),30000)
         if(!reconnectTimer)reconnectTimer=window.setTimeout(()=>{reconnectTimer=undefined;void connect()},5000)
       }
-    }catch{
+    }catch(e:unknown){
       if(version!==connectVersion)return
+      if(isPlayerAccessClosedError(e)){
+        if(currentGame.value===gameKey)closeForPlayerAccess()
+        return
+      }
       if(!pollTimer)pollTimer=window.setInterval(() => void refresh(true),30000)
       if(!reconnectTimer)reconnectTimer=window.setTimeout(()=>{reconnectTimer=undefined;void connect()},5000)
     }
@@ -242,6 +297,7 @@ export function useGame(){
     if (nextUser === userId.value) return
     userId.value = nextUser
     eventCursor = ''
+    accessClosed.value = false
     await refresh(true)
     await connect()
   })
@@ -249,5 +305,5 @@ export function useGame(){
   // 须按最新条目的 round 判断，否则“GM 思考中”在正式输出落地后残留。
   watch(() => log.value[log.value.length - 1]?.round, (next, prev) => { if (next !== prev) liveNarration.value = '' })
   onBeforeUnmount(()=>{connectVersion++;source?.close();unsubscribePeerEvents?.();revokeMapBackgroundAsset(map.value);clearRefreshTimer();if(pollTimer)clearInterval(pollTimer);if(reconnectTimer)clearTimeout(reconnectTimer)})
-  return {currentGame,userId,actorId,detail,players,player,log,privateMessages,tableTalk,map,lore,loreEntries,loading,error,isGm,refresh,connect,selectGame,liveNarration,rulesetStateSignal,checkReveals,diceRevealMode}
+  return {currentGame,userId,actorId,detail,players,player,log,privateMessages,tableTalk,map,lore,loreEntries,loading,error,accessClosed,isGm,refresh,connect,retryAccess,selectGame,liveNarration,rulesetStateSignal,checkReveals,diceRevealMode}
 }

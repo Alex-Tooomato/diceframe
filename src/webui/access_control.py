@@ -23,6 +23,14 @@ SEAT_TOKEN_HEADER = "X-Seat-Token"
 # access logs. (SSE needs no room token; it authenticates with a ticket.)
 ROOM_TOKEN_HEADER = "X-Room-Token"
 
+#: A share request to a game whose player entrance the GM closed. Clients key
+#: on ``error_code``; ``error`` stays for older clients.
+PLAYER_ACCESS_CLOSED_BODY = {
+    "ok": False,
+    "error_code": "PLAYER_ACCESS_CLOSED",
+    "error": "本局玩家入口已关闭",
+}
+
 #: Id of the paired device whose token authenticated the request ('' for the
 #: access password or no owner credential). Audit only, never authorization.
 PAIRED_DEVICE_ID_KEY = web.RequestKey("paired_device_id", str)
@@ -125,7 +133,7 @@ class WebAccessControl:
         if share_uid and (request.query.get("user") or request.get("seat_token_uid")):
             if not owner_authenticated and self.player_access_is_closed(request):
                 return web.json_response(
-                    {"ok": False, "error": "本局玩家入口已关闭"},
+                    PLAYER_ACCESS_CLOSED_BODY,
                     status=403,
                 )
             if not owner_authenticated and self.share_uid_is_gm_seat(request, share_uid):
@@ -167,7 +175,7 @@ class WebAccessControl:
                 if share_active:
                     if self.player_access_is_closed(request):
                         return web.json_response(
-                            {"ok": False, "error": "本局玩家入口已关闭"},
+                            PLAYER_ACCESS_CLOSED_BODY,
                             status=403,
                         )
                     if self.share_uid_is_gm_seat(request, share_uid):
@@ -239,7 +247,7 @@ class WebAccessControl:
             "gm_uid"
         ):
             return web.json_response(
-                {"ok": False, "error": "本局玩家入口已关闭"},
+                PLAYER_ACCESS_CLOSED_BODY,
                 status=403,
             )
         request["user_id"] = actor

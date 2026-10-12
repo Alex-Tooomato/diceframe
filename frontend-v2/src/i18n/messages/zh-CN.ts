@@ -2523,6 +2523,7 @@ export const zhCN = {
     SEAT_TOKEN_INVALID: '席位凭证无效或已失效，请向 GM 重新获取链接',
     SEAT_TOKEN_EXISTS: '该席位已有凭证，请使用 GM 发出的链接',
     SEAT_NOT_BOUND: '当前设备没有绑定本局席位',
+    PLAYER_ACCESS_CLOSED: 'GM 已关闭本局玩家入口。请联系 GM 重新开放后再重试。',
     hub_connection_unavailable: '暂时无法连接 DiceFrame Hub，请检查网络后重试',
     game_not_found: '游戏不存在',
     player_not_in_game: '未加入本局，请通过邀请链接加入',
