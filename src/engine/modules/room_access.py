@@ -340,6 +340,17 @@ def prune_seat_credentials(instance: Any) -> list[str]:
     return departed
 
 
+def seat_credential_hash(instance: Any, uid: str) -> str:
+    """The stored digest of a seat's current credential ('' if it has none).
+
+    Rotation and removal both change it, so a holder can later confirm the
+    credential it was granted under is still the live one.
+    """
+    record = get_module_state(instance, MODULE_NAME)["seat_credentials"].get(str(uid or ""))
+    stored = record.get("hash") if isinstance(record, dict) else None
+    return stored if isinstance(stored, str) else ""
+
+
 def has_seat_token(instance: Any, uid: str) -> bool:
     return str(uid or "") in get_module_state(instance, MODULE_NAME)["seat_credentials"]
 

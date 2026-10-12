@@ -13,6 +13,7 @@ from src.webui.access_password import (
 )
 from src.engine.modules import room_access
 from src.webui.device_tokens import DEVICE_TOKENS_KEY
+from src.webui.sse_ticket import SSE_GRANT_KEY
 from src.webui.services._common import canonical_game_key
 from src.webui.routes.auth import ACCESS_PASSWORD_CONFIGURED_KEY
 
@@ -65,6 +66,7 @@ class WebAccessControl:
                 )
             request["user_id"] = ticket.user_id
             request["sse_ticket_authenticated"] = True
+            request[SSE_GRANT_KEY] = ticket.grant
             return await handler(request)
 
         token = normalize_access_password(self.state.get("access_token"))
