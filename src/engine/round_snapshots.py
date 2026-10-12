@@ -4,7 +4,7 @@
 
 - 玩家可回滚状态快照（``snapshot_players`` / ``restore_players``）；
 - 通用战斗扩展的按回合快照（capture / current / restore / discard）；
-- 判定入口的旧版战斗实体快照（npcs / 战斗视图记录 / world_state）；
+- 判定入口的实体快照（npcs / 战斗视图记录 / world_state / adventure 进度 / 规则运行时权威）；
 - 快照恢复后的过期战斗结算缓存清理（``drop_stale_combat_caches``）。
 
 边界：
@@ -18,6 +18,7 @@
 from __future__ import annotations
 
 import copy
+import logging
 from collections.abc import Mapping
 from typing import TYPE_CHECKING, Any
 
@@ -27,6 +28,8 @@ from src.engine.world_state import ensure_world_state
 
 if TYPE_CHECKING:
     from src.engine.game_instance import GameInstance
+
+logger = logging.getLogger("trpg")
 
 
 def snapshot_players(instance: GameInstance) -> PlayerRollbackSnapshot:
@@ -379,6 +382,9 @@ def capture_round_entity_snapshot(instance: GameInstance) -> None:
         # （FIX-04 §6.7），所以"本轮改过的东西"必须包含它——否则回滚会把世界
         # 退回去、把进度留在被丢弃的分支上。
         "adventure_progress": copy.deepcopy(adventure_runtime_state.progress(instance)),
+        # 规则运行时权威（D&D 遭遇、canonical 角色、event_ledger）在提交点前就会被
+        # 战斗信号 / Director 自动化写入，必须与世界真相一起回到判定入口（#511）。
+        "ruleset_runtime": ruleset_runtime.round_entry_snapshot(instance),
     })
 
 
@@ -401,6 +407,10 @@ def restore_round_entity_snapshot(instance: GameInstance) -> bool:
         adventure_runtime_state.replace_progress(
             instance, copy.deepcopy(snapshot.get("adventure_progress") or {}),
         )
+    # 旧快照没有该键：保持现状（与 adventure_progress 的兼容方式一致）。
+    if "ruleset_runtime" in snapshot:
+        if not ruleset_runtime.restore_round_entry(instance, snapshot.get("ruleset_runtime")):
+            logger.warning("判定入口 event_ledger 已被替换，未回卷账本: game=%s", instance.game_key)
     return True
 
 
