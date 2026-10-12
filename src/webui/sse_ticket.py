@@ -38,6 +38,28 @@ class OwnerGrant:
     access_password_hash: str = ""
 
 
+def token_digest(token: str) -> str:
+    """SHA-256 hex digest a grant keeps instead of a plaintext token."""
+    return hashlib.sha256(str(token or "").encode("utf-8")).hexdigest()
+
+
+@dataclass(frozen=True)
+class BotGrant:
+    """The bot credential (``X-Bot-Token``) a stream was opened with.
+
+    ``token_digest`` is the SHA-256 of that token; the plaintext is never
+    kept. ``via_global`` is true when the token was the global Bot API token;
+    ``plugin_id`` names the plugin whose API token it was ('' for none). The
+    stream stays authorized while either still holds for the token. The
+    actor is the stream's user id and is re-checked against the table
+    separately.
+    """
+
+    token_digest: str = ""
+    via_global: bool = False
+    plugin_id: str = ""
+
+
 #: The grant a ticket-opened stream was issued under (None for a stream with
 #: no credential to re-check, e.g. one served without the access middleware).
 SSE_GRANT_KEY = web.RequestKey("sse_grant", object)
@@ -48,7 +70,7 @@ class SseTicket:
     game_key: str
     user_id: str
     expires_at: float
-    grant: SseGrant | OwnerGrant | None = None
+    grant: SseGrant | OwnerGrant | BotGrant | None = None
 
 
 class SseTicketStore:
@@ -59,7 +81,7 @@ class SseTicketStore:
 
     @staticmethod
     def _digest(token: str) -> str:
-        return hashlib.sha256(token.encode("utf-8")).hexdigest()
+        return token_digest(token)
 
     def _purge(self, now: float) -> None:
         expired = [digest for digest, ticket in self._tickets.items() if ticket.expires_at <= now]
@@ -70,7 +92,10 @@ class SseTicketStore:
             self._tickets.pop(oldest, None)
 
     def issue(
-        self, game_key: str, user_id: str, grant: SseGrant | OwnerGrant | None = None,
+        self,
+        game_key: str,
+        user_id: str,
+        grant: SseGrant | OwnerGrant | BotGrant | None = None,
     ) -> tuple[str, int]:
         now = time.monotonic()
         self._purge(now)

@@ -13,7 +13,7 @@ from src.webui.access_password import (
 )
 from src.engine.modules import room_access
 from src.webui.device_tokens import DEVICE_TOKENS_KEY
-from src.webui.sse_ticket import SSE_GRANT_KEY, OwnerGrant
+from src.webui.sse_ticket import SSE_GRANT_KEY, BotGrant, OwnerGrant, token_digest
 from src.webui.services._common import canonical_game_key
 from src.webui.routes.auth import ACCESS_PASSWORD_CONFIGURED_KEY
 
@@ -215,6 +215,14 @@ class WebAccessControl:
         request["bot_authenticated"] = True
         if plugin_identity:
             request["plugin_authenticated"] = plugin_identity
+        # Lets a long-lived stream re-check the bot credential it was opened
+        # with (see bot_revocation).
+        request[ACCESS_CONTROL_KEY] = self
+        request[BOT_GRANT_KEY] = BotGrant(
+            token_digest=token_digest(bot_header),
+            via_global=global_authenticated,
+            plugin_id=str((plugin_identity or {}).get("plugin_id") or ""),
+        )
         if request.path.startswith("/api/bot/"):
             return await handler(request)
         game_key = self.bot_request_game_key(request)
@@ -284,6 +292,28 @@ class WebAccessControl:
         if self.access_password_marker() != grant.access_password_hash:
             return {"error_code": "ACCESS_PASSWORD_CHANGED", "error": "访问密码已更改，请重新登录"}
         return None
+
+    def bot_revocation(self, app: web.Application, grant: BotGrant) -> dict | None:
+        """Why a stream opened under bot ``grant`` may no longer be served (None while it may).
+
+        The global Bot API token it matched is still the configured one, or
+        the plugin whose API token it was still holds that token with HTTP
+        access and has not been turned off (stricter than admission, see
+        PluginHost.api_token_active). A plugin stream is not affected by global token rotation, nor
+        the other way round.
+        """
+        if grant.via_global:
+            configured = str(self.state.get("bot_token") or "")
+            if configured and hmac.compare_digest(grant.token_digest, token_digest(configured)):
+                return None
+        if grant.plugin_id:
+            plugin_host = app.get("plugin_host")
+            if plugin_host is not None and plugin_host.api_token_active(
+                grant.plugin_id, grant.token_digest,
+            ):
+                return None
+            return {"error_code": "PLUGIN_TOKEN_REVOKED", "error": "插件 API Token 已失效或插件已停用"}
+        return {"error_code": "BOT_TOKEN_REVOKED", "error": "Bot API Token 已更换，请更新 Bot 配置"}
 
     @staticmethod
     def is_public_ruleset_builder_request(request: web.Request) -> bool:
@@ -537,3 +567,7 @@ class WebAccessControl:
 #: The access control that authenticated the request, for re-checking the
 #: owner credential of a long-lived stream.
 ACCESS_CONTROL_KEY = web.RequestKey("access_control", WebAccessControl)
+
+#: The bot credential a bot request was authenticated with, for re-checking a
+#: long-lived bot stream.
+BOT_GRANT_KEY = web.RequestKey("bot_grant", BotGrant)

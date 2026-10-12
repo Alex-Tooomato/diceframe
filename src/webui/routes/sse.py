@@ -21,8 +21,8 @@ from src.llm.parser import sanitize_narration
 from src.webui.connection_pool import ConnectionPool
 from src.webui.routes._common import MAX_ACTION_CHARS, _get_api
 from src.webui.services.turns import economy_decision_pending_payload
-from src.webui.access_control import ACCESS_CONTROL_KEY
-from src.webui.sse_ticket import SSE_GRANT_KEY, OwnerGrant, SseGrant
+from src.webui.access_control import ACCESS_CONTROL_KEY, BOT_GRANT_KEY
+from src.webui.sse_ticket import SSE_GRANT_KEY, BotGrant, OwnerGrant, SseGrant
 
 logger = logging.getLogger("trpg")
 
@@ -192,7 +192,8 @@ async def sse_play(request: web.Request) -> web.StreamResponse:
     # Credentials are checked once, when the stream opens; re-check what it was
     # granted under every tick so rotation, removal, a room password change or
     # a closed player entrance also cuts off a stream that is already open
-    # (and, for the owner, a revoked pairing or a changed access password).
+    # (and, for the owner, a revoked pairing or a changed access password; for
+    # a bot, a rotated Bot API token or a revoked or disabled plugin).
     # A stream opened with headers instead of a ticket is granted the same way.
     if request.get("sse_ticket_authenticated"):
         grant = request.get(SSE_GRANT_KEY)
@@ -389,13 +390,18 @@ def _owner_grant(request: web.Request) -> OwnerGrant | None:
     return access.owner_grant(request) if access is not None else None
 
 
-def _ticket_grant(request: web.Request, inst, user_id: str) -> SseGrant | OwnerGrant | None:
+def _ticket_grant(
+    request: web.Request, inst, user_id: str,
+) -> SseGrant | OwnerGrant | BotGrant | None:
     """Snapshot the credentials a stream rests on.
 
     A share-link stream rests on its seat credential and the room password.
     The owner, and a request outside a share link (a local session on a
-    server without an access password), rest on the owner credential.
+    server without an access password), rest on the owner credential. A bot
+    or plugin (``X-Bot-Token``) rests on that token alone.
     """
+    if request.get("bot_authenticated"):
+        return request.get(BOT_GRANT_KEY)
     if request.get("owner_authenticated"):
         return _owner_grant(request)
     share_request = bool(
@@ -415,9 +421,11 @@ def _ticket_grant(request: web.Request, inst, user_id: str) -> SseGrant | OwnerG
 
 
 def _revocation(
-    request: web.Request, inst, user_id: str, grant: SseGrant | OwnerGrant | None,
+    request: web.Request, inst, user_id: str, grant: SseGrant | OwnerGrant | BotGrant | None,
 ) -> dict | None:
     """Why an open stream may no longer serve ``user_id`` (None while it may)."""
+    if isinstance(grant, BotGrant):
+        return _bot_revocation(request, inst, user_id, grant)
     if user_id not in inst.players:
         return {"error_code": "SEAT_TOKEN_INVALID", "error": "席位已被移除"}
     if grant is None:
@@ -431,6 +439,20 @@ def _revocation(
         return {"error_code": "SEAT_TOKEN_INVALID", "error": "席位凭证无效或已失效，请向 GM 重新获取链接"}
     if _room_password_marker(inst) != grant.room_password_hash:
         return {"error_code": "ROOM_TOKEN_INVALID", "error": "房间密码已更改，请重新输入", "needs_room_password": True}
+    return None
+
+
+def _bot_revocation(request: web.Request, inst, actor: str, grant: BotGrant) -> dict | None:
+    """The admission rules of a bot request, re-applied to an open stream."""
+    access = request.get(ACCESS_CONTROL_KEY)
+    if access is not None:
+        revoked = access.bot_revocation(request.app, grant)
+        if revoked is not None:
+            return revoked
+    if actor not in inst.players:
+        return {"error_code": "BOT_ACTOR_INVALID", "error": "Bot 代表玩家无效"}
+    if not room_access.player_access_open(inst) and actor != inst.gm_uid:
+        return {"error_code": "PLAYER_ACCESS_CLOSED", "error": "本局玩家入口已关闭"}
     return None
 
 
