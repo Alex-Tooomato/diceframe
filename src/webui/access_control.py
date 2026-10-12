@@ -13,7 +13,7 @@ from src.webui.access_password import (
 )
 from src.engine.modules import room_access
 from src.webui.device_tokens import DEVICE_TOKENS_KEY
-from src.webui.sse_ticket import SSE_GRANT_KEY
+from src.webui.sse_ticket import SSE_GRANT_KEY, OwnerGrant
 from src.webui.services._common import canonical_game_key
 from src.webui.routes.auth import ACCESS_PASSWORD_CONFIGURED_KEY
 
@@ -58,6 +58,9 @@ class WebAccessControl:
         bot_header = str(request.headers.get("X-Bot-Token") or "")
         if request.path.startswith("/api/bot/") or bot_header:
             return await self._handle_bot_request(request, handler, bot_header)
+        # Lets a long-lived stream re-check the owner credential it was opened
+        # with (see owner_grant / owner_revocation).
+        request[ACCESS_CONTROL_KEY] = self
 
         if request.path.endswith("/sse") and request.query.get("ticket"):
             game_key = self.bot_request_game_key(request)
@@ -253,6 +256,34 @@ class WebAccessControl:
         request["user_id"] = actor
         request["bot_actor"] = actor
         return await handler(request)
+
+    def access_password_marker(self) -> str:
+        """The stored access password hash ('' when none is configured)."""
+        return normalize_access_password(self.state.get("access_token"))
+
+    def owner_grant(self, request: web.Request) -> OwnerGrant:
+        """Snapshot the owner credential ``request`` was authenticated with."""
+        return OwnerGrant(
+            paired_device_id=str(request.get(PAIRED_DEVICE_ID_KEY, "") or ""),
+            access_password_hash=self.access_password_marker(),
+        )
+
+    def owner_revocation(self, app: web.Application, grant: OwnerGrant) -> dict | None:
+        """Why a stream opened under ``grant`` may no longer be served (None while it may).
+
+        A paired device loses access only when its pairing is revoked (an
+        access password change keeps pairings, except the first one, which
+        revokes them all). A stream opened with the access password, or on a
+        server without one, loses access when the stored password changes.
+        """
+        if grant.paired_device_id:
+            devices = app.get(DEVICE_TOKENS_KEY)
+            if devices is None or not devices.has(grant.paired_device_id):
+                return {"error_code": "PAIRED_DEVICE_REVOKED", "error": "此设备的配对已被吊销，请重新登录"}
+            return None
+        if self.access_password_marker() != grant.access_password_hash:
+            return {"error_code": "ACCESS_PASSWORD_CHANGED", "error": "访问密码已更改，请重新登录"}
+        return None
 
     @staticmethod
     def is_public_ruleset_builder_request(request: web.Request) -> bool:
@@ -501,3 +532,8 @@ class WebAccessControl:
         except Exception:
             return False
         return bool(instance and not room_access.player_access_open(instance))
+
+
+#: The access control that authenticated the request, for re-checking the
+#: owner credential of a long-lived stream.
+ACCESS_CONTROL_KEY = web.RequestKey("access_control", WebAccessControl)
