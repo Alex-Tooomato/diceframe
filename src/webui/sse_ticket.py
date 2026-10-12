@@ -7,12 +7,32 @@ import secrets
 import time
 from dataclasses import dataclass
 
+from aiohttp import web
+
+
+@dataclass(frozen=True)
+class SseGrant:
+    """What a non-owner stream was authorized by; it must stay true while open.
+
+    ``seat_credential`` is the stored digest of the seat token that issued the
+    ticket ('' when no seat token was involved). ``room_password_hash`` is the
+    room password hash at issue time ('' for a room without one).
+    """
+
+    seat_credential: str = ""
+    room_password_hash: str = ""
+
+
+#: The grant a ticket-opened stream was issued under (None for the owner).
+SSE_GRANT_KEY = web.RequestKey("sse_grant", object)
+
 
 @dataclass(frozen=True)
 class SseTicket:
     game_key: str
     user_id: str
     expires_at: float
+    grant: SseGrant | None = None
 
 
 class SseTicketStore:
@@ -33,7 +53,9 @@ class SseTicketStore:
             oldest = min(self._tickets, key=lambda key: self._tickets[key].expires_at)
             self._tickets.pop(oldest, None)
 
-    def issue(self, game_key: str, user_id: str) -> tuple[str, int]:
+    def issue(
+        self, game_key: str, user_id: str, grant: SseGrant | None = None,
+    ) -> tuple[str, int]:
         now = time.monotonic()
         self._purge(now)
         token = secrets.token_urlsafe(32)
@@ -41,6 +63,7 @@ class SseTicketStore:
             game_key=game_key,
             user_id=user_id,
             expires_at=now + self.ttl_seconds,
+            grant=grant,
         )
         return token, self.ttl_seconds
 
