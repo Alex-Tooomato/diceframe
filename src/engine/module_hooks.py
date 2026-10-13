@@ -20,6 +20,9 @@ ROUND_RESET = "round.reset"
 # begin_round_processing: handler(instance) -> None.  Drop the previous
 # round's short-lived presentation state.
 ROUND_PROCESSING_BEGIN = "round.processing.begin"
+# Before an in-place reset touches anything: handler(instance) -> None.
+# Raise to refuse (e.g. an unsupported slot schema); nothing has changed yet.
+INSTANCE_RESET_PREFLIGHT = "instance.reset.preflight"
 # In-place game reset: handler(instance) -> None.  Clear run-scoped state.
 INSTANCE_RESET = "instance.reset"
 # Store a round report: handler(instance, kind, value) -> None.
@@ -37,9 +40,12 @@ REPORT_GM_DIRECTIVES = "gm_directives"
 REPORT_COMBAT_RESULTS = "combat_results"
 REPORT_STATE_UPDATE = "state_update"  # dict | None
 REPORT_TOKEN_BUDGET_BUMP = "token_budget_bump"  # dict | None
+# Live Lorebook timer dict (entry id -> timer); callers may mutate it.
+REPORT_LOREBOOK_TIMERS = "lorebook_timers"  # dict | None
 
 HOOK_POINTS = frozenset({
-    ROUND_RESET, ROUND_PROCESSING_BEGIN, INSTANCE_RESET, ROUND_REPORT_RECORD, ROUND_REPORT_READ,
+    ROUND_RESET, ROUND_PROCESSING_BEGIN, INSTANCE_RESET_PREFLIGHT, INSTANCE_RESET,
+    ROUND_REPORT_RECORD, ROUND_REPORT_READ,
 })
 
 Handler = Callable[..., Any]

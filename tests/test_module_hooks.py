@@ -6,7 +6,7 @@ import pytest
 
 from src.engine import module_hooks
 from src.engine.game_instance import GameInstance
-from src.engine.modules import round_presentation, world_reports
+from src.engine.modules import lorebook_runtime, round_presentation, world_reports
 
 
 @pytest.fixture
@@ -123,3 +123,31 @@ def test_without_round_presentation_the_extras_are_dropped(detached_round_presen
     assert module_hooks.round_report(instance, module_hooks.REPORT_GM_DIRECTIVES) == []
     assert module_hooks.round_report_value(instance, module_hooks.REPORT_STATE_UPDATE) is None
     assert round_presentation.quick_actions(instance) == []
+
+
+def test_lorebook_timers_tick_at_round_begin_and_clear_on_reset() -> None:
+    instance = GameInstance(game_key=("web", "hooks-lorebook", "u"))
+    # Pre-v2 timer shape, which the tick still supports.
+    lorebook_runtime.timers(instance).update({"e1": {"remaining": 2}, "e2": {"remaining": 1}})
+
+    instance.begin_round_processing()
+
+    assert lorebook_runtime.timers(instance) == {"e1": {"remaining": 1}}
+    assert module_hooks.round_report_value(instance, module_hooks.REPORT_LOREBOOK_TIMERS) is lorebook_runtime.timers(instance)
+    module_hooks.run(module_hooks.INSTANCE_RESET, instance)
+    assert lorebook_runtime.timers(instance) == {}
+
+
+def test_without_lorebook_runtime_entries_have_no_timers() -> None:
+    removed = module_hooks.unregister_owner(lorebook_runtime.MODULE_NAME)
+    try:
+        instance = GameInstance(game_key=("web", "hooks-lorebook-off", "u"))
+        lorebook_runtime.timers(instance).update({"e1": {"remaining": 2}})
+        instance.begin_round_processing()
+        module_hooks.run(module_hooks.INSTANCE_RESET_PREFLIGHT, instance)
+
+        assert module_hooks.round_report_value(instance, module_hooks.REPORT_LOREBOOK_TIMERS) is None
+        assert lorebook_runtime.timers(instance) == {"e1": {"remaining": 2}}
+    finally:
+        for point, handler in removed.items():
+            module_hooks.register(point, lorebook_runtime.MODULE_NAME, handler)

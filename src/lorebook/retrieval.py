@@ -27,7 +27,8 @@ from typing import Any
 
 from src.engine import progression
 from src.engine.language import DEFAULT_LANGUAGE
-from src.engine.modules import lorebook_runtime, narrative_notes
+from src.engine import module_hooks
+from src.engine.modules import narrative_notes
 from src.engine.world_legality import actor_location_fact_key
 from src.engine.world_state import project_visible_state
 from src.knowledge.visibility import entry_visible_to_viewer
@@ -636,7 +637,7 @@ class LoreRetriever:
 
     @staticmethod
     def _timed_state(instance: Any, *, mutate_timers: bool) -> dict[str, dict] | None:
-        state = lorebook_runtime.timers(instance)
+        state = module_hooks.round_report_value(instance, module_hooks.REPORT_LOREBOOK_TIMERS)
         if not isinstance(state, dict):
             return None
         return state if mutate_timers else copy.deepcopy(state)
