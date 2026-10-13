@@ -355,8 +355,10 @@ MODULE_API_WRITERS: dict[str, tuple[frozenset[str], frozenset[Path]]] = {
         frozenset({
             "replace_gm_directives", "replace_quick_actions", "replace_last_state_update",
             "replace_last_token_budget_bump", "replace_pending_combat_results",
+            "begin_round", "reset", "record_report",
         }),
-        frozenset({SRC / "engine" / "game_instance.py", SRC / "engine" / "instance_lifecycle.py"}),
+        # Reached only through module_hooks.
+        frozenset(),
     ),
     "health": (
         frozenset({"replace_health_events", "replace_health_status"}),

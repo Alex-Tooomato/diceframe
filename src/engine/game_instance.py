@@ -45,7 +45,6 @@ from src.engine.modules import (
     private_channels,
     progression_state,
     room_access,
-    round_presentation,
     round_safety,
     ruleset_runtime,
     session_stats,
@@ -689,8 +688,9 @@ class GameInstance:
         narrative_notes.summary(self)["narrative"] = narrative
 
     def set_quick_actions(self, actions: list[str]) -> None:
-        round_presentation.replace_quick_actions(
-            self, [str(action) for action in actions if str(action).strip()],
+        module_hooks.record_round_report(
+            self, module_hooks.REPORT_QUICK_ACTIONS,
+            [str(action) for action in actions if str(action).strip()],
         )
 
     def set_key_facts(self, facts: list) -> None:
@@ -717,7 +717,8 @@ class GameInstance:
             del entries[:-limit]
 
     def add_gm_directive(self, directive: dict) -> None:
-        round_presentation.gm_directives(self).append(directive)
+        directives = module_hooks.round_report(self, module_hooks.REPORT_GM_DIRECTIVES)
+        module_hooks.record_round_report(self, module_hooks.REPORT_GM_DIRECTIVES, [*directives, directive])
 
     def clear_private_messages(self, uid: str) -> None:
         private_channels.private_log(self).pop(uid, None)
@@ -753,27 +754,26 @@ class GameInstance:
     def begin_round_processing(self) -> None:
         """清理仅属于上一轮展示的短期状态。"""
         progression.require_writable(self)
-        round_presentation.replace_last_token_budget_bump(self, None)
-        round_presentation.pending_combat_results(self).clear()
+        module_hooks.run(module_hooks.ROUND_PROCESSING_BEGIN, self)
         self.update_lorebook_timed_state()
 
     def set_token_budget_bump(self, initial: int, used: int, *, kind: str = "narrative") -> None:
-        round_presentation.replace_last_token_budget_bump(
-            self,
+        module_hooks.record_round_report(
+            self, module_hooks.REPORT_TOKEN_BUDGET_BUMP,
             {"kind": kind, "from": initial, "to": used}
             if used > initial > 0
             else None,
         )
 
     def set_state_update_recap(self, state_update: dict | None) -> None:
-        round_presentation.replace_last_state_update(self, state_update or None)
+        module_hooks.record_round_report(self, module_hooks.REPORT_STATE_UPDATE, state_update or None)
 
     def consume_gm_directives(self, directive_ids: set[str]) -> None:
         if not directive_ids:
             return
-        round_presentation.replace_gm_directives(self, [
+        module_hooks.record_round_report(self, module_hooks.REPORT_GM_DIRECTIVES, [
             directive
-            for directive in round_presentation.gm_directives(self)
+            for directive in module_hooks.round_report(self, module_hooks.REPORT_GM_DIRECTIVES)
             if str(directive.get("id") or "") not in directive_ids
         ])
 
@@ -782,7 +782,8 @@ class GameInstance:
         session_stats.record_llm_usage(self, tokens, calls=calls)
 
     def record_combat_result(self, result: dict) -> None:
-        round_presentation.pending_combat_results(self).append(result)
+        results = module_hooks.round_report(self, module_hooks.REPORT_COMBAT_RESULTS)
+        module_hooks.record_round_report(self, module_hooks.REPORT_COMBAT_RESULTS, [*results, result])
 
     def capture_combat_extension_snapshot(
         self,

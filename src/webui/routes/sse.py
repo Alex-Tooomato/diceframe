@@ -12,8 +12,9 @@ from aiohttp import web
 
 from src.engine.economy import has_blocking_economy_decision, pending_economy_proposals
 from src.engine.game_instance import GameState
+from src.engine import module_hooks
 from src.engine.modules import (
-    checks, media, narrative_notes, private_channels, progression_state, room_access, round_presentation,
+    checks, media, narrative_notes, private_channels, progression_state, room_access,
     session_stats,
 )
 from src.engine.visibility_rules import proposal_visible_to
@@ -316,7 +317,7 @@ def _play_public_signature(inst, user_id: str) -> str:
         "scene": narrative_notes.scene(inst),
         "scene_image": media.scene_image(inst),
         "log_scene_image": (inst.log[-1].get("scene_image") if inst.log else None),
-        "quick_actions": round_presentation.quick_actions(inst),
+        "quick_actions": module_hooks.round_report(inst, module_hooks.REPORT_QUICK_ACTIONS),
         "economy_proposals": [
             proposal for proposal in pending_economy_proposals(inst)
             if proposal_visible_to(

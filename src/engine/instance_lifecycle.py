@@ -25,7 +25,7 @@ import copy
 import logging
 from typing import TYPE_CHECKING
 
-from src.engine import progression
+from src.engine import module_hooks, progression
 from src.engine.game_state import GameState
 from src.engine.language import normalize_language
 from src.engine.world_state import fresh_world_state
@@ -74,7 +74,7 @@ def reset_locked(instance: GameInstance, *, keep_seed: bool = True) -> None:
         ruleset_runtime, seat_activity, session_stats, table_settings,
     )
     from src.engine.modules import combat_extension_state
-    from src.engine.modules import health, lorebook_runtime, round_presentation
+    from src.engine.modules import health, lorebook_runtime
 
     session_stats.require_writable(instance)
     checks.require_writable(instance)
@@ -117,21 +117,17 @@ def reset_locked(instance: GameInstance, *, keep_seed: bool = True) -> None:
     session_stats.reset(instance)
     instance.puzzle_manager = None
     instance.plot_tracker = None
-    round_presentation.pending_combat_results(instance).clear()
     combat_extension_state.replace_current(instance, {})
     combat_extension_state.round_snapshots(instance).clear()
     lorebook_runtime.timers(instance).clear()
     health.health_events(instance).clear()
     health.health_status(instance).clear()
-    round_presentation.quick_actions(instance).clear()
     narrative_notes.confirmed_items(instance).clear()
     private_channels.private_log(instance).clear()
     private_channels.table_talk(instance).clear()
     checks.clear_round(instance)
     round_safety.clear_snapshots(instance)
-    round_presentation.replace_last_state_update(instance, None)
-    round_presentation.replace_last_token_budget_bump(instance, None)
-    round_presentation.gm_directives(instance).clear()
+    module_hooks.run(module_hooks.INSTANCE_RESET, instance)
     ruleset_runtime.reset(instance, saved_ruleset_runtime)
     instance.adventure_binding = saved_adventure_binding
     instance.state = GameState.CREATED

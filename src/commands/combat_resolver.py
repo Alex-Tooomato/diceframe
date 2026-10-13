@@ -14,7 +14,8 @@ from src.engine.character_utils import is_conscious, record_death_save_failures,
 from src.engine.constants import WEAPON_DAMAGE, canonical_item_key
 from src.engine.game_instance import GameInstance
 from src.engine.language import localized_text
-from src.engine.modules import checks, progression_state, round_presentation, table_settings
+from src.engine import module_hooks
+from src.engine.modules import checks, progression_state, table_settings
 
 logger = logging.getLogger("trpg")
 
@@ -124,7 +125,7 @@ class CombatResolver:
         """保持旧字段并补齐多人结算引用；同 check_id 不重复追加。"""
         if any(
             str(item.get("check_id") or "") == result.check_id
-            for item in round_presentation.pending_combat_results(instance)
+            for item in module_hooks.round_report(instance, module_hooks.REPORT_COMBAT_RESULTS)
         ):
             return
         instance.record_combat_result({

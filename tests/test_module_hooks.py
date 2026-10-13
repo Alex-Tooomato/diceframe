@@ -6,7 +6,7 @@ import pytest
 
 from src.engine import module_hooks
 from src.engine.game_instance import GameInstance
-from src.engine.modules import world_reports
+from src.engine.modules import round_presentation, world_reports
 
 
 @pytest.fixture
@@ -78,3 +78,48 @@ def test_without_world_reports_the_round_keeps_working_without_reports(detached_
 
     assert module_hooks.round_report(instance, module_hooks.REPORT_OVERREACH) == []
     assert world_reports.last_overreach(instance) == [{"player": "stale"}]
+
+
+@pytest.fixture
+def detached_round_presentation() -> Iterator[None]:
+    removed = module_hooks.unregister_owner(round_presentation.MODULE_NAME)
+    try:
+        yield
+    finally:
+        for point, handler in removed.items():
+            module_hooks.register(point, round_presentation.MODULE_NAME, handler)
+
+
+def test_round_presentation_round_trips_through_game_instance() -> None:
+    instance = GameInstance(game_key=("web", "hooks-presentation", "u"))
+    instance.set_quick_actions(["look", " ", "run"])
+    instance.add_gm_directive({"id": "d1"})
+    instance.add_gm_directive({"id": "d2"})
+    instance.record_combat_result({"hit": True})
+    instance.set_state_update_recap({"hp": 1})
+    instance.set_token_budget_bump(100, 200)
+
+    assert round_presentation.quick_actions(instance) == ["look", "run"]
+    assert module_hooks.round_report_value(instance, module_hooks.REPORT_STATE_UPDATE) == {"hp": 1}
+    instance.consume_gm_directives({"d1"})
+    assert round_presentation.gm_directives(instance) == [{"id": "d2"}]
+
+    instance.begin_round_processing()
+    assert round_presentation.pending_combat_results(instance) == []
+    assert round_presentation.last_token_budget_bump(instance) is None
+    assert round_presentation.quick_actions(instance) == ["look", "run"]
+
+
+def test_without_round_presentation_the_extras_are_dropped(detached_round_presentation) -> None:
+    instance = GameInstance(game_key=("web", "hooks-presentation-off", "u"))
+    instance.set_quick_actions(["look"])
+    instance.add_gm_directive({"id": "d1"})
+    instance.record_combat_result({"hit": True})
+    instance.set_state_update_recap({"hp": 1})
+    instance.consume_gm_directives({"d1"})
+    instance.begin_round_processing()
+
+    assert module_hooks.round_report(instance, module_hooks.REPORT_QUICK_ACTIONS) == []
+    assert module_hooks.round_report(instance, module_hooks.REPORT_GM_DIRECTIVES) == []
+    assert module_hooks.round_report_value(instance, module_hooks.REPORT_STATE_UPDATE) is None
+    assert round_presentation.quick_actions(instance) == []
