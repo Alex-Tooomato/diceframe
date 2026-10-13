@@ -1,7 +1,7 @@
 """Persisted health events and status; runtime reporting remains in engine.health.
 
 engine.health and the in-place reset reach this slot only through
-``module_hooks`` (``health_events`` / ``health_status`` reports and
+``module_hooks`` (``health_events`` / ``health_status`` module state and
 ``instance.reset``), so without the module degradation events are not kept.
 """
 
@@ -61,20 +61,20 @@ def reset(instance: Any) -> None:
     health_status(instance).clear()
 
 
-def record_report(instance: Any, kind: str, value: Any) -> None:
+def record_state(instance: Any, kind: str, value: Any) -> None:
     """Write in place: callers may hold the live list / dict (engine.health contract)."""
-    if kind == module_hooks.REPORT_HEALTH_EVENTS:
+    if kind == module_hooks.HEALTH_EVENTS:
         health_events(instance)[:] = value if isinstance(value, list) else []
-    elif kind == module_hooks.REPORT_HEALTH_STATUS:
+    elif kind == module_hooks.HEALTH_STATUS:
         status = health_status(instance)
         status.clear()
         status.update(value if isinstance(value, dict) else {})
 
 
-def read_report(instance: Any, kind: str) -> Any:
-    if kind == module_hooks.REPORT_HEALTH_EVENTS:
+def read_state(instance: Any, kind: str) -> Any:
+    if kind == module_hooks.HEALTH_EVENTS:
         return health_events(instance)
-    if kind == module_hooks.REPORT_HEALTH_STATUS:
+    if kind == module_hooks.HEALTH_STATUS:
         return health_status(instance)
     return None
 
@@ -82,5 +82,5 @@ def read_report(instance: Any, kind: str) -> Any:
 SPEC = ModuleStateSpec(name=MODULE_NAME, schema_version=SCHEMA_VERSION, fresh=fresh, ensure=ensure)
 register_module_state(SPEC)
 module_hooks.register(module_hooks.INSTANCE_RESET, MODULE_NAME, reset)
-module_hooks.register(module_hooks.ROUND_REPORT_RECORD, MODULE_NAME, record_report)
-module_hooks.register(module_hooks.ROUND_REPORT_READ, MODULE_NAME, read_report)
+module_hooks.register(module_hooks.STATE_RECORD, MODULE_NAME, record_state)
+module_hooks.register(module_hooks.STATE_READ, MODULE_NAME, read_state)

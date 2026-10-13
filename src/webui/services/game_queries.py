@@ -215,7 +215,7 @@ def game_detail(
             table_settings.economy_reward_policy(instance) or {}
         ),
         "combat_extension": _combat_extension_projection(instance, dependencies, viewer_uid),
-        "quick_actions": module_hooks.round_report(instance, module_hooks.REPORT_QUICK_ACTIONS),
+        "quick_actions": module_hooks.read(instance, module_hooks.QUICK_ACTIONS),
         "economy_proposals": economy_proposals,
         "pending_luck_decisions": instance.pending_luck_checks(),
         "round_check_results": (
@@ -242,7 +242,7 @@ def game_detail(
             instance.plot_tracker.to_dict() if instance.plot_tracker else None
         ),
         "recap": _public_recap(instance),
-        "token_budget_bump": module_hooks.round_report_value(instance, module_hooks.REPORT_TOKEN_BUDGET_BUMP),
+        "token_budget_bump": module_hooks.read_value(instance, module_hooks.TOKEN_BUDGET_BUMP),
         "adventure_binding": dict(
             getattr(instance, "adventure_binding", {}) or {}
         ),

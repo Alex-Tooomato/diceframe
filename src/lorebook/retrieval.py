@@ -637,7 +637,7 @@ class LoreRetriever:
 
     @staticmethod
     def _timed_state(instance: Any, *, mutate_timers: bool) -> dict[str, dict] | None:
-        state = module_hooks.round_report_value(instance, module_hooks.REPORT_LOREBOOK_TIMERS)
+        state = module_hooks.read_value(instance, module_hooks.LOREBOOK_TIMERS)
         if not isinstance(state, dict):
             return None
         return state if mutate_timers else copy.deepcopy(state)

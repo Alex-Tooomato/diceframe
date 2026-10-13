@@ -44,21 +44,21 @@ def record_health_event(
         "resolved": False,
         "ignored": False,
     }
-    events = [*module_hooks.round_report(instance, module_hooks.REPORT_HEALTH_EVENTS), event]
-    module_hooks.record_round_report(
-        instance, module_hooks.REPORT_HEALTH_EVENTS, events[-_MAX_HEALTH_EVENTS:],
+    events = [*module_hooks.read(instance, module_hooks.HEALTH_EVENTS), event]
+    module_hooks.record(
+        instance, module_hooks.HEALTH_EVENTS, events[-_MAX_HEALTH_EVENTS:],
     )
 
-    status = dict(module_hooks.round_report_value(instance, module_hooks.REPORT_HEALTH_STATUS) or {})
+    status = dict(module_hooks.read_value(instance, module_hooks.HEALTH_STATUS) or {})
     status[component] = severity if severity != "info" else "ok"
     status["last_event_at"] = event["time"]
-    module_hooks.record_round_report(instance, module_hooks.REPORT_HEALTH_STATUS, status)
+    module_hooks.record(instance, module_hooks.HEALTH_STATUS, status)
     return event
 
 
 def mark_health_event(instance, event_id: str, *, resolved: bool = False, ignored: bool = False) -> bool:
     """Mark a health event as resolved or ignored."""
-    for event in module_hooks.round_report(instance, module_hooks.REPORT_HEALTH_EVENTS):
+    for event in module_hooks.read(instance, module_hooks.HEALTH_EVENTS):
         if event.get("id") == event_id:
             if resolved:
                 event["resolved"] = True
@@ -72,7 +72,7 @@ def mark_health_event(instance, event_id: str, *, resolved: bool = False, ignore
 
 def health_payload(instance, include_resolved: bool = False) -> dict:
     """Build the API payload for a GameInstance health view."""
-    events = list(module_hooks.round_report(instance, module_hooks.REPORT_HEALTH_EVENTS))
+    events = list(module_hooks.read(instance, module_hooks.HEALTH_EVENTS))
     if not include_resolved:
         events = [
             e for e in events
@@ -80,7 +80,7 @@ def health_payload(instance, include_resolved: bool = False) -> dict:
         ]
     return {
         "ok": True,
-        "status": module_hooks.round_report_value(instance, module_hooks.REPORT_HEALTH_STATUS) or {},
+        "status": module_hooks.read_value(instance, module_hooks.HEALTH_STATUS) or {},
         "events": events[-_MAX_HEALTH_EVENTS:],
         "total": len(events),
     }

@@ -179,7 +179,7 @@ def _build_recent_public_narration_context(
 
 def format_overreach_block(instance: GameInstance) -> str:
     """把本轮裁判的越权标注组装为可信裁定块（服务端组装，玩家不可注入）。"""
-    notes = list(module_hooks.round_report(instance, module_hooks.REPORT_OVERREACH))
+    notes = list(module_hooks.read(instance, module_hooks.OVERREACH))
     if not notes:
         return ""
     lines = []
@@ -456,16 +456,16 @@ class RoundProcessor:
             errors = metadata.get("errors") or []
             if errors:
                 logger.warning("部分 AI 检定参数被拒绝: %s", "; ".join(str(item) for item in errors))
-            module_hooks.record_round_report(
-                instance, module_hooks.REPORT_OVERREACH, list(metadata.get("overreach") or []),
+            module_hooks.record(
+                instance, module_hooks.OVERREACH, list(metadata.get("overreach") or []),
             )
             # 世界合法性：模型只提议结构化地点，server 对照权威世界真相后才阻断或
             # 落库合法移动；空世界/未知地点一律不阻断（旧游戏行为不变）。
             world_result = evaluate_world_requirements(
                 instance, metadata.get("world_requirements") or [],
             )
-            module_hooks.record_round_report(
-                instance, module_hooks.REPORT_WORLD_LEGALITY, list(world_result.get("notes") or []),
+            module_hooks.record(
+                instance, module_hooks.WORLD_LEGALITY, list(world_result.get("notes") or []),
             )
             # 逻辑世界时间：模型只报告本轮经过的时间，server 推进时钟并确定性
             # 结算到期事件（无后台 tick、无独立 scheduler）。
@@ -489,7 +489,7 @@ class RoundProcessor:
                     adventure_runtime_state.replace_progress(instance, before_progress)
                     logger.warning("世界时间推进被拒绝: %s", exc)
                 else:
-                    module_hooks.record_round_report(instance, module_hooks.REPORT_WORLD_EVENTS, [
+                    module_hooks.record(instance, module_hooks.WORLD_EVENTS, [
                         {**item, "status": "applied"}
                         for item in outcome.get("applied") or []
                     ] + [

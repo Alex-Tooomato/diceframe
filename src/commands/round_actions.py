@@ -57,7 +57,7 @@ def collect_gm_directives_text(instance: GameInstance) -> tuple[str, list[str]]:
     """返回本轮可用的 GM 私密指令文本及其 ID，供成功结算后消费。"""
     current_round = progression.current_round(instance)
     entries = [
-        entry for entry in module_hooks.round_report(instance, module_hooks.REPORT_GM_DIRECTIVES)
+        entry for entry in module_hooks.read(instance, module_hooks.GM_DIRECTIVES)
         if int(entry.get("target_round", current_round) or current_round) <= current_round
     ]
     if not entries:

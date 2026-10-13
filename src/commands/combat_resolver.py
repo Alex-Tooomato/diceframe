@@ -125,7 +125,7 @@ class CombatResolver:
         """保持旧字段并补齐多人结算引用；同 check_id 不重复追加。"""
         if any(
             str(item.get("check_id") or "") == result.check_id
-            for item in module_hooks.round_report(instance, module_hooks.REPORT_COMBAT_RESULTS)
+            for item in module_hooks.read(instance, module_hooks.COMBAT_RESULTS)
         ):
             return
         instance.record_combat_result({

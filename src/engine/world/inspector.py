@@ -72,7 +72,7 @@ def world_inspector(instance: Any, *, viewer_is_gm: bool = False) -> dict[str, A
         "fact_count": len(world_facts(state)),
         "scheduled_event_count": len(world_scheduled_events(state)),
         # 最近一轮确定性结算（含 failed），GM 排障用；非 GM 视图为空。
-        "recent_events": list(module_hooks.round_report(instance, module_hooks.REPORT_WORLD_EVENTS))
+        "recent_events": list(module_hooks.read(instance, module_hooks.WORLD_EVENTS))
         if viewer_is_gm else [],
     }
 
