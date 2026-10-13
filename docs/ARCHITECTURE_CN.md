@@ -491,6 +491,8 @@ Frontend / Bot / Plugin Client
 
 `tests/architecture/test_game_instance_facades.py` 记录模块状态的门面债：R7–R9 把字段搬进 `src/engine/modules` 后，`GameInstance` 上仍为每个字段保留兼容 property，`src/` 中经 `instance.<field>` 读写它们的调用按“文件 + property”计入只减不增的基线。门面集合由 AST 自动识别（body 引用 `src.engine.modules` 的 property），数量也只减不增；调用方改走模块 API 时，同一 PR 下调或删除对应基线条目。
 
+`tests/architecture/test_module_pluggability.py` 记录核心流程对能力模块的点名调用（#515，母方案 §7.1“删除任一模块，跑团仍可运行”）。建局、回合、快照、存档、投影、上下文等核心流程文件中对能力模块 API 的引用，按“文件 + 模块”计入只减不增的基线；`src/engine/modules` 下除 `KERNEL_MODULES`（`adventure_runtime_state`、`checks`、`content_binding`、`progression_state`、`round_safety`、`ruleset_runtime`、`session_stats`）外都算能力模块，新模块自动纳入。模块改走生命周期钩子后，同一 PR 下调或删除对应条目。运行时一侧由 `scripts/audit_module_pluggability.py` 测量（逐个桩掉模块能力 API 跑主流程测试，报告新增失败与第一处命中的调用方），只做报告，不进 CI。
+
 ---
 
 ## 2.3 Authority Model：谁有权决定什么
