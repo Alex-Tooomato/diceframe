@@ -95,7 +95,6 @@ CORE_COUPLING: dict[tuple[str, str], int] = {
     ("src/engine/game_instance.py", "seat_activity"): 2,
     ("src/engine/game_instance.py", "table_settings"): 15,
     ("src/engine/instance_lifecycle.py", "combat_extension_state"): 2,
-    ("src/engine/instance_lifecycle.py", "health"): 2,
     ("src/engine/instance_lifecycle.py", "narrative_notes"): 6,
     ("src/engine/instance_lifecycle.py", "private_channels"): 2,
     ("src/engine/instance_lifecycle.py", "seat_activity"): 2,

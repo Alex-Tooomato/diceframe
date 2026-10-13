@@ -42,6 +42,9 @@ REPORT_STATE_UPDATE = "state_update"  # dict | None
 REPORT_TOKEN_BUDGET_BUMP = "token_budget_bump"  # dict | None
 # Live Lorebook timer dict (entry id -> timer); callers may mutate it.
 REPORT_LOREBOOK_TIMERS = "lorebook_timers"  # dict | None
+# GM-visible degradation events and per-component status (not round-scoped).
+REPORT_HEALTH_EVENTS = "health_events"
+REPORT_HEALTH_STATUS = "health_status"  # dict | None
 
 HOOK_POINTS = frozenset({
     ROUND_RESET, ROUND_PROCESSING_BEGIN, INSTANCE_RESET_PREFLIGHT, INSTANCE_RESET,

@@ -360,8 +360,9 @@ MODULE_API_WRITERS: dict[str, tuple[frozenset[str], frozenset[Path]]] = {
         # Reached only through module_hooks.
         frozenset(),
     ),
+    # Reached only through module_hooks (engine.health reads/writes reports).
     "health": (
-        frozenset({"replace_health_events", "replace_health_status"}),
+        frozenset({"replace_health_events", "replace_health_status", "reset", "record_report"}),
         frozenset(),
     ),
     # Reached only through module_hooks.

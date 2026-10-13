@@ -6,7 +6,8 @@ import pytest
 
 from src.engine import module_hooks
 from src.engine.game_instance import GameInstance
-from src.engine.modules import lorebook_runtime, round_presentation, world_reports
+from src.engine.health import health_payload, mark_health_event, record_health_event
+from src.engine.modules import health, lorebook_runtime, round_presentation, world_reports
 
 
 @pytest.fixture
@@ -151,3 +152,29 @@ def test_without_lorebook_runtime_entries_have_no_timers() -> None:
     finally:
         for point, handler in removed.items():
             module_hooks.register(point, lorebook_runtime.MODULE_NAME, handler)
+
+
+def test_health_events_round_trip_and_reset() -> None:
+    instance = GameInstance(game_key=("web", "hooks-health", "u"))
+    event = record_health_event(instance, "llm", "TIMEOUT", "error", "LLM timed out")
+    assert health.health_events(instance) == [event]
+    assert health.health_status(instance)["llm"] == "error"
+    assert mark_health_event(instance, event["id"], resolved=True)
+    assert health_payload(instance)["events"] == []
+
+    module_hooks.run(module_hooks.INSTANCE_RESET, instance)
+    assert health.health_events(instance) == [] and health.health_status(instance) == {}
+
+
+def test_without_health_events_are_not_kept() -> None:
+    removed = module_hooks.unregister_owner(health.MODULE_NAME)
+    try:
+        instance = GameInstance(game_key=("web", "hooks-health-off", "u"))
+        event = record_health_event(instance, "llm", "TIMEOUT", "error", "LLM timed out")
+        assert event["code"] == "TIMEOUT"
+        assert not mark_health_event(instance, event["id"], resolved=True)
+        assert health_payload(instance) == {"ok": True, "status": {}, "events": [], "total": 0}
+        assert health.health_events(instance) == []
+    finally:
+        for point, handler in removed.items():
+            module_hooks.register(point, health.MODULE_NAME, handler)
