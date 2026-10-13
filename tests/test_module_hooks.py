@@ -22,7 +22,7 @@ def detached_world_reports() -> Iterator[None]:
 
 @pytest.fixture
 def scratch_point() -> Iterator[str]:
-    point = module_hooks.ROUND_REPORT_READ
+    point = module_hooks.STATE_READ
     saved = list(module_hooks._HANDLERS[point])
     module_hooks._HANDLERS[point].clear()
     try:
@@ -52,21 +52,21 @@ def test_ask_returns_first_answer_or_default_and_reregister_replaces(scratch_poi
 
 
 def test_world_reports_registers_its_hooks() -> None:
-    for point in (module_hooks.ROUND_RESET, module_hooks.ROUND_REPORT_RECORD, module_hooks.ROUND_REPORT_READ):
+    for point in (module_hooks.ROUND_RESET, module_hooks.STATE_RECORD, module_hooks.STATE_READ):
         assert world_reports.MODULE_NAME in module_hooks.owners(point)
 
 
 def test_reports_round_trip_through_hooks_and_reset_clears_them() -> None:
     instance = GameInstance(game_key=("web", "hooks-reports", "u"))
-    module_hooks.record_round_report(instance, module_hooks.REPORT_OVERREACH, [{"player": "p1"}])
-    module_hooks.record_round_report(instance, module_hooks.REPORT_WORLD_EVENTS, [{"event_id": "e"}])
+    module_hooks.record(instance, module_hooks.OVERREACH, [{"player": "p1"}])
+    module_hooks.record(instance, module_hooks.WORLD_EVENTS, [{"event_id": "e"}])
     assert world_reports.last_overreach(instance) == [{"player": "p1"}]
-    assert module_hooks.round_report(instance, module_hooks.REPORT_WORLD_EVENTS) == [{"event_id": "e"}]
-    assert module_hooks.round_report(instance, "unknown-kind") == []
+    assert module_hooks.read(instance, module_hooks.WORLD_EVENTS) == [{"event_id": "e"}]
+    assert module_hooks.read(instance, "unknown-kind") == []
 
     instance.reset_round_checks()
 
-    assert module_hooks.round_report(instance, module_hooks.REPORT_OVERREACH) == []
+    assert module_hooks.read(instance, module_hooks.OVERREACH) == []
     assert world_reports.last_world_events(instance) == []
 
 
@@ -74,10 +74,10 @@ def test_without_world_reports_the_round_keeps_working_without_reports(detached_
     instance = GameInstance(game_key=("web", "hooks-detached", "u"))
     world_reports.replace_last_overreach(instance, [{"player": "stale"}])
 
-    module_hooks.record_round_report(instance, module_hooks.REPORT_OVERREACH, [{"player": "p1"}])
+    module_hooks.record(instance, module_hooks.OVERREACH, [{"player": "p1"}])
     instance.reset_round_checks(prepared=True)
 
-    assert module_hooks.round_report(instance, module_hooks.REPORT_OVERREACH) == []
+    assert module_hooks.read(instance, module_hooks.OVERREACH) == []
     assert world_reports.last_overreach(instance) == [{"player": "stale"}]
 
 
@@ -101,7 +101,7 @@ def test_round_presentation_round_trips_through_game_instance() -> None:
     instance.set_token_budget_bump(100, 200)
 
     assert round_presentation.quick_actions(instance) == ["look", "run"]
-    assert module_hooks.round_report_value(instance, module_hooks.REPORT_STATE_UPDATE) == {"hp": 1}
+    assert module_hooks.read_value(instance, module_hooks.STATE_UPDATE) == {"hp": 1}
     instance.consume_gm_directives({"d1"})
     assert round_presentation.gm_directives(instance) == [{"id": "d2"}]
 
@@ -120,9 +120,9 @@ def test_without_round_presentation_the_extras_are_dropped(detached_round_presen
     instance.consume_gm_directives({"d1"})
     instance.begin_round_processing()
 
-    assert module_hooks.round_report(instance, module_hooks.REPORT_QUICK_ACTIONS) == []
-    assert module_hooks.round_report(instance, module_hooks.REPORT_GM_DIRECTIVES) == []
-    assert module_hooks.round_report_value(instance, module_hooks.REPORT_STATE_UPDATE) is None
+    assert module_hooks.read(instance, module_hooks.QUICK_ACTIONS) == []
+    assert module_hooks.read(instance, module_hooks.GM_DIRECTIVES) == []
+    assert module_hooks.read_value(instance, module_hooks.STATE_UPDATE) is None
     assert round_presentation.quick_actions(instance) == []
 
 
@@ -134,7 +134,7 @@ def test_lorebook_timers_tick_at_round_begin_and_clear_on_reset() -> None:
     instance.begin_round_processing()
 
     assert lorebook_runtime.timers(instance) == {"e1": {"remaining": 1}}
-    assert module_hooks.round_report_value(instance, module_hooks.REPORT_LOREBOOK_TIMERS) is lorebook_runtime.timers(instance)
+    assert module_hooks.read_value(instance, module_hooks.LOREBOOK_TIMERS) is lorebook_runtime.timers(instance)
     module_hooks.run(module_hooks.INSTANCE_RESET, instance)
     assert lorebook_runtime.timers(instance) == {}
 
@@ -147,7 +147,7 @@ def test_without_lorebook_runtime_entries_have_no_timers() -> None:
         instance.begin_round_processing()
         module_hooks.run(module_hooks.INSTANCE_RESET_PREFLIGHT, instance)
 
-        assert module_hooks.round_report_value(instance, module_hooks.REPORT_LOREBOOK_TIMERS) is None
+        assert module_hooks.read_value(instance, module_hooks.LOREBOOK_TIMERS) is None
         assert lorebook_runtime.timers(instance) == {"e1": {"remaining": 2}}
     finally:
         for point, handler in removed.items():

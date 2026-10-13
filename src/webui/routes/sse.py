@@ -317,7 +317,7 @@ def _play_public_signature(inst, user_id: str) -> str:
         "scene": narrative_notes.scene(inst),
         "scene_image": media.scene_image(inst),
         "log_scene_image": (inst.log[-1].get("scene_image") if inst.log else None),
-        "quick_actions": module_hooks.round_report(inst, module_hooks.REPORT_QUICK_ACTIONS),
+        "quick_actions": module_hooks.read(inst, module_hooks.QUICK_ACTIONS),
         "economy_proposals": [
             proposal for proposal in pending_economy_proposals(inst)
             if proposal_visible_to(

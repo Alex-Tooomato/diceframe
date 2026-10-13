@@ -232,7 +232,7 @@ def _round_payload(
 ) -> dict[str, Any]:
     payload: dict[str, Any] = {
         "narration": narration,
-        "quick_actions": list(module_hooks.round_report(instance, module_hooks.REPORT_QUICK_ACTIONS)),
+        "quick_actions": list(module_hooks.read(instance, module_hooks.QUICK_ACTIONS)),
         "economy_proposals": _visible_economy_proposals(instance, viewer_uid),
         "check_result": checks.last_check(instance),
         "check_results": list(checks.last_checks(instance)),
@@ -242,7 +242,7 @@ def _round_payload(
     if ok is not None:
         payload["ok"] = ok
     if include_recap:
-        payload["recap"] = module_hooks.round_report_value(instance, module_hooks.REPORT_STATE_UPDATE)
+        payload["recap"] = module_hooks.read_value(instance, module_hooks.STATE_UPDATE)
     return payload
 
 

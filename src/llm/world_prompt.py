@@ -251,7 +251,7 @@ def format_world_state_block(
 def format_world_legality_block(instance: Any) -> str:
     """Render this round's proven world contradictions (empty when none)."""
 
-    notes = list(module_hooks.round_report(instance, module_hooks.REPORT_WORLD_LEGALITY))
+    notes = list(module_hooks.read(instance, module_hooks.WORLD_LEGALITY))
     if not notes:
         return ""
     language = getattr(instance, "language", "zh-CN")
@@ -278,7 +278,7 @@ def format_world_legality_block(instance: Any) -> str:
 def format_world_events_block(instance: Any) -> str:
     """Render the scheduled events settled by this round's time advance."""
 
-    events = list(module_hooks.round_report(instance, module_hooks.REPORT_WORLD_EVENTS))
+    events = list(module_hooks.read(instance, module_hooks.WORLD_EVENTS))
     if not events:
         return ""
     language = getattr(instance, "language", "zh-CN")

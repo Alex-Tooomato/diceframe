@@ -2,7 +2,7 @@
 
 The core flow reaches this module only through ``module_hooks``: timers tick
 at ``round.processing.begin``, clear at ``instance.reset``, and Lorebook
-retrieval reads them as the ``lorebook_timers`` report.  Without the module
+retrieval reads them as ``lorebook_timers`` module state.  Without the module
 entries simply have no sticky / cooldown / delay state.
 """
 
@@ -86,8 +86,8 @@ def clear(instance: Any) -> None:
     timers(instance).clear()
 
 
-def read_report(instance: Any, kind: str) -> Any:
-    return timers(instance) if kind == module_hooks.REPORT_LOREBOOK_TIMERS else None
+def read_state(instance: Any, kind: str) -> Any:
+    return timers(instance) if kind == module_hooks.LOREBOOK_TIMERS else None
 
 
 SPEC = ModuleStateSpec(name=MODULE_NAME, schema_version=SCHEMA_VERSION, fresh=fresh, ensure=ensure)
@@ -95,4 +95,4 @@ register_module_state(SPEC)
 module_hooks.register(module_hooks.ROUND_PROCESSING_BEGIN, MODULE_NAME, tick)
 module_hooks.register(module_hooks.INSTANCE_RESET_PREFLIGHT, MODULE_NAME, timers)
 module_hooks.register(module_hooks.INSTANCE_RESET, MODULE_NAME, clear)
-module_hooks.register(module_hooks.ROUND_REPORT_READ, MODULE_NAME, read_report)
+module_hooks.register(module_hooks.STATE_READ, MODULE_NAME, read_state)

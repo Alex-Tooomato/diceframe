@@ -25,30 +25,30 @@ ROUND_PROCESSING_BEGIN = "round.processing.begin"
 INSTANCE_RESET_PREFLIGHT = "instance.reset.preflight"
 # In-place game reset: handler(instance) -> None.  Clear run-scoped state.
 INSTANCE_RESET = "instance.reset"
-# Store a round report: handler(instance, kind, value) -> None.
-ROUND_REPORT_RECORD = "round.report.record"
-# Read a round report: handler(instance, kind) -> value | None.
+# Store module-held state by kind: handler(instance, kind, value) -> None.
+STATE_RECORD = "module.state.record"
+# Read module-held state by kind: handler(instance, kind) -> value | None.
 # ``None`` means "not mine / nothing stored"; the first other answer wins.
-ROUND_REPORT_READ = "round.report.read"
+STATE_READ = "module.state.read"
 
-# Round report kinds.  List-valued unless noted.
-REPORT_OVERREACH = "overreach"
-REPORT_WORLD_LEGALITY = "world_legality"
-REPORT_WORLD_EVENTS = "world_events"
-REPORT_QUICK_ACTIONS = "quick_actions"
-REPORT_GM_DIRECTIVES = "gm_directives"
-REPORT_COMBAT_RESULTS = "combat_results"
-REPORT_STATE_UPDATE = "state_update"  # dict | None
-REPORT_TOKEN_BUDGET_BUMP = "token_budget_bump"  # dict | None
+# State kinds.  List-valued unless noted; the owning module answers for its kinds.
+OVERREACH = "overreach"
+WORLD_LEGALITY = "world_legality"
+WORLD_EVENTS = "world_events"
+QUICK_ACTIONS = "quick_actions"
+GM_DIRECTIVES = "gm_directives"
+COMBAT_RESULTS = "combat_results"
+STATE_UPDATE = "state_update"  # dict | None
+TOKEN_BUDGET_BUMP = "token_budget_bump"  # dict | None
 # Live Lorebook timer dict (entry id -> timer); callers may mutate it.
-REPORT_LOREBOOK_TIMERS = "lorebook_timers"  # dict | None
+LOREBOOK_TIMERS = "lorebook_timers"  # dict | None
 # GM-visible degradation events and per-component status (not round-scoped).
-REPORT_HEALTH_EVENTS = "health_events"
-REPORT_HEALTH_STATUS = "health_status"  # dict | None
+HEALTH_EVENTS = "health_events"
+HEALTH_STATUS = "health_status"  # dict | None
 
 HOOK_POINTS = frozenset({
     ROUND_RESET, ROUND_PROCESSING_BEGIN, INSTANCE_RESET_PREFLIGHT, INSTANCE_RESET,
-    ROUND_REPORT_RECORD, ROUND_REPORT_READ,
+    STATE_RECORD, STATE_READ,
 })
 
 Handler = Callable[..., Any]
@@ -101,17 +101,18 @@ def ask(point: str, *args: Any, default: Any) -> Any:
     return default
 
 
-def record_round_report(instance: Any, kind: str, value: Any) -> None:
-    run(ROUND_REPORT_RECORD, instance, kind, value)
+def record(instance: Any, kind: str, value: Any) -> None:
+    """Store ``kind``; dropped when no module keeps it."""
+    run(STATE_RECORD, instance, kind, value)
 
 
-def round_report(instance: Any, kind: str) -> list:
-    """A list-valued round report; empty when no module keeps it."""
-    answer = ask(ROUND_REPORT_READ, instance, kind, default=[])
+def read(instance: Any, kind: str) -> list:
+    """List-valued state of ``kind``; empty when no module keeps it."""
+    answer = ask(STATE_READ, instance, kind, default=[])
     return answer if isinstance(answer, list) else []
 
 
-def round_report_value(instance: Any, kind: str) -> dict | None:
-    """A dict-valued round report; ``None`` when absent or no module keeps it."""
-    answer = ask(ROUND_REPORT_READ, instance, kind, default=None)
+def read_value(instance: Any, kind: str) -> dict | None:
+    """Dict-valued state of ``kind``; ``None`` when absent or no module keeps it."""
+    answer = ask(STATE_READ, instance, kind, default=None)
     return answer if isinstance(answer, dict) else None

@@ -686,8 +686,8 @@ class GameInstance:
         narrative_notes.summary(self)["narrative"] = narrative
 
     def set_quick_actions(self, actions: list[str]) -> None:
-        module_hooks.record_round_report(
-            self, module_hooks.REPORT_QUICK_ACTIONS,
+        module_hooks.record(
+            self, module_hooks.QUICK_ACTIONS,
             [str(action) for action in actions if str(action).strip()],
         )
 
@@ -715,8 +715,8 @@ class GameInstance:
             del entries[:-limit]
 
     def add_gm_directive(self, directive: dict) -> None:
-        directives = module_hooks.round_report(self, module_hooks.REPORT_GM_DIRECTIVES)
-        module_hooks.record_round_report(self, module_hooks.REPORT_GM_DIRECTIVES, [*directives, directive])
+        directives = module_hooks.read(self, module_hooks.GM_DIRECTIVES)
+        module_hooks.record(self, module_hooks.GM_DIRECTIVES, [*directives, directive])
 
     def clear_private_messages(self, uid: str) -> None:
         private_channels.private_log(self).pop(uid, None)
@@ -755,22 +755,22 @@ class GameInstance:
         module_hooks.run(module_hooks.ROUND_PROCESSING_BEGIN, self)
 
     def set_token_budget_bump(self, initial: int, used: int, *, kind: str = "narrative") -> None:
-        module_hooks.record_round_report(
-            self, module_hooks.REPORT_TOKEN_BUDGET_BUMP,
+        module_hooks.record(
+            self, module_hooks.TOKEN_BUDGET_BUMP,
             {"kind": kind, "from": initial, "to": used}
             if used > initial > 0
             else None,
         )
 
     def set_state_update_recap(self, state_update: dict | None) -> None:
-        module_hooks.record_round_report(self, module_hooks.REPORT_STATE_UPDATE, state_update or None)
+        module_hooks.record(self, module_hooks.STATE_UPDATE, state_update or None)
 
     def consume_gm_directives(self, directive_ids: set[str]) -> None:
         if not directive_ids:
             return
-        module_hooks.record_round_report(self, module_hooks.REPORT_GM_DIRECTIVES, [
+        module_hooks.record(self, module_hooks.GM_DIRECTIVES, [
             directive
-            for directive in module_hooks.round_report(self, module_hooks.REPORT_GM_DIRECTIVES)
+            for directive in module_hooks.read(self, module_hooks.GM_DIRECTIVES)
             if str(directive.get("id") or "") not in directive_ids
         ])
 
@@ -779,8 +779,8 @@ class GameInstance:
         session_stats.record_llm_usage(self, tokens, calls=calls)
 
     def record_combat_result(self, result: dict) -> None:
-        results = module_hooks.round_report(self, module_hooks.REPORT_COMBAT_RESULTS)
-        module_hooks.record_round_report(self, module_hooks.REPORT_COMBAT_RESULTS, [*results, result])
+        results = module_hooks.read(self, module_hooks.COMBAT_RESULTS)
+        module_hooks.record(self, module_hooks.COMBAT_RESULTS, [*results, result])
 
     def capture_combat_extension_snapshot(
         self,

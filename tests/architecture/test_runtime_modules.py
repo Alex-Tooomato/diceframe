@@ -347,7 +347,7 @@ MODULE_API_WRITERS: dict[str, tuple[frozenset[str], frozenset[Path]]] = {
     "world_reports": (
         frozenset({
             "replace_last_overreach", "replace_last_world_legality", "replace_last_world_events",
-            "clear_round", "record_report",
+            "clear_round", "record_state",
         }),
         frozenset(),
     ),
@@ -355,14 +355,14 @@ MODULE_API_WRITERS: dict[str, tuple[frozenset[str], frozenset[Path]]] = {
         frozenset({
             "replace_gm_directives", "replace_quick_actions", "replace_last_state_update",
             "replace_last_token_budget_bump", "replace_pending_combat_results",
-            "begin_round", "reset", "record_report",
+            "begin_round", "reset", "record_state",
         }),
         # Reached only through module_hooks.
         frozenset(),
     ),
     # Reached only through module_hooks (engine.health reads/writes reports).
     "health": (
-        frozenset({"replace_health_events", "replace_health_status", "reset", "record_report"}),
+        frozenset({"replace_health_events", "replace_health_status", "reset", "record_state"}),
         frozenset(),
     ),
     # Reached only through module_hooks.

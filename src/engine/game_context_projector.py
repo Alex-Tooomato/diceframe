@@ -84,7 +84,7 @@ class GameContextProjector:
             "combat_state": legacy_combat.combat_state(instance),
             "initiative_order": legacy_combat.initiative_order(instance),
             "initiative_current": legacy_combat.initiative_current(instance),
-            "quick_actions": module_hooks.round_report(instance, module_hooks.REPORT_QUICK_ACTIONS),
+            "quick_actions": module_hooks.read(instance, module_hooks.QUICK_ACTIONS),
         }
         if away_names:
             state["attendance_note"] = (
