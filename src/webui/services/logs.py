@@ -6,7 +6,8 @@ import copy
 from dataclasses import dataclass
 from typing import Any, Callable, Protocol
 
-from src.engine.modules import check_reveals, progression_state, session_stats, table_settings
+from src.engine import module_hooks
+from src.engine.modules import progression_state, session_stats, table_settings
 from src.llm.parser import sanitize_narration
 
 GameKey = tuple[str, ...]
@@ -104,7 +105,7 @@ def get_log(
         for check in results:
             if isinstance(check, dict) and str(check.get("check_id") or ""):
                 page_ids.add(str(check.get("check_id")))
-    reveal_records = check_reveals.records(inst)
+    reveal_records = module_hooks.read_value(inst, module_hooks.CHECK_REVEALS) or {}
     check_reveals_map = {
         check_id: copy.deepcopy(record)
         for check_id, record in reveal_records.items()

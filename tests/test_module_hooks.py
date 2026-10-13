@@ -7,7 +7,11 @@ import pytest
 from src.engine import module_hooks
 from src.engine.game_instance import GameInstance
 from src.engine.health import health_payload, mark_health_event, record_health_event
-from src.engine.modules import health, lorebook_runtime, round_presentation, world_reports
+from src.engine.modules import (
+    check_reveals, health, lorebook_runtime, player_control_state, private_channels, round_presentation,
+    world_reports,
+)
+from src.engine.player_control import away_control_policy, set_away_control_policy
 
 
 @pytest.fixture
@@ -178,3 +182,59 @@ def test_without_health_events_are_not_kept() -> None:
     finally:
         for point, handler in removed.items():
             module_hooks.register(point, health.MODULE_NAME, handler)
+
+
+def _detached(module) -> dict:
+    return module_hooks.unregister_owner(module.MODULE_NAME)
+
+
+def _reattach(module, removed: dict) -> None:
+    for point, handler in removed.items():
+        module_hooks.register(point, module.MODULE_NAME, handler)
+
+
+def test_check_reveals_are_read_through_hooks() -> None:
+    instance = GameInstance(game_key=("web", "hooks-reveals", "u"))
+    check_reveals.mark_revealed(instance, "c1", "p1")
+    assert set(module_hooks.read_value(instance, module_hooks.CHECK_REVEALS) or {}) == {"c1"}
+    removed = _detached(check_reveals)
+    try:
+        assert module_hooks.read_value(instance, module_hooks.CHECK_REVEALS) is None
+    finally:
+        _reattach(check_reveals, removed)
+
+
+def test_away_control_policy_round_trips_and_defaults_without_module() -> None:
+    instance = GameInstance(game_key=("web", "hooks-away", "u"))
+    other = next(p for p in ("ai_takeover", "pause") if p != away_control_policy(instance))
+    assert set_away_control_policy(instance, other) == other
+    assert player_control_state.away_control_policy(instance) == other
+    removed = _detached(player_control_state)
+    try:
+        assert away_control_policy(instance) == "pause"
+        set_away_control_policy(instance, "pause")
+        assert player_control_state.away_control_policy(instance) == other
+    finally:
+        _reattach(player_control_state, removed)
+
+
+def test_private_channels_through_hooks_and_absent_module() -> None:
+    instance = GameInstance(game_key=("web", "hooks-private", "u"))
+    instance.append_private_message("p1", {"text": "hi"})
+    instance.append_table_talk({"id": "t1", "visibility": "party"})
+    assert private_channels.private_log(instance) == {"p1": [{"text": "hi"}]}
+    instance.clear_private_messages("p1")
+    assert private_channels.private_log(instance) == {}
+    module_hooks.run(module_hooks.INSTANCE_RESET, instance)
+    assert private_channels.table_talk(instance) == []
+
+    removed = _detached(private_channels)
+    try:
+        instance.append_private_message("p1", {"text": "lost"})
+        instance.append_table_talk({"id": "t2", "visibility": "party"})
+        instance.clear_private_messages("p1")
+        assert private_channels.private_log(instance) == {}
+        assert private_channels.table_talk(instance) == []
+        assert module_hooks.read(instance, module_hooks.TABLE_TALK) == []
+    finally:
+        _reattach(private_channels, removed)

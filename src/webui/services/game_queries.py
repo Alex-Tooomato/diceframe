@@ -11,7 +11,7 @@ from src.engine.health import health_payload
 from src.engine.language import DEFAULT_LANGUAGE, normalize_language
 from src.engine import module_hooks
 from src.engine.modules import (
-    adventure_runtime_state, checks, economy_state, legacy_combat, media, narrative_notes, private_channels,
+    adventure_runtime_state, checks, economy_state, legacy_combat, media, narrative_notes,
     progression_state, room_access, ruleset_runtime, session_stats, table_settings,
 )
 from src.engine.player_control import away_control_policy
@@ -444,7 +444,7 @@ def table_talk(
         return {"ok": False, "error": "游戏不存在"}
     exchanges = [
         dict(item)
-        for item in (private_channels.table_talk(instance) or [])
+        for item in module_hooks.read(instance, module_hooks.TABLE_TALK)
         if isinstance(item, dict) and item.get("visibility") == "party"
     ]
     return {"ok": True, "exchanges": exchanges[-50:]}
@@ -459,7 +459,7 @@ def _private_log_messages(
         )
 
     messages: list[dict[str, Any]] = []
-    for user_id, items in (private_channels.private_log(instance) or {}).items():
+    for user_id, items in (module_hooks.read_value(instance, module_hooks.PRIVATE_LOG) or {}).items():
         if only_user_id and user_id != only_user_id:
             continue
         for item in items or []:

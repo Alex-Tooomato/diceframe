@@ -8,10 +8,11 @@ import os
 from copy import deepcopy
 from typing import Any, Literal
 
+from src.engine import module_hooks
 from src.engine.game_instance import GameInstance
 from src.engine.language import localized_text, normalize_language
 from src.engine.modules import (
-    checks, economy_state, legacy_combat, narrative_notes, private_channels, progression_state,
+    checks, economy_state, legacy_combat, narrative_notes, progression_state,
     table_settings,
 )
 from src.engine.visibility_rules import manual_roll_visible_to
@@ -1100,7 +1101,7 @@ async def build_player_safe_context(
 
     own_private = []
     for item in (
-        (private_channels.private_log(instance) or {}).get(actor_uid, []) if visibility == "private" else []
+        (module_hooks.read_value(instance, module_hooks.PRIVATE_LOG) or {}).get(actor_uid, []) if visibility == "private" else []
     ):
         if not isinstance(item, dict):
             continue

@@ -106,7 +106,7 @@ class DisableModulePlugin:
         # registry holds the original functions, which stubbing cannot reach.
         from src.engine import module_hooks
 
-        module_hooks.unregister_owner(self.module)
+        module_hooks.unregister_owner(getattr(target, "MODULE_NAME", self.module))
         originals = {
             name: obj for name, obj in vars(target).items()
             if callable(obj) and not isinstance(obj, type) and not name.startswith("_")
