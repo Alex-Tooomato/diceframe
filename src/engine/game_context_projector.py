@@ -11,7 +11,8 @@ from src.engine.game_state_contracts import (
     PlayerContextView,
 )
 from src.engine.language import normalize_language
-from src.engine.modules import legacy_combat, narrative_notes, round_presentation, table_settings
+from src.engine import module_hooks
+from src.engine.modules import legacy_combat, narrative_notes, table_settings
 
 if TYPE_CHECKING:
     from src.engine.game_instance import GameInstance
@@ -83,7 +84,7 @@ class GameContextProjector:
             "combat_state": legacy_combat.combat_state(instance),
             "initiative_order": legacy_combat.initiative_order(instance),
             "initiative_current": legacy_combat.initiative_current(instance),
-            "quick_actions": round_presentation.quick_actions(instance),
+            "quick_actions": module_hooks.round_report(instance, module_hooks.REPORT_QUICK_ACTIONS),
         }
         if away_names:
             state["attendance_note"] = (

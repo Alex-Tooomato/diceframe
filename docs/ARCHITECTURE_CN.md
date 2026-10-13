@@ -493,7 +493,7 @@ Frontend / Bot / Plugin Client
 
 `tests/architecture/test_module_pluggability.py` 记录核心流程对能力模块的点名调用（#515，母方案 §7.1“删除任一模块，跑团仍可运行”）。建局、回合、快照、存档、投影、上下文等核心流程文件中对能力模块 API 的引用，按“文件 + 模块”计入只减不增的基线；`src/engine/modules` 下除 `KERNEL_MODULES`（`adventure_runtime_state`、`checks`、`content_binding`、`progression_state`、`round_safety`、`ruleset_runtime`、`session_stats`）外都算能力模块，新模块自动纳入。模块改走生命周期钩子后，同一 PR 下调或删除对应条目。运行时一侧由 `scripts/audit_module_pluggability.py` 测量（逐个桩掉模块能力 API 跑主流程测试，报告新增失败与第一处命中的调用方），只做报告，不进 CI。
 
-能力模块经 `src/engine/module_hooks.py` 接入核心流程：核心只调用固定的钩子点（`round.reset`、`round.report.record`、`round.report.read`），不点名模块；没有模块注册的钩子点是空操作，读取返回空值。钩子点是封闭集合，注册未知钩子点直接报错；只有 `src/engine/modules` 下的模块可以注册（架构守卫）。目前 `world_reports`（越权标注、世界合法性、世界事件三类回合报告）已迁到钩子上，删除它后跑团照常，只是不再有这三类报告。
+能力模块经 `src/engine/module_hooks.py` 接入核心流程：核心只调用固定的钩子点（`round.reset`、`round.processing.begin`、`instance.reset`、`round.report.record`、`round.report.read`），不点名模块；没有模块注册的钩子点是空操作，读取返回空值。钩子点是封闭集合，注册未知钩子点直接报错；只有 `src/engine/modules` 下的模块可以注册（架构守卫）。目前已迁到钩子上的有 `world_reports`（越权标注、世界合法性、世界事件三类回合报告）和 `round_presentation`（快捷行动、回合回顾、token 预算提升、待结算战斗结果、GM 私密指令）；删除它们后跑团照常，只是缺少对应的展示与报告，接口保持原形状（空列表或 `null`）。
 
 ---
 

@@ -17,18 +17,30 @@ from typing import Any
 
 # reset_round_checks: handler(instance) -> None.  Clear round-scoped state.
 ROUND_RESET = "round.reset"
-# A round adjudication produced a report: handler(instance, kind, items) -> None.
+# begin_round_processing: handler(instance) -> None.  Drop the previous
+# round's short-lived presentation state.
+ROUND_PROCESSING_BEGIN = "round.processing.begin"
+# In-place game reset: handler(instance) -> None.  Clear run-scoped state.
+INSTANCE_RESET = "instance.reset"
+# Store a round report: handler(instance, kind, value) -> None.
 ROUND_REPORT_RECORD = "round.report.record"
-# Read the current round's report: handler(instance, kind) -> list | None.
-# ``None`` means "not mine"; the first list answer wins.
+# Read a round report: handler(instance, kind) -> value | None.
+# ``None`` means "not mine / nothing stored"; the first other answer wins.
 ROUND_REPORT_READ = "round.report.read"
 
-# Round report kinds produced by round adjudication.
+# Round report kinds.  List-valued unless noted.
 REPORT_OVERREACH = "overreach"
 REPORT_WORLD_LEGALITY = "world_legality"
 REPORT_WORLD_EVENTS = "world_events"
+REPORT_QUICK_ACTIONS = "quick_actions"
+REPORT_GM_DIRECTIVES = "gm_directives"
+REPORT_COMBAT_RESULTS = "combat_results"
+REPORT_STATE_UPDATE = "state_update"  # dict | None
+REPORT_TOKEN_BUDGET_BUMP = "token_budget_bump"  # dict | None
 
-HOOK_POINTS = frozenset({ROUND_RESET, ROUND_REPORT_RECORD, ROUND_REPORT_READ})
+HOOK_POINTS = frozenset({
+    ROUND_RESET, ROUND_PROCESSING_BEGIN, INSTANCE_RESET, ROUND_REPORT_RECORD, ROUND_REPORT_READ,
+})
 
 Handler = Callable[..., Any]
 _HANDLERS: dict[str, list[tuple[str, Handler]]] = {point: [] for point in HOOK_POINTS}
@@ -80,11 +92,17 @@ def ask(point: str, *args: Any, default: Any) -> Any:
     return default
 
 
-def record_round_report(instance: Any, kind: str, items: list) -> None:
-    run(ROUND_REPORT_RECORD, instance, kind, items)
+def record_round_report(instance: Any, kind: str, value: Any) -> None:
+    run(ROUND_REPORT_RECORD, instance, kind, value)
 
 
 def round_report(instance: Any, kind: str) -> list:
-    """The current round's ``kind`` report; empty when no module keeps it."""
+    """A list-valued round report; empty when no module keeps it."""
     answer = ask(ROUND_REPORT_READ, instance, kind, default=[])
     return answer if isinstance(answer, list) else []
+
+
+def round_report_value(instance: Any, kind: str) -> dict | None:
+    """A dict-valued round report; ``None`` when absent or no module keeps it."""
+    answer = ask(ROUND_REPORT_READ, instance, kind, default=None)
+    return answer if isinstance(answer, dict) else None
