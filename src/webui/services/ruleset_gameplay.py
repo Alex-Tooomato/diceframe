@@ -11,8 +11,8 @@ from typing import Any
 
 from src.webui.ruleset_draft_validation import validate_draft_shape
 from src.adventures import binding_matches
-from src.engine import progression
-from src.engine.modules import adventure_runtime_state, economy_state, legacy_combat, progression_state, ruleset_runtime, seat_activity, session_stats
+from src.engine import module_hooks, progression
+from src.engine.modules import adventure_runtime_state, economy_state, legacy_combat, progression_state, ruleset_runtime, session_stats
 from src.engine.action_gate import (
     GateRequest, ROUND_PROCESSING, SOURCE_INTENT, STRUCTURED_INTENT_POLICY,
     check_not_judging, check_seat_exists, evaluate,
@@ -505,7 +505,7 @@ async def submit_intent(
             return admission_error
         progression.require_writable(instance)
         session_stats.require_writable(instance)
-        seat_activity.require_writable(instance)
+        module_hooks.run(module_hooks.SEAT_PREFLIGHT, instance)
         binding_error = await _ensure_compatible_adventure_binding(
             dependencies, runtime, instance,
         )
@@ -527,7 +527,7 @@ async def submit_intent(
         marks_seat = (
             not requester_is_gm
             and effective_requester in instance.players
-            and not seat_activity.has_acted(instance, effective_requester)
+            and not module_hooks.seat_has_acted(instance, effective_requester)
         )
         try:
             rng = random.SystemRandom()
@@ -541,7 +541,10 @@ async def submit_intent(
             if marks_seat:
                 # A player-side intent applied for its own seat: the seat has
                 # acted, so card adoption / deletion become GM-only for it.
-                seat_activity.mark_acted(instance, effective_requester)
+                module_hooks.run(
+                    module_hooks.SEAT_ACTED, instance, effective_requester,
+                    module_hooks.SEAT_SOURCE_INTENT,
+                )
             _project_public_batch(runtime, instance, batch, applied)
             automatic_batches, automatic_results = _automatic_segment(
                 runtime, instance, rng,
@@ -551,12 +554,12 @@ async def submit_intent(
         except (ValueError, KeyError, TypeError) as exc:
             instance.restore_ruleset_transaction(before)
             if marks_seat:
-                seat_activity.forget_seat(instance, effective_requester)
+                module_hooks.run(module_hooks.SEAT_FORGOTTEN, instance, effective_requester)
             return _error("INTENT_REJECTED", str(exc))
         except Exception:
             instance.restore_ruleset_transaction(before)
             if marks_seat:
-                seat_activity.forget_seat(instance, effective_requester)
+                module_hooks.run(module_hooks.SEAT_FORGOTTEN, instance, effective_requester)
             raise
         await _project_batch_memory(
             dependencies, runtime, instance, [batch, *automatic_batches],

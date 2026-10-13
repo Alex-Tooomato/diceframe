@@ -14,7 +14,8 @@ from datetime import datetime, timezone
 from src.engine.character_utils import apply_resource_delta, get_resource
 from src.engine.game_instance import GameInstance, GameState
 from src.engine import progression
-from src.engine.modules import checks, seat_activity, session_stats
+from src.engine import module_hooks
+from src.engine.modules import checks, session_stats
 
 logger = logging.getLogger("trpg")
 
@@ -57,7 +58,7 @@ async def resolve_luck_decision(
         progression.require_writable(instance)
         session_stats.require_writable(instance)
         checks.require_writable(instance)
-        seat_activity.require_writable(instance)
+        module_hooks.run(module_hooks.SEAT_PREFLIGHT, instance)
 
         if spend:
             if str(target.get("dice") or "").lower() != "d100" or str(target.get("verdict") or "") != "失败":
@@ -83,7 +84,7 @@ async def resolve_luck_decision(
             target["luck_remaining"] = remaining
             if actor_uid == owner_uid and owner_uid in instance.players:
                 # The seat spent its own luck: it is in play (see seat_activity).
-                seat_activity.mark_acted(instance, owner_uid)
+                module_hooks.run(module_hooks.SEAT_ACTED, instance, owner_uid, module_hooks.SEAT_SOURCE_LUCK)
 
         target["luck_decision"] = desired
         target["luck_spend_available"] = False

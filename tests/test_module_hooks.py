@@ -9,7 +9,7 @@ from src.engine.game_instance import GameInstance
 from src.engine.health import health_payload, mark_health_event, record_health_event
 from src.engine.modules import (
     check_reveals, health, lorebook_runtime, player_control_state, private_channels, round_presentation,
-    world_reports,
+    seat_activity, world_reports,
 )
 from src.engine.player_control import away_control_policy, set_away_control_policy
 
@@ -238,3 +238,38 @@ def test_private_channels_through_hooks_and_absent_module() -> None:
         assert module_hooks.read(instance, module_hooks.TABLE_TALK) == []
     finally:
         _reattach(private_channels, removed)
+
+
+def _seated(key: str) -> GameInstance:
+    instance = GameInstance(game_key=("web", key, "u"))
+    instance.players = {"p1": {"user_id": "p1", "character_name": "Avery", "character_sheet": {}}}
+    return instance
+
+
+def test_seat_hooks_mark_query_and_forget() -> None:
+    instance = _seated("hooks-seat")
+    assert not module_hooks.seat_has_acted(instance, "p1")
+    module_hooks.run(module_hooks.SEAT_ACTED, instance, "p1", module_hooks.SEAT_SOURCE_LUCK)
+    module_hooks.run(module_hooks.SEAT_ACTED, instance, "stranger", module_hooks.SEAT_SOURCE_LUCK)
+    assert module_hooks.seat_has_acted(instance, "p1")
+    assert seat_activity.has_acted(instance, "p1") and not seat_activity.has_acted(instance, "stranger")
+    module_hooks.run(module_hooks.SEAT_FORGOTTEN, instance, "p1")
+    assert not module_hooks.seat_has_acted(instance, "p1")
+
+
+def test_unreadable_seat_slot_still_fails_closed() -> None:
+    instance = _seated("hooks-seat-closed")
+    instance.modules[seat_activity.MODULE_NAME] = {"schema_version": 999}
+    assert module_hooks.seat_has_acted(instance, "p1")
+
+
+def test_without_seat_activity_no_seat_is_locked() -> None:
+    removed = _detached(seat_activity)
+    try:
+        instance = _seated("hooks-seat-off")
+        module_hooks.run(module_hooks.SEAT_PREFLIGHT, instance)
+        module_hooks.run(module_hooks.SEAT_ACTED, instance, "p1", module_hooks.SEAT_SOURCE_INTENT)
+        assert not module_hooks.seat_has_acted(instance, "p1")
+        assert seat_activity.has_acted(instance, "p1") is False
+    finally:
+        _reattach(seat_activity, removed)

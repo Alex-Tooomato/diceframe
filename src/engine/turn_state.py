@@ -27,7 +27,7 @@ from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Any
 
 from src.engine.contracts import ActionRecord
-from src.engine import progression
+from src.engine import module_hooks, progression
 from src.engine.game_state import GameState
 from src.engine.modules import progression_state, room_access, table_settings
 from src.engine.player_control import (
@@ -243,10 +243,10 @@ def add_action_locked(
     单独抽出来是为了让需要「先复核再写入」的调用方能在**同一个** boundary
     内完成两件事：自己在锁内复核，再调用这里追加，而不是写两层加锁。
     """
-    from src.engine.modules import seat_activity, session_stats
+    from src.engine.modules import session_stats
 
     session_stats.require_writable(instance)
-    seat_activity.require_writable(instance)
+    module_hooks.run(module_hooks.SEAT_PREFLIGHT, instance)
     if user_id in instance.players:
         cs = instance.get_character_sheet(user_id)
         if cs.get("deceased"):
@@ -254,9 +254,8 @@ def add_action_locked(
         instance.away_players.discard(user_id)
         # 真人控制（或玩家暂离、AI 临时托管）的席位声明行动（入队或延后到下一轮）
         # 即视为已行动：之后只有 GM 能为它套用角色卡或删除它（见 seat_activity）。
-        # 永久交给 AI / 未认领的席位不算，玩家认领后仍可换成自己的卡。
-        if seat_activity.plays_for_its_player(get_control(instance, user_id)):
-            seat_activity.mark_acted(instance, user_id)
+        # 永久交给 AI / 未认领的席位不算，由模块按控制权判定。
+        module_hooks.run(module_hooks.SEAT_ACTED, instance, user_id, module_hooks.SEAT_SOURCE_ACTION)
     action_entry: ActionRecord = {
         "user_id": user_id, "text": action_text,
         "timestamp": datetime.now(timezone.utc).isoformat(),

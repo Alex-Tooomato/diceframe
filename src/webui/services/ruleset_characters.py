@@ -14,7 +14,7 @@ from typing import TYPE_CHECKING, Any
 
 from src.engine.modules import ruleset_runtime
 from src.webui.character_card_projection import dedupe_cards
-from src.engine.modules import seat_activity
+from src.engine import module_hooks
 from src.webui.character_contracts import MAX_BIO_CHARS
 from src.webui.character_sheet_authority import adopt_requires_gm_failure
 
@@ -411,7 +411,7 @@ async def adopt_character_card(
     async with instance.authoritative_write() as write_entered:
         if not write_entered:
             return _failure("REWRITE_IN_PROGRESS", "GM 正在重写历史回合，请等待完成后重试")
-        if not gm_authority and seat_activity.has_acted(instance, user_id):
+        if not gm_authority and module_hooks.seat_has_acted(instance, user_id):
             return adopt_requires_gm_failure()
         return await _adopt_character_card_authority(
             dependencies, instance, game_key, user_id, card_id,

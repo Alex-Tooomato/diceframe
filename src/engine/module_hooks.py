@@ -25,6 +25,20 @@ ROUND_PROCESSING_BEGIN = "round.processing.begin"
 INSTANCE_RESET_PREFLIGHT = "instance.reset.preflight"
 # In-place game reset: handler(instance) -> None.  Clear run-scoped state.
 INSTANCE_RESET = "instance.reset"
+# Before a write that may mark or forget a seat: handler(instance) -> None.
+# Raise to refuse; nothing has changed yet.
+SEAT_PREFLIGHT = "seat.preflight"
+# A seat acted: handler(instance, user_id, source) -> None, ``source`` one of
+# SEAT_SOURCE_*.  The owning module decides whether that counts.
+SEAT_ACTED = "seat.acted"
+# A seat left the roster, or its first mark was undone: handler(instance, user_id).
+SEAT_FORGOTTEN = "seat.forgotten"
+# Has this seat acted in the current run: handler(instance, user_id) -> bool | None.
+# Without a module the answer is False (no seat lock).
+SEAT_HAS_ACTED = "seat.has_acted"
+SEAT_SOURCE_ACTION = "action"  # declared a round action (queued or deferred)
+SEAT_SOURCE_LUCK = "luck"  # spent luck on its own check
+SEAT_SOURCE_INTENT = "intent"  # a player-side rules-aware intent was applied for it
 # Store module-held state by kind: handler(instance, kind, value) -> None.
 STATE_RECORD = "module.state.record"
 # Read module-held state by kind: handler(instance, kind) -> value | None.
@@ -55,6 +69,7 @@ TABLE_TALK = "table_talk"
 
 HOOK_POINTS = frozenset({
     ROUND_RESET, ROUND_PROCESSING_BEGIN, INSTANCE_RESET_PREFLIGHT, INSTANCE_RESET,
+    SEAT_PREFLIGHT, SEAT_ACTED, SEAT_FORGOTTEN, SEAT_HAS_ACTED,
     STATE_RECORD, STATE_READ,
 })
 
@@ -123,3 +138,8 @@ def read_value(instance: Any, kind: str) -> dict | None:
     """Dict-valued state of ``kind``; ``None`` when absent or no module keeps it."""
     answer = ask(STATE_READ, instance, kind, default=None)
     return answer if isinstance(answer, dict) else None
+
+
+def seat_has_acted(instance: Any, user_id: str) -> bool:
+    """Has this seat acted in the current run; False when no module tracks seats."""
+    return bool(ask(SEAT_HAS_ACTED, instance, user_id, default=False))

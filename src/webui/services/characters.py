@@ -39,7 +39,8 @@ from src.engine.memory_outbox import (
     queue_memory_delivery,
 )
 from src.engine.game_instance import GameInstance
-from src.engine.modules import progression_state, room_access, ruleset_runtime, seat_activity, table_settings
+from src.engine import module_hooks
+from src.engine.modules import progression_state, room_access, ruleset_runtime, table_settings
 from src.engine.player_control import claim_seat, is_human_controlled
 from src.content_modules.projection import ContentProjectionService
 from src.commands.economy_effects import pending_decision_notice
@@ -498,7 +499,7 @@ def list_characters(
         return {"players": [], "npcs": [], "rule_attrs": []}
     players = [
         # ``has_acted``: after its first action a seat's card / deletion is GM-only.
-        {"user_id": uid, **p, "has_acted": seat_activity.has_acted(inst, uid)}
+        {"user_id": uid, **p, "has_acted": module_hooks.seat_has_acted(inst, uid)}
         for uid, p in inst.players.items()
     ]
     rule_attrs = _get_rule_attrs_for_game(dependencies, inst)
@@ -712,7 +713,7 @@ async def adopt_library_card(
             not gm_authority
             and user_id in instance.players
             and not _is_rules_aware_game(dependencies, instance)
-            and seat_activity.has_acted(instance, user_id)
+            and module_hooks.seat_has_acted(instance, user_id)
         )
         if dependencies.games.get_instance(instance.game_key) is not instance:
             return {"ok": False, "code": "STALE_RUN", "error": "对局已重开，请刷新后重试"}
@@ -1241,7 +1242,7 @@ async def delete_character(
         player_side_after_acting = (
             not gm_authority
             and user_id in inst.players
-            and seat_activity.has_acted(inst, user_id)
+            and module_hooks.seat_has_acted(inst, user_id)
         )
         current = dependencies.games.get_instance(inst.game_key)
         if current is not inst:
