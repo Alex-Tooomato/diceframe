@@ -489,6 +489,8 @@ This is one of the most important current **hard architecture boundaries**.
 
 `tests/architecture/test_game_instance_facades.py` records module-state facade debt: after R7–R9 moved fields into `src/engine/modules`, `GameInstance` still keeps a compatibility property for each one, and every `src/` caller that reads or writes `instance.<field>` is counted per file + property in a shrink-only baseline. The facade set is detected from the AST (properties whose body references `src.engine.modules`), and its size may only shrink too; when callers move to the module API, the same PR lowers or removes the matching baseline entries.
 
+`tests/architecture/test_module_pluggability.py` records where the core flow calls capability modules by name (#515; master plan §7.1, "deleting any module still leaves a playable game"). References to a capability module's API from the core create / round / snapshot / persistence / projection / context files are counted per file + module in a shrink-only baseline; every module under `src/engine/modules` except `KERNEL_MODULES` (`adventure_runtime_state`, `checks`, `content_binding`, `progression_state`, `round_safety`, `ruleset_runtime`, `session_stats`) is a capability, so new modules are covered automatically. When a module moves onto a lifecycle hook, the same PR lowers or removes its entries. The runtime side is measured by `scripts/audit_module_pluggability.py` (stubs one module's capability API at a time, runs the core-flow tests, and reports new failures plus the first core caller that hit a stub); it is a report, not a CI gate.
+
 ---
 
 ## 2.3 Authority Model: Who May Decide What
