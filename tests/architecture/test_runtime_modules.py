@@ -370,6 +370,11 @@ MODULE_API_WRITERS: dict[str, tuple[frozenset[str], frozenset[Path]]] = {
         frozenset({"replace_timers", "tick", "clear"}),
         frozenset(),
     ),
+    # Reached only through module_hooks (seat.* and instance reset points).
+    "seat_activity": (
+        frozenset({"mark_acted", "forget_seat", "reset", "seat_acted"}),
+        frozenset(),
+    ),
     # Reached only through module_hooks (engine.player_control reads/writes state).
     "player_control_state": (
         frozenset({"set_away_control_policy_value", "record_state"}),
