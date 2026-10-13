@@ -364,8 +364,9 @@ MODULE_API_WRITERS: dict[str, tuple[frozenset[str], frozenset[Path]]] = {
         frozenset({"replace_health_events", "replace_health_status"}),
         frozenset(),
     ),
+    # Reached only through module_hooks.
     "lorebook_runtime": (
-        frozenset({"replace_timers"}),
+        frozenset({"replace_timers", "tick", "clear"}),
         frozenset(),
     ),
     "player_control_state": (
