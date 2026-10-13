@@ -14,7 +14,7 @@ from src.engine.economy import has_blocking_economy_decision, pending_economy_pr
 from src.engine.game_instance import GameState
 from src.engine import module_hooks
 from src.engine.modules import (
-    checks, media, narrative_notes, private_channels, progression_state, room_access,
+    checks, media, narrative_notes, progression_state, room_access,
     session_stats,
 )
 from src.engine.visibility_rules import proposal_visible_to
@@ -219,7 +219,7 @@ async def sse_play(request: web.Request) -> web.StreamResponse:
         # 页面已先通过 HTTP 获取完整快照。首次 SSE 连接只建立当前基线，
         # 不把既有回合、行动和私聊误报成新事件，再触发一整组重复 GET。
         last_round = progression_state.round_value(inst)
-        last_private_count = len(private_channels.private_log(inst).get(user_id, []))
+        last_private_count = len((module_hooks.read_value(inst, module_hooks.PRIVATE_LOG) or {}).get(user_id, []))
         last_action_digest = _signature_digest(action_signature)
         last_public_digest = _signature_digest(public_signature)
     else:
@@ -289,7 +289,7 @@ async def sse_play(request: web.Request) -> web.StreamResponse:
                     # 同回合回滚、角色状态恢复等操作不会改变既有 SSE 游标，
                     # 仍需显式唤醒玩家端重新拉取完整公开状态。
                     await _write_play_event(resp, last_round, last_private_count, action_signature, public_signature, {'type':'refresh'})
-            priv = private_channels.private_log(inst).get(user_id, [])
+            priv = (module_hooks.read_value(inst, module_hooks.PRIVATE_LOG) or {}).get(user_id, [])
             if len(priv) < last_private_count:
                 # 清空私聊等回退操作也要更新游标；客户端通过完整刷新移除旧消息。
                 last_private_count = len(priv)

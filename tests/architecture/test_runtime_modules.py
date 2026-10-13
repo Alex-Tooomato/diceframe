@@ -370,9 +370,10 @@ MODULE_API_WRITERS: dict[str, tuple[frozenset[str], frozenset[Path]]] = {
         frozenset({"replace_timers", "tick", "clear"}),
         frozenset(),
     ),
+    # Reached only through module_hooks (engine.player_control reads/writes state).
     "player_control_state": (
-        frozenset({"set_away_control_policy_value"}),
-        frozenset({SRC / "engine" / "player_control.py"}),
+        frozenset({"set_away_control_policy_value", "record_state"}),
+        frozenset(),
     ),
 }
 
@@ -602,11 +603,9 @@ PRIVATE_CHANNEL_GETTERS = {"private_log", "table_talk"}
 
 
 def test_only_private_channel_owners_assign_compatibility_properties() -> None:
-    # Aggregate methods own appends/removal; lifecycle owns reset clears.
+    # Aggregate methods append through module_hooks; reset clears via instance.reset.
     owners = {
         MODULES / "private_channels.py",
-        SRC / "engine" / "game_instance.py",
-        SRC / "engine" / "instance_lifecycle.py",
         SRC / "migrations" / "instance.py",
     }
     violations: list[str] = []

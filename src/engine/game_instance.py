@@ -41,7 +41,6 @@ from src.engine.modules import (
     economy_state,
     media,
     narrative_notes,
-    private_channels,
     progression_state,
     room_access,
     round_safety,
@@ -705,11 +704,13 @@ class GameInstance:
             del confirmed[:-limit]
 
     def append_private_message(self, uid: str, message: dict) -> None:
-        private_channels.private_log(self).setdefault(uid, []).append(message)
+        log = module_hooks.read_value(self, module_hooks.PRIVATE_LOG)
+        if log is not None:
+            log.setdefault(uid, []).append(message)
 
     def append_table_talk(self, exchange: TableTalkExchange, *, limit: int = 50) -> None:
         """Append a bounded public table-talk exchange without touching turn state."""
-        entries = private_channels.table_talk(self)
+        entries = module_hooks.read(self, module_hooks.TABLE_TALK)
         entries.append(exchange)
         if len(entries) > limit:
             del entries[:-limit]
@@ -719,7 +720,7 @@ class GameInstance:
         module_hooks.record(self, module_hooks.GM_DIRECTIVES, [*directives, directive])
 
     def clear_private_messages(self, uid: str) -> None:
-        private_channels.private_log(self).pop(uid, None)
+        (module_hooks.read_value(self, module_hooks.PRIVATE_LOG) or {}).pop(uid, None)
 
     def record_check(self, check: CheckResult) -> None:
         """记录结构化检定，并保持 last_check 与 last_checks 一致。"""

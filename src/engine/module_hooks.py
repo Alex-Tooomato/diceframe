@@ -45,6 +45,13 @@ LOREBOOK_TIMERS = "lorebook_timers"  # dict | None
 # GM-visible degradation events and per-component status (not round-scoped).
 HEALTH_EVENTS = "health_events"
 HEALTH_STATUS = "health_status"  # dict | None
+# Check reveal records (check id -> record).
+CHECK_REVEALS = "check_reveals"  # dict | None
+# Room away-control policy; read with ``ask(STATE_READ, ..., default=...)``.
+AWAY_CONTROL_POLICY = "away_control_policy"  # str | None
+# Live private messages (uid -> list) and public table talk; callers may mutate.
+PRIVATE_LOG = "private_log"  # dict | None
+TABLE_TALK = "table_talk"
 
 HOOK_POINTS = frozenset({
     ROUND_RESET, ROUND_PROCESSING_BEGIN, INSTANCE_RESET_PREFLIGHT, INSTANCE_RESET,
