@@ -91,6 +91,7 @@ const generatePrompt = ref('')
 const fileInput = ref<HTMLInputElement | null>(null)
 const importPreview = ref<LorebookImportPreview>()
 const importDialogOpen = ref(false)
+const importBusy = ref(false)
 const pendingImportPayload = ref<unknown>()
 const showNewWorld = ref(false)
 const players = ref<Player[]>([])
@@ -691,7 +692,8 @@ function selectLorebook(bookId: string) {
 
 /** 导入目标与 binding 全部来自对话框里用户的显式选择，不再隐式塞主世界书。 */
 async function confirmLoreImport(decision: LoreImportDecision) {
-  if (!importPreview.value || !currentWorldId.value) return
+  if (importBusy.value || !importPreview.value || !currentWorldId.value) return
+  importBusy.value = true
   try {
     if (!pendingImportPayload.value || typeof pendingImportPayload.value !== 'object') throw new Error(t('importFailed'))
     const body: Record<string, unknown> = { payload: pendingImportPayload.value }
@@ -702,14 +704,17 @@ async function confirmLoreImport(decision: LoreImportDecision) {
         : decision.binding
     }
     const result = await api<{ ok: boolean; book_id?: string }>('/lorebooks/import', { method: 'POST', body: JSON.stringify(body) })
+    await loadLorebooks()
+    if (result?.book_id) activeBookId.value = result.book_id
+    await loadLore(); await loadWorlds(); await refreshPreview()
+    // Closing the dialog marks completion: no pending import refresh may
+    // overwrite a book the user selects after it closes.
     importDialogOpen.value = false
     pendingImportPayload.value = undefined
     importPreview.value = undefined
     toast.success(t('importedLorebook'))
-    await loadLorebooks()
-    if (result?.book_id) selectLorebook(result.book_id)
-    await loadLore(); await loadWorlds(); await refreshPreview()
   } catch (err: unknown) { error.value = `${t('importFailed')}: ${errorMessage(err)}` }
+  finally { importBusy.value = false }
 }
 
 // ---- Book 管理（create / rename / delete / enable / bindings）---------------
@@ -718,6 +723,10 @@ const primaryBookId = computed(() => (currentWorldId.value ? `world:${currentWor
 const bindingsDialogOpen = ref(false)
 const bindingsBook = ref<LorebookCard | null>(null)
 const bookBindings = ref<LoreBinding[]>([])
+
+function isPrimaryBook(book: LorebookCard | null | undefined): boolean {
+  return !!book && (book.primary === true || book.id === primaryBookId.value)
+}
 
 /** 当前编辑的 Book：显式选择优先，回落到世界主世界书。 */
 const currentBookId = computed(() => activeBookId.value || primaryBookId.value)
@@ -773,7 +782,7 @@ async function renameBook(book: LorebookCard) {
 }
 
 async function removeBook(book: LorebookCard) {
-  if (book.id === primaryBookId.value) return
+  if (isPrimaryBook(book)) return
   const ok = await confirm({
     title: t('loreBookDeleteTitle'),
     content: t('loreBookDeleteContent', { name: book.name }),
@@ -905,12 +914,12 @@ async function removeBinding(bindingId: string) {
             </button>
             <button type="button" :disabled="busy || !data?.entries?.length" @click="runBookMenu($event, () => exportLore())">{{ t('export') }}</button>
             <button type="button" :disabled="busy || !currentWorldId" @click="runBookMenu($event, () => triggerImport())">{{ t('import') }}</button>
-            <button v-if="currentBook && !currentBook.primary" type="button" class="danger" :disabled="busy" @click="runBookMenu($event, () => removeBook(currentBook!))">{{ t('loreBooksDelete') }}</button>
+            <button v-if="currentBook && !isPrimaryBook(currentBook)" type="button" class="danger" :disabled="busy" @click="runBookMenu($event, () => removeBook(currentBook!))">{{ t('loreBooksDelete') }}</button>
           </div>
         </details>
       </div>
       <p v-if="currentBook" class="lore-book-meta">
-        <template v-if="currentBook.id === primaryBookId">{{ t('loreBooksPrimaryBadge') }} · </template>{{ t('loreBookContextScope') }}：{{ currentBookScopeLabel }}
+        <template v-if="isPrimaryBook(currentBook)">{{ t('loreBooksPrimaryBadge') }} · </template>{{ t('loreBookContextScope') }}：{{ currentBookScopeLabel }}
       </p>
     </div>
 
@@ -1156,6 +1165,7 @@ async function removeBinding(bindingId: string) {
     </div>
     <LoreImportDialog
       :open="importDialogOpen"
+      :busy="importBusy"
       :preview="importPreview"
       :books="lorebookBooks"
       :characters="bindableCharacters"
@@ -1163,7 +1173,7 @@ async function removeBinding(bindingId: string) {
       :world-name="worldNameOf(currentWorld)"
       :game-key="game"
       :primary-book-id="primaryBookId"
-      @close="importDialogOpen = false"
+      @close="!importBusy && (importDialogOpen = false)"
       @confirm="confirmLoreImport"
     />
     <LoreBindingsDialog
