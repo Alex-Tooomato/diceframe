@@ -82,7 +82,6 @@ CORE_COUPLING: dict[tuple[str, str], int] = {
     ("src/commands/round_processor.py", "media"): 2,
     ("src/commands/round_processor.py", "narrative_notes"): 7,
     ("src/commands/round_processor.py", "table_settings"): 1,
-    ("src/commands/round_processor.py", "world_reports"): 4,
     ("src/commands/swipe_generator.py", "combat_extension_state"): 3,
     ("src/commands/swipe_generator.py", "narrative_notes"): 2,
     ("src/engine/game_context_projector.py", "legacy_combat"): 4,
@@ -99,7 +98,6 @@ CORE_COUPLING: dict[tuple[str, str], int] = {
     ("src/engine/game_instance.py", "round_presentation"): 9,
     ("src/engine/game_instance.py", "seat_activity"): 2,
     ("src/engine/game_instance.py", "table_settings"): 15,
-    ("src/engine/game_instance.py", "world_reports"): 3,
     ("src/engine/instance_lifecycle.py", "combat_extension_state"): 2,
     ("src/engine/instance_lifecycle.py", "health"): 2,
     ("src/engine/instance_lifecycle.py", "lorebook_runtime"): 1,
@@ -246,6 +244,38 @@ def test_baseline_only_names_core_files_and_capabilities() -> None:
         if key[0] not in CORE_FLOW_FILES or key[1] not in capabilities
     )
     assert not stray, f"CORE_COUPLING entries outside the guarded scope: {stray}"
+
+
+def _hook_registrations(tree: ast.Module) -> list[int]:
+    return [
+        node.lineno for node in ast.walk(tree)
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Attribute)
+        and node.func.attr == "register"
+        and isinstance(node.func.value, ast.Name)
+        and node.func.value.id == "module_hooks"
+    ]
+
+
+def test_only_modules_register_lifecycle_hooks() -> None:
+    """The core flow calls hook points; only capability modules attach to them."""
+    offenders = [
+        f"{path.relative_to(ROOT).as_posix()}:{line}"
+        for path in sorted((ROOT / "src").rglob("*.py"))
+        if not path.relative_to(ROOT).as_posix().startswith(MODULES_DIR + "/")
+        for line in _hook_registrations(_parse(path))
+    ]
+    assert not offenders, f"module_hooks.register outside src/engine/modules: {offenders}"
+
+
+def test_hook_registry_names_no_module() -> None:
+    tree = _parse(ROOT / "src" / "engine" / "module_hooks.py")
+    imports = [
+        node.module if isinstance(node, ast.ImportFrom) else alias.name
+        for node in ast.walk(tree) if isinstance(node, (ast.Import, ast.ImportFrom))
+        for alias in node.names
+    ]
+    assert not [name for name in imports if name and name.startswith("src.")], imports
 
 
 def _write(root: Path, relative: str, source: str) -> None:

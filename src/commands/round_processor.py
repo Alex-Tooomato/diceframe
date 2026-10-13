@@ -63,13 +63,13 @@ from src.engine.economy import (
     queue_effect_group,
 )
 from src.engine.economy import filter_unconfirmed_purchase_grants, has_pending_identical_purchase
-from src.engine import combat_narrative, progression
+from src.engine import combat_narrative, module_hooks, progression
 from src.engine.game_instance import GameInstance, GameState, _snapshot_players
 from src.engine.module_state import ModuleStateError
 from src.engine.modules.media import replace_scene_image
 from src.engine.modules import (
     adventure_runtime_state, checks, legacy_combat, media, narrative_notes, progression_state, round_safety,
-    ruleset_runtime, session_stats, table_settings, world_reports,
+    ruleset_runtime, session_stats, table_settings,
 )
 from src.engine.language import localized_text
 from src.engine.world_events import advance_world_time
@@ -179,7 +179,7 @@ def _build_recent_public_narration_context(
 
 def format_overreach_block(instance: GameInstance) -> str:
     """把本轮裁判的越权标注组装为可信裁定块（服务端组装，玩家不可注入）。"""
-    notes = list(world_reports.last_overreach(instance) or [])
+    notes = list(module_hooks.round_report(instance, module_hooks.REPORT_OVERREACH))
     if not notes:
         return ""
     lines = []
@@ -456,13 +456,17 @@ class RoundProcessor:
             errors = metadata.get("errors") or []
             if errors:
                 logger.warning("部分 AI 检定参数被拒绝: %s", "; ".join(str(item) for item in errors))
-            world_reports.replace_last_overreach(instance, list(metadata.get("overreach") or []))
+            module_hooks.record_round_report(
+                instance, module_hooks.REPORT_OVERREACH, list(metadata.get("overreach") or []),
+            )
             # 世界合法性：模型只提议结构化地点，server 对照权威世界真相后才阻断或
             # 落库合法移动；空世界/未知地点一律不阻断（旧游戏行为不变）。
             world_result = evaluate_world_requirements(
                 instance, metadata.get("world_requirements") or [],
             )
-            world_reports.replace_last_world_legality(instance, list(world_result.get("notes") or []))
+            module_hooks.record_round_report(
+                instance, module_hooks.REPORT_WORLD_LEGALITY, list(world_result.get("notes") or []),
+            )
             # 逻辑世界时间：模型只报告本轮经过的时间，server 推进时钟并确定性
             # 结算到期事件（无后台 tick、无独立 scheduler）。
             time_advance = metadata.get("world_time_advance")
@@ -485,7 +489,7 @@ class RoundProcessor:
                     adventure_runtime_state.replace_progress(instance, before_progress)
                     logger.warning("世界时间推进被拒绝: %s", exc)
                 else:
-                    world_reports.replace_last_world_events(instance, [
+                    module_hooks.record_round_report(instance, module_hooks.REPORT_WORLD_EVENTS, [
                         {**item, "status": "applied"}
                         for item in outcome.get("applied") or []
                     ] + [

@@ -343,9 +343,13 @@ MODULE_API_WRITERS: dict[str, tuple[frozenset[str], frozenset[Path]]] = {
             SRC / "webui" / "services" / "ruleset_gameplay.py",
         }),
     ),
+    # Reached only through module_hooks (round reset / report record).
     "world_reports": (
-        frozenset({"replace_last_overreach", "replace_last_world_legality", "replace_last_world_events"}),
-        frozenset({SRC / "commands" / "round_processor.py"}),
+        frozenset({
+            "replace_last_overreach", "replace_last_world_legality", "replace_last_world_events",
+            "clear_round", "record_report",
+        }),
+        frozenset(),
     ),
     "round_presentation": (
         frozenset({

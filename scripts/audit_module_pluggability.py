@@ -3,7 +3,8 @@
 For each module under ``src/engine/modules`` this runs the core-flow test set
 with the module's capability API replaced by stubs that raise, and reports how
 many tests fail beyond the unmodified baseline run, plus the core code that hit
-a stub first.  Storage contracts (``fresh``/``ensure``/codec helpers) are kept,
+a stub first.  The module's lifecycle hooks are detached as well, so the run
+matches a build without the module.  Storage contracts (``fresh``/``ensure``/codec helpers) are kept,
 so the numbers measure "capability gone", not "save slot gone".
 
 This is a report, not a gate: the counts move whenever core-flow tests are
@@ -101,6 +102,11 @@ class DisableModulePlugin:
             except Exception:  # noqa: BLE001 - optional deps; unimportable code cannot alias
                 pass
         target = importlib.import_module(f"src.engine.modules.{self.module}")
+        # A deleted module also never attaches to lifecycle hooks; the
+        # registry holds the original functions, which stubbing cannot reach.
+        from src.engine import module_hooks
+
+        module_hooks.unregister_owner(self.module)
         originals = {
             name: obj for name, obj in vars(target).items()
             if callable(obj) and not isinstance(obj, type) and not name.startswith("_")

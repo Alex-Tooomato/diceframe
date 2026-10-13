@@ -13,7 +13,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, AsyncIterator, Callable
 from uuid import uuid4
 
-from src.engine import instance_lifecycle, progression, round_recovery, round_snapshots, turn_state
+from src.engine import instance_lifecycle, module_hooks, progression, round_recovery, round_snapshots, turn_state
 from src.engine.action_gate import (
     AI_SEAT_COMMIT_POLICY, GateRequest, SOURCE_AI_SEAT, SOURCE_HUMAN,
     StructuredIntentRequirement, check_run_unchanged, evaluate,
@@ -50,7 +50,6 @@ from src.engine.modules import (
     ruleset_runtime,
     session_stats,
     table_settings,
-    world_reports,
 )
 from src.engine.narrative_perspective import validate_narrative_perspective
 from src.engine.player_control import (
@@ -735,9 +734,7 @@ class GameInstance:
         checks.require_writable(self)
         checks.replace_last_check(self, None)
         checks.last_checks(self).clear()
-        world_reports.last_overreach(self).clear()
-        world_reports.last_world_legality(self).clear()
-        world_reports.last_world_events(self).clear()
+        module_hooks.run(module_hooks.ROUND_RESET, self)
         self.round_unpriced_purchase_intents.clear()
         checks.replace_round_checks_prepared(self, prepared)
 

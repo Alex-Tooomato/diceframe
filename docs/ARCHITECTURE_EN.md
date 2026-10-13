@@ -491,6 +491,8 @@ This is one of the most important current **hard architecture boundaries**.
 
 `tests/architecture/test_module_pluggability.py` records where the core flow calls capability modules by name (#515; master plan §7.1, "deleting any module still leaves a playable game"). References to a capability module's API from the core create / round / snapshot / persistence / projection / context files are counted per file + module in a shrink-only baseline; every module under `src/engine/modules` except `KERNEL_MODULES` (`adventure_runtime_state`, `checks`, `content_binding`, `progression_state`, `round_safety`, `ruleset_runtime`, `session_stats`) is a capability, so new modules are covered automatically. When a module moves onto a lifecycle hook, the same PR lowers or removes its entries. The runtime side is measured by `scripts/audit_module_pluggability.py` (stubs one module's capability API at a time, runs the core-flow tests, and reports new failures plus the first core caller that hit a stub); it is a report, not a CI gate.
 
+Capability modules join the core flow through `src/engine/module_hooks.py`: the core calls fixed hook points (`round.reset`, `round.report.record`, `round.report.read`) and never names a module; a point with no registered handler is a no-op, and reads answer empty. The set of points is closed (registering an unknown point raises), and only modules under `src/engine/modules` may register (architecture guard). `world_reports` (overreach, world legality and world event round reports) is the first module on hooks: removing it leaves a playable game that simply has no such reports.
+
 ---
 
 ## 2.3 Authority Model: Who May Decide What
