@@ -157,6 +157,19 @@
   text-shadow: 0 1px 10px rgba(0, 0, 0, 0.85), 0 0 2px rgba(0, 0, 0, 0.7);
 }
 
+.world-card-purpose {
+  align-self: flex-start;
+  padding: 2px 8px;
+  border: 1px solid color-mix(in srgb, var(--df-accent) 38%, rgba(255, 255, 255, .2));
+  border-radius: 999px;
+  color: color-mix(in srgb, var(--df-accent) 78%, #fff);
+  background: rgba(8, 10, 14, .44);
+  font-size: 10px;
+  font-weight: 750;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+}
+
 /* 亮色模式的全局 accent 为深色，适合浅色画布却不适合封面；封面标题固定用高亮金。 */
 :root[data-mode="light"] .world-card-body h2 {
   color: #e8c66f;
@@ -181,8 +194,15 @@
   text-shadow: 0 1px 6px rgba(0, 0, 0, 0.55);
 }
 
-/* 两列等宽按钮网格；克隆按钮仅当排在末位（内置/插件卡的第三个按钮）时整行，
-   用户世界四按钮（用它开团/预览/克隆/更换头图）构成整齐的 2×2。 */
+.world-card-material-hint {
+  margin: -2px 0 0;
+  color: rgba(255, 255, 255, .62);
+  font-size: 10px;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+}
+
+/* 卡片操作统一采用两列等宽网格，保持不同来源的世界卡片都有规整的按钮行。 */
 .world-card-actions {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -191,6 +211,8 @@
 }
 
 .world-card-actions button {
+  min-width: 0;
+  min-height: 36px;
   background: linear-gradient(180deg, rgba(255, 255, 255, 0.11), rgba(255, 255, 255, 0.055));
   color: #fff;
   border: 1px solid rgba(255, 255, 255, 0.18);
@@ -203,12 +225,13 @@
   border-color: transparent;
 }
 
-.world-card-actions button:disabled {
-  opacity: 0.45;
+.world-card-actions .world-card-lorebook {
+  border-color: color-mix(in srgb, var(--df-accent) 44%, rgba(255, 255, 255, .18));
+  color: color-mix(in srgb, var(--df-accent) 72%, #fff);
 }
 
-.world-card-clone:last-child {
-  grid-column: 1 / -1;
+.world-card-actions button:disabled {
+  opacity: 0.45;
 }
 
 @media (hover: hover) {
@@ -239,6 +262,51 @@
   flex-direction: column;
   gap: 10px;
   margin-top: 12px;
+}
+
+.world-metadata-editor {
+  display: grid;
+  gap: 10px;
+  margin-top: 12px;
+  padding: 12px;
+  border: 1px solid color-mix(in srgb, var(--df-accent) 28%, var(--df-border-soft));
+  border-radius: var(--df-radius-md);
+  background: color-mix(in srgb, var(--df-accent) 5%, var(--df-surface-2));
+}
+
+.world-metadata-editor h3 { margin: 0; font-size: 14px; color: var(--df-accent-strong); }
+.world-metadata-editor label { display: grid; gap: 4px; font-size: 13px; }
+.world-metadata-editor input,
+.world-metadata-editor select,
+.world-metadata-editor textarea { width: 100%; box-sizing: border-box; }
+
+.world-definition-fields {
+  display: grid;
+  gap: 12px;
+  margin-top: 12px;
+}
+
+.world-definition-fields label {
+  display: grid;
+  gap: 5px;
+  width: 100%;
+  color: var(--df-text);
+  font-size: 13px;
+}
+
+.world-definition-fields textarea {
+  width: 100%;
+  min-height: 120px;
+  box-sizing: border-box;
+  resize: vertical;
+  color: var(--df-text);
+  background: var(--df-control-bg);
+  line-height: 1.55;
+  white-space: pre-wrap;
+}
+
+.world-definition-fields textarea[readonly] {
+  opacity: 0.9;
 }
 
 .world-style-editor h3 {

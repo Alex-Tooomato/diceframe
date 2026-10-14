@@ -19,14 +19,17 @@ import BrandLogo from '@/components/BrandLogo.vue'
 import NaiveBridge from '@/components/common/NaiveBridge.vue'
 import StartupPrivacyChoice from '@/components/common/StartupPrivacyChoice.vue'
 import StartupUpdateCheck from '@/components/common/StartupUpdateCheck.vue'
+import AssistantShell from '@/components/assistant/AssistantShell.vue'
 import SectionWorkspaceShell from '@/components/navigation/SectionWorkspaceShell.vue'
-import { readCurrentGame } from '@/stores/gameContext'
+import { gameFromQuery, readCurrentGame } from '@/stores/gameContext'
 import { isPublicRoute } from '@/router'
 import {
   appNavGroups,
+  isNavItemActive,
   navGroupForRoute,
   navItem,
   primaryNavItemIds,
+  playContextQuery,
   type AppNavGroupId,
 } from '@/navigation/appNavigation'
 
@@ -49,10 +52,11 @@ const naiveDateLocale = computed(() => {
 })
 
 const primaryItems = primaryNavItemIds.map(navItem)
+const selectedGameKey = computed(() => gameFromQuery(route.query) || readCurrentGame())
 function menuTo(id: string) {
   if (id !== 'play') return { name: id }
-  const game = String(route.query.game || readCurrentGame() || '')
-  return game ? { name: 'play', query: { game } } : { name: 'overview' }
+  const query = playContextQuery(route.query, selectedGameKey.value)
+  return query ? { name: 'play', query } : { name: 'overview' }
 }
 
 function groupTo(groupId: AppNavGroupId) {
@@ -61,7 +65,11 @@ function groupTo(groupId: AppNavGroupId) {
 }
 
 const activeKey = computed(() => (route.name as string) ?? '')
-const currentGameBadge = computed(() => String(route.query.game || readCurrentGame() || '').slice(0, 8))
+// Story surfaces own their header and use the full viewport. The application
+// navigation remains available on every management/content route, while the
+// two primary play surfaces keep the composition focused on the story.
+const focusShell = computed(() => activeKey.value === 'overview' || activeKey.value === 'play')
+const currentGameBadge = computed(() => selectedGameKey.value.slice(0, 8))
 const currentGameText = computed(() => currentGameBadge.value ? `${t('currentTable')} ${currentGameBadge.value}` : t('lobby'))
 const publicRoute = computed(() => isPublicRoute(route))
 const fullscreen = publicRoute
@@ -160,15 +168,15 @@ watch(publicRoute, (isPublic) => {
             />
             <RouterView v-if="fullscreen" v-slot="{ Component }">
               <ThemeToggle class="theme-toggle-floating" />
-              <KeepAlive :include="['PlayView']">
+              <KeepAlive :include="['PlayView', 'PlayEntry']">
                 <component :is="Component" />
               </KeepAlive>
             </RouterView>
 
-            <div v-else class="app-shell" :class="{ 'app-shell-play': activeKey === 'play' }">
+            <div v-else class="app-shell" :class="{ 'app-shell-play': activeKey === 'play', 'app-shell-focus': focusShell }">
               <header class="app-header">
                 <div class="app-header-inner">
-                  <RouterLink :to="{ name: 'overview' }" class="app-brand" :aria-label="t('navOverview')">
+                  <RouterLink :to="{ name: 'overview' }" class="app-brand" :aria-label="t('navGames')">
                     <BrandLogo :size="32" :subtitle="t('appSubtitle')" />
                   </RouterLink>
 
@@ -178,7 +186,7 @@ watch(publicRoute, (isPublic) => {
                       :key="item.id"
                       :to="menuTo(item.id)"
                       class="desktop-nav-link"
-                      :class="{ active: activeKey === item.id }"
+                      :class="{ active: isNavItemActive(item.id, activeKey) }"
                     >
                       <NIcon :component="item.icon" />
                       <span>{{ t(item.labelKey) }}</span>
@@ -230,7 +238,7 @@ watch(publicRoute, (isPublic) => {
                   <SectionWorkspaceShell v-if="workspaceGroup" :group-id="workspaceGroup">
                     <component :is="Component" />
                   </SectionWorkspaceShell>
-                  <KeepAlive v-else :include="['PlayView']">
+                  <KeepAlive v-else :include="['OverviewView', 'PlayView', 'PlayEntry']">
                     <component :is="Component" />
                   </KeepAlive>
                 </RouterView>
@@ -241,7 +249,7 @@ watch(publicRoute, (isPublic) => {
                   v-for="item in primaryItems"
                   :key="item.id"
                   :to="menuTo(item.id)"
-                  :class="{ active: activeKey === item.id }"
+                  :class="{ active: isNavItemActive(item.id, activeKey) }"
                 >
                   <span class="mobile-nav-icon">
                     <NIcon :component="item.icon" />
@@ -265,6 +273,8 @@ watch(publicRoute, (isPublic) => {
                   <small>{{ t(group.labelKey) }}</small>
                 </RouterLink>
               </nav>
+
+              <AssistantShell :is-home="activeKey === 'overview'" />
             </div>
           </NaiveBridge>
         </NDialogProvider>

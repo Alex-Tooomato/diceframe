@@ -217,7 +217,7 @@ class TestRuleInheritance:
             RuleSystem.load(tmp_path / "a.json")
 
 
-def test_dnd5e_rule_check_uses_advantage_from_action_text(monkeypatch):
+def test_dnd5e_rule_check_uses_current_gm_grant(monkeypatch):
     rolls = iter([5, 17])
     monkeypatch.setattr("random.randint", lambda a, b: next(rolls))
     rule = RuleSystem.load("templates/rules/dnd5e.json")
@@ -237,6 +237,9 @@ def test_dnd5e_rule_check_uses_advantage_from_action_text(monkeypatch):
         "selected_skill": "潜行",
     }]
 
+    from src.engine.modules.check_modes import change
+
+    change(instance, "u1", "grant", "round:0", mode="advantage", reason="GM confirms cover")
     text = DiceResolver().roll_rule_check(instance, "我借着夜色有优势潜行绕后", rule)
 
     assert "d20优势=[5, 17] 取 17" in text
@@ -245,7 +248,7 @@ def test_dnd5e_rule_check_uses_advantage_from_action_text(monkeypatch):
     assert checks.last_check(instance)["roll"] == 17
 
 
-def test_dnd5e_rule_check_cancels_advantage_and_disadvantage(monkeypatch):
+def test_dnd5e_rule_check_text_cannot_grant_either_mode(monkeypatch):
     monkeypatch.setattr("random.randint", lambda a, b: 11)
     rule = RuleSystem.load("templates/rules/dnd5e.json")
     instance = GameInstance(("web", "test", "bot"))
@@ -265,7 +268,7 @@ def test_dnd5e_rule_check_cancels_advantage_and_disadvantage(monkeypatch):
 
     text = DiceResolver().roll_rule_check(instance, "我有优势但也在黑暗中不利地射击", rule)
 
-    assert "优势与劣势同时存在" in text
+    assert "d20=11" in text
     assert checks.last_check(instance)["advantage_mode"] == ""
     assert checks.last_check(instance)["rolls"] == [11]
 

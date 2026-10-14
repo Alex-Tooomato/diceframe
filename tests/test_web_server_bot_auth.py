@@ -400,6 +400,19 @@ async def test_share_link_player_can_use_ruleset_gameplay_endpoints(monkeypatch)
 
 
 @pytest.mark.asyncio
+async def test_share_check_endpoints_carry_player_identity_including_keeper_operations(monkeypatch):
+    monkeypatch.setitem(web_server.STATE, "access_token", hash_access_password("owner-secret"))
+    app = _make_sse_auth_app()
+    app.router.add_post("/api/games/{game_key}/checks/{check_id}/{action:luck|reveal}", _identity)
+    app.router.add_post("/api/games/{game_key}/checks/{check_id}/push/{operation}", _identity)
+    async with TestClient(TestServer(app)) as client:
+        for suffix in ("luck", "reveal", "push/request", "push/offer", "push/reject", "push/confirm", "push/decline"):
+            response = await client.post("/api/games/web%7Croom%7Cbot/checks/c1/" + suffix, params={"user": "player-1", "share": "1"}, headers=_seat(app))
+            assert response.status == 200
+            assert (await response.json())["user_id"] == "player-1"
+
+
+@pytest.mark.asyncio
 async def test_share_link_player_can_use_table_talk_endpoints(monkeypatch):
     """桌边问答的读写端点必须沿用玩家分享链接身份。"""
     monkeypatch.setitem(web_server.STATE, "access_token", hash_access_password("owner-secret"))

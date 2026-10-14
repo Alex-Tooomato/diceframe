@@ -13,7 +13,7 @@ import CheckRevealCard from '@/components/play/CheckRevealCard.vue'
 import SceneImageBlock from '@/components/play/SceneImageBlock.vue'
 import { initializeTts, speakingKey, ttsSupported, ttsToggle } from '@/utils/tts'
 
-const props = defineProps<{ log: LogEntry[]; live: PublicAction[]; players: Player[]; round: number; lore?: LoreKeywords; gameKey?: string; ruleId?: string; processing?: boolean; isGm?: boolean; liveNarration?: string; pendingChecks?: CheckResult[]; revealChecks?: CheckResult[]; currentUserId?: string; luckBusyId?: string; manualRolls?: ManualRollTimelineEntry[]; checkReveals?: Record<string, CheckRevealRecord>; diceRevealMode?: string }>()
+const props = defineProps<{ log: LogEntry[]; live: PublicAction[]; players: Player[]; round: number; lore?: LoreKeywords; gameKey?: string; ruleId?: string; processing?: boolean; isGm?: boolean; liveNarration?: string; pendingChecks?: CheckResult[]; revealChecks?: CheckResult[]; currentUserId?: string; luckBusyId?: string; revealBusyIds?: string[]; manualRolls?: ManualRollTimelineEntry[]; checkReveals?: Record<string, CheckRevealRecord>; diceRevealMode?: string; decisionReadonly?: boolean }>()
 const emit = defineEmits<{ refresh: []; luck: [check: CheckResult, spend: boolean]; reveal: [check: CheckResult] }>()
 const clickRevealOn = computed(() => props.diceRevealMode === 'click')
 function revealOf(check: CheckResult): CheckRevealRecord | null {
@@ -171,19 +171,27 @@ function updateScrollState() {
   awayFromBottom.value = !near
   if (near) hasNew.value = false
 }
-function latest() {
+function latest(behavior: ScrollBehavior = 'smooth') {
   const el = box.value
   if (!el) return
-  el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' })
+  if (behavior === 'auto') el.scrollTop = el.scrollHeight
+  else el.scrollTo({ top: el.scrollHeight, behavior })
   hasNew.value = false
   awayFromBottom.value = false
 }
 function onScroll() { updateScrollState() }
-watch(() => [props.log.length, JSON.stringify(props.live), props.processing, props.liveNarration, recapSignature.value], async () => {
+watch(() => props.gameKey, () => {
+  visibleRoundCount.value = INITIAL_VISIBLE_ROUNDS
+  initialized.value = false
+  hasNew.value = false
+  awayFromBottom.value = false
+  void initializeTts()
+}, { immediate: true })
+watch(() => [props.gameKey, props.log.length, JSON.stringify(props.live), props.processing, props.liveNarration, recapSignature.value], async () => {
   const wasNearBottom = isNearBottom()
   await nextTick()
   if (!initialized.value) {
-    latest()
+    latest('auto')
     initialized.value = true
   } else if (wasNearBottom) {
     latest()
@@ -191,13 +199,6 @@ watch(() => [props.log.length, JSON.stringify(props.live), props.processing, pro
     hasNew.value = true
     updateScrollState()
   }
-})
-watch(() => props.gameKey, () => {
-  visibleRoundCount.value = INITIAL_VISIBLE_ROUNDS
-  initialized.value = false
-  hasNew.value = false
-  awayFromBottom.value = false
-  void initializeTts()
 }, { immediate: true })
 
 // --- 本地朗读（文字转语音） ---
@@ -251,6 +252,7 @@ watch(() => rounds.value, async (latest) => {
           v-for="check in checks(item.entry)"
           :key="check.check_id || `${check.actor_uid}-${check.roll}`"
           :check="check"
+          :busy="revealBusyIds?.includes(String(check.check_id || ''))"
           :click-mode="clickRevealOn"
           :reveal="revealOf(check)"
           :can-reveal="canReveal(check)"
@@ -346,10 +348,15 @@ watch(() => rounds.value, async (latest) => {
       <CheckRevealCard
         v-for="check in activeChecks"
         :key="`pending-${check.check_id}`"
+        :game-key="gameKey"
+        :actor-id="currentUserId"
+        :is-gm="isGm"
+        :readonly="decisionReadonly"
+        @refresh="emit('refresh')"
         :check="check"
         animate
         :can-decide-luck="check.luck_decision === 'pending' && canDecideLuck(check)"
-        :busy="!!luckBusyId"
+        :busy="!!luckBusyId || revealBusyIds?.includes(String(check.check_id || ''))"
         :click-mode="clickRevealOn"
         :reveal="revealOf(check)"
         :can-reveal="canReveal(check)"
@@ -372,7 +379,7 @@ watch(() => rounds.value, async (latest) => {
       :class="{ unread: hasNew }"
       type="button"
       :aria-label="t('scrollLatest')"
-      @click="latest"
+      @click="latest()"
     >{{ hasNew ? t('newMessages') : t('backToBottom') }} ↓</button>
   </div>
 </template>

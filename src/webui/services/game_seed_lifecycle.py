@@ -13,13 +13,14 @@ from src.engine.modules import adventure_runtime_state, content_binding, progres
 from src.engine.narrative_perspective import validate_narrative_perspective
 from src.migrations import migrate_instance
 from src.rulesets.contracts import LiveAdvancementPolicyRuntime
-from src.webui.services._common import _GAME_KEY_SEP
+from src.webui.services._common import _GAME_KEY_SEP, resolve_default_scene_image
 from src.webui.services import game_creation_phases
 from src.webui.game_lifecycle_context import (
     CreationPhase,
     CreationTransaction,
     GameLifecycleDependencies,
     _start_created_game,
+    resume_created_ai_table,
 )
 
 logger = logging.getLogger("trpg")
@@ -124,13 +125,20 @@ async def create_from_seed(
             "error_code": "INVALID_PROFESSIONAL_CHARACTER",
             "error": str(exc),
         }
+    unique_id = f"{world_id}_{time.time_ns()}"
+    game_key = ("web", unique_id, "web_bot")
     try:
         selected_scene_image = dependencies.materialize_scene_image(
             scene_image
             if scene_image
             else (
-                (module_hooks.read_value(target_inst, module_hooks.SCENE_IMAGE) or {})
-                or dependencies.resolve_default_scene_image(world_id, rule_id)
+                module_hooks.read_value(target_inst, module_hooks.SCENE_IMAGE)
+                or resolve_default_scene_image(
+                    dependencies.resolve_default_scene_image,
+                    world_id,
+                    rule_id,
+                    _GAME_KEY_SEP.join(game_key),
+                )
             )
         )
     except ValueError as exc:
@@ -153,8 +161,6 @@ async def create_from_seed(
     adventure_runtime_state.require_writable(target_inst)
     source_play_mode = str(adventure_runtime_state.play_mode(target_inst) or "")
 
-    unique_id = f"{world_id}_{time.time_ns()}"
-    game_key = ("web", unique_id, "web_bot")
     transaction = CreationTransaction(dependencies, game_key, world_id)
 
     try:
@@ -265,6 +271,8 @@ async def create_from_seed(
             "error_code": "GAME_CREATE_FAILED",
             "error": "保存重开游戏失败，未留下半成品存档，请重试。",
         }
+
+    await resume_created_ai_table(dependencies, instance)
 
     return {
         "ok": True,

@@ -8,18 +8,18 @@
 >
 > - Repository: `diceframe/diceframe`
 > - Branch: `main`
-> - Commit: `962fda45a68caa24bac38fd2313d92d66fa59a7a`
+> - Commit: `d2246e0d0d32867e8e090c238b588441bad96a28`
 > - Release: `2.6.1`
-> - Current GameInstance persisted schema: `40`
-> - R9-b: `scene` proxies `modules.narrative_notes.scene`, upgrading that slot to v2; migration 39→40 removes the old top-level key and keeps the value verbatim. Reset still clears it. Transactions that write the scene (run opening, round processing, swipe, ruleset batches and Director automation, ruleset transaction restore, reset) preflight `narrative_notes.require_writable`. The `scene` in list, detail, lobby (including the password gate), SSE, recap and the LLM view is unchanged.
-> - R9-a: `adventure_progress` and `play_mode` proxy the same objects in `modules.adventure_runtime` under `progress` and `play_mode`; migration 38→39 removes the old top-level keys. Adventure identity stays only in top-level `adventure_binding`. An empty or unknown play mode is still derived from the binding on load; in-place reset clears progress and keeps the play mode; a new run (reset/restart/seed) keeps the play mode and re-initializes v2 progress, all through the module owner after a preflight.
-> - R8-e: `ruleset_runtime`, `ruleset_state`, and `event_ledger` proxy the same objects in `modules.ruleset_runtime` under `binding`, `state`, and `event_ledger`; migration 33→34 removes the old top-level keys. Reset preserves binding, rebuilds state, then clears the ledger. Encoding still drops unbound state/ledger without changing live data. Normal and seed creation bind `versioned_state` runtimes through `VersionedStateRuntime.game_binding` before advancement configuration or character joins, rolling creation back if binding fails. Rest, advancement, and ruleset event batches reject writes with missing or mismatched runtime IDs; narrative combat signals return False and log a warning. Existing unbound saves are not automatically bound; schema and persisted shape are unchanged.
+> - Current GameInstance persisted schema: `44`
+> - R9-b: `scene` authority lives in `modules.narrative_notes.scene`, upgrading that slot to v2; migration 39→40 removes the old top-level key and keeps the value verbatim. Reset still clears it. Transactions that write the scene (run opening, round processing, swipe, ruleset batches and Director automation, ruleset transaction restore, reset) preflight `narrative_notes.require_writable`. The `scene` in list, detail, lobby (including the password gate), SSE, recap and the LLM view is unchanged.
+> - R9-a: `adventure_progress` and `play_mode` have their authority in `modules.adventure_runtime` under `progress` and `play_mode`; migration 38→39 removes the old top-level keys. Adventure identity stays only in top-level `adventure_binding`. An empty or unknown play mode is still derived from the binding on load; in-place reset clears progress and keeps the play mode; a new run (reset/restart/seed) keeps the play mode and re-initializes v2 progress, all through the module owner after a preflight.
+> - R8-e: `ruleset_runtime`, `ruleset_state`, and `event_ledger` have their authority in `modules.ruleset_runtime` under `binding`, `state`, and `event_ledger`; migration 33→34 removes the old top-level keys. Reset preserves binding, rebuilds state, then clears the ledger. Encoding still drops unbound state/ledger without changing live data. Normal and seed creation bind `versioned_state` runtimes through `VersionedStateRuntime.game_binding` before advancement configuration or character joins, rolling creation back if binding fails. Rest, advancement, and ruleset event batches reject writes with missing or mismatched runtime IDs; narrative combat signals return False and log a warning. Existing unbound saves are not automatically bound; schema and persisted shape are unchanged.
 > - R8-d: `combat_active`, `combat_enemies`, `combat_state`, `initiative_order`, and `initiative_current` moved into `modules.legacy_combat` (migration 32→33 removes the old top-level keys). Since 41→42 the slot (schema 2) stored only `combat_enemies`; 42→43 removes the whole `modules.legacy_combat` slot (`combat_enemies` is retired and never guessed into NPCs; generic hp_based combat targets player uids and `npc:<id>` only). The four turn fields are a read-only derived view: a ruleset registers `legacy_combat.register_combat_projector(runtime_id, projector)` (D&D 2024 projects its own `ruleset_state["combat"]`), and rulesets without a formal encounter authority read neutral values (`"none"`/`False`/`[]`/`0`). The migration drops the stored copies and never reinterprets them. Only invalid types are repaired; valid list contents are not filtered.
-> - R8-c2: `round_start_snapshot`, `round_entity_snapshot`, and `death_save_outcomes` live in `modules.round_safety`; compatibility properties remain, and migration 31→32 removes the old top-level keys. Reset clears only the two snapshots and preserves death-save caches.
-> - R8-c1: `last_check`, `last_checks`, `round_checks_prepared`, and `manual_roll_requests` live in `modules.checks`; compatibility properties remain, and migration 30→31 removes the old top-level keys. Reset continues to preserve manual roll requests.
-> - R8-a: `total_llm_calls`, `total_tokens`, `started_at`, and `last_activity` live in `modules.session_stats`; compatibility properties remain, and migration 29→30 removes the old top-level keys.
-> - Current Lorebook SQLite schema (`PRAGMA user_version`): `9`
-> - Document verification date: 2026-09-18
+> - R8-c2: `round_start_snapshot`, `round_entity_snapshot`, and `death_save_outcomes` live in `modules.round_safety`; GameInstance property entry points are retired; readers and writers use module owners, and migration 31→32 removes the old top-level keys. Reset clears only the two snapshots and preserves death-save caches.
+> - R8-c1: `last_check`, `last_checks`, `round_checks_prepared`, and `manual_roll_requests` live in `modules.checks`; GameInstance property entry points are retired; readers and writers use module owners, and migration 30→31 removes the old top-level keys. Reset continues to preserve manual roll requests.
+> - R8-a: `total_llm_calls`, `total_tokens`, `started_at`, and `last_activity` live in `modules.session_stats`; GameInstance property entry points are retired; readers and writers use module owners, and migration 29→30 removes the old top-level keys.
+> - Current Lorebook SQLite schema (`PRAGMA user_version`): `12`
+> - Document verification date: 2026-10-14
 >
 > **Explicitly excluded from the current architecture**
 >
@@ -637,6 +637,8 @@ Frontend rules:
 - Use backend `ruleset capabilities / available_intents` for professional-rules capabilities;
 - Do not treat whether a button is visible as authorization;
 - UI capability gating is an experience layer only; the server must validate again.
+
+AI organization of imported scripts is owned by `src/webui/services/adventure_ai_import.py`. `POST /api/adventures/script/ai` requires owner access and token-use consent, reuses the main-model generation service, and streams actual work progress as NDJSON; disconnecting cancels the active model call. Output is limited to story and reference material, preserving adventure identity, rules binding, and GM visibility, and is validated by the native Adventure owner before client preview. Adopting the draft and publishing remain separate; persistence still uses the existing review/commit contract.
 
 ---
 
@@ -3303,6 +3305,18 @@ validate → resolve → events → reducer
 
 not “the AI said the monster dealt 8 damage, so subtract 8.”
 
+`combat/triggered_spells.py` owns spells added after a melee hit. `divine_smite`
+uses a `melee_hit_spell` decision in the existing `pending_decisions` state:
+the attack and base damage are rolled once; the server owns the target, critical,
+and damage context. Casting or declining commits the damage and applicable
+bonus action, spell slot or class use in one EventBatch, with one concentration
+check for the attack's combined damage. Automation never answers a human's decision.
+Feature/rest catalogs declare the level-two `paladins_smite` grant, one free use,
+and Long Rest recovery. Lorebooks and LLMs cannot grant it. Combat spell projections
+report unavailable reasons rather than hiding prepared spells with no legal cast.
+Monster and NPC profiles optionally declare a canonical `creature_type`; encounters
+preserve it, so extra damage against `fiend` / `undead` never depends on display names.
+
 ---
 
 ## 27.2 Encounter Access
@@ -3954,9 +3968,69 @@ order. Imported entries receive a book-scoped internal canonical ID; external `u
 `id` values are provenance only and cannot overwrite entries in another book. Recreating
 a book ID does not use SQLite `REPLACE` cascading away existing bindings or entries.
 
+Content-library links target the canonical `book.id`; a `world` query parameter is
+included only for a world in the loaded catalogue. Historical Books may retain a
+binding to an unavailable world. They can be browsed, edited and exported by Book
+identity with an unavailable-world notice. Cached links naming a missing world and
+an existing book still open that book; a missing world alone remains rejected.
+Browsing does not create worlds, rewrite bindings or inherit the active game's
+world. An entry's compatibility `world_id` projects an existing primary world
+binding only, otherwise NULL; canonical `book_id` ownership and primary-book
+deletion protection remain effective.
+
+Owner-only `GET /api/lorebooks/usage?game_key=...&viewer=...` exposes read-only
+usage statistics. `services/lorebook_usage.py` takes explicit store/instance
+dependencies. Library counts use Book `enabled`, including unbound books; game
+sources use runtime `resolve_active_books` and the current GM/party/character
+perspective, respecting explicit selection, enabled bindings and deduplication.
+Counts represent books, with entry counts shown separately; a selected source
+does not imply every entry activated this round. The response contains only Book
+identity, name, enabled state, scope and entry count, never entry bodies. No
+selected game and unavailable game return `none` / `unavailable` with `count: null`,
+not a fabricated zero. The Lorebook page shows expandable library/game lists;
+browsing another world leaves the game's runtime source unchanged, and enable or
+binding mutations refresh the projection.
+
+After starting a game, GM Workbench → Scene → Game lorebooks reads owner-only
+`GET /api/games/{game_key}/lorebooks`. `services/game_lorebooks.py` takes explicit
+store/get_game/catalog/save dependencies and replaces up to 16 editable game
+sources while preserving character sources and other scopes. Canonical game
+bindings, portable `content_binding.book_refs` and the explicit selection marker
+are saved together through a journaled save saga. Server plans and confirmations
+use the Agent approval boundary without requiring an LLM. Judgment/in-flight
+rounds reject changes; guards are rechecked after waiting for the game lock.
+State and binding fences after asynchronous persistence prevent compensation
+from overwriting a newer run, round, phase or actor state. Uncertain results
+retain prepared evidence and cannot be blindly replayed. Disk reload preserves
+the game selection.
+
+Owning `lorebook/operations.py` stores private `lorebook_operations` records.
+`services/content_recovery.py` commits entry edits, enable changes and bounded
+archives with before/after snapshots in one SQLite transaction. Restoration
+preserves canonical identities, visibility and source metadata, rejecting ID
+collisions and later edits. `content_metadata_recovery.py` journals narrative
+world/card edits as prepared → owning file write → applied; it does not claim
+cross-file/database atomicity. Models and clients receive only operation metadata,
+not recovery snapshots. Content → Lorebooks → Content recovery uses the same
+approval boundary for new recorded operations only; mechanics, confirmed story
+and save rounds are not rewound. Agent has no permanent purge. Archives are
+limited to 10 explicit authored entries or an unreferenced non-primary book with
+at most 10 entries; builtins, plugin sources and whole primary books are protected.
+Plugin tools require explicit `agent_effect=read_only`; unknown, mutation and
+destructive declarations use the manual plugin flow. Declarations are not native
+process sandboxing. See `docs/design/DF_AGENT_DELETE_POLICY.md` for precise limits.
+
 The v4 → v5 → v6 migrations preserve worlds and entry IDs, and create a deterministic
 `world:<id>` primary book for every world. `list_entries(world_id)` remains the
 compatibility façade for that primary book.
+
+Builtin startup initialization includes zero-entry worlds such as
+`freeform_sandbox`, creating their world identity, empty primary Book and primary
+binding without fabricated entries. Repeated initialization preserves authored
+entries. The gallery's Edit lorebooks entry directly opens existing local worlds;
+content-pack worlds and templates without local storage use an explicit Create a
+copy and edit lorebooks action through the existing clone boundary. Catalog
+browsing never autoimports content packs or changes the active save's world.
 
 World core owns:
 
@@ -3966,6 +4040,24 @@ World core owns:
 - starter scene;
 - starter lore entry identities;
 - deterministic lore metadata.
+
+The Worlds page's Preview / Edit world entry exposes the complete background and
+default opening, with a separate short introduction.
+The world gallery and Lorebook page's World actions → Edit world share the World
+feature's `WorldDefinitionEditor`. The Lorebook entry expands the full editor in
+place, replacing its old introduction-only form. Cloning selects the copied world
+for browsing and editing, without changing the active save's world or runtime.
+Owner-only
+`GET /api/worlds/{world_id}/definition` is a bounded projection of the name,
+introduction, background, opening, language and source/editability, never the raw
+template or lore entries. User worlds return authored canonical text; built-in
+and plugin worlds may use read-only locale text. GET never materializes or writes
+templates. Built-in/plugin worlds must be cloned before editing.
+`PUT /api/worlds/{world_id}` updates `world_setting` and `starter_scene`
+independently: omitted fields are preserved and empty strings clear them. Editing
+the introduction preserves the complete background. Updates retain canonical
+identity, rules, lore entries, artwork and GM style. New defaults apply to games
+created later; existing games keep their already loaded runtime content.
 
 The world core fixes canonical entry semantics such as:
 
@@ -4146,7 +4238,7 @@ Lorebook entry vectors are cached in `lorebook.db`:
 lorebook_embeddings
 ```
 
-Current Lorebook SQLite `user_version = 9`. `vector_activation` is the three-state text field `off` / `hybrid` / `vector_only`; v6 safely converts the old v5 boolean values while preserving `book_id` and entry data. v7 adds `lorebooks.revision`, a monotonic counter bumped by entry and retrieval-setting mutations so cached matcher fingerprints are invalidated; v8 adds `lorebook_entries.selective`, the canonical flag deciding whether `secondary_keys` gates activation at all (default `1` keeps existing behaviour); v9 adds `lorebook_entries.regex_executable`, which an adapter clears when a JavaScript regex has no faithful Python equivalent so the matcher never executes it (default `1`). Cache key:
+Current Lorebook SQLite `user_version = 10`. `vector_activation` is the three-state text field `off` / `hybrid` / `vector_only`; v6 safely converts the old v5 boolean values while preserving `book_id` and entry data. v7 adds `lorebooks.revision`, a monotonic counter bumped by entry and retrieval-setting mutations so cached matcher fingerprints are invalidated; v8 adds `lorebook_entries.selective`, the canonical flag deciding whether `secondary_keys` gates activation at all (default `1` keeps existing behaviour); v9 adds `lorebook_entries.regex_executable`, which an adapter clears when a JavaScript regex has no faithful Python equivalent so the matcher never executes it (default `1`). v10 adds owner-private lorebook_operations journal records without rewriting content or bindings; recovery snapshots are not embedding cache data. Cache key:
 
 ```text
 (entry_id, language, embedding_profile)
@@ -4845,6 +4937,16 @@ map_background   map background
 
 Generating a scene image does not automatically replace the map.
 
+The save card's Save actions → Change cover entry uses `GameSceneImageDialog`,
+reusing the GM workbench's `AdventureSceneImagePicker` and existing
+`POST /api/games/{game_key}/scene-image` boundary. It supports PNG/JPEG/WebP
+uploads (8 MB limit) and restoring the content default, with server-side GM
+authorization preserved. The dialog captures the selected canonical game key,
+retains drafts on failure and prevents duplicate submission or dismissal during
+a write. Success refreshes the archive index and image references; overview
+caches follow reference changes. It does not switch the active game or change
+world templates or round state. Late default previews release their blob URLs.
+
 ---
 
 ## 39.3 Manual Current-Round Generation
@@ -5007,6 +5109,8 @@ The Windows launcher controls the switch to a candidate version.
 
 The running application itself must not pretend to perform the launcher's atomic version switch.
 
+When `current.json` contains both verifiable `relative_dir` and `previous_relative_dir` values, the application may write a restart signal with `operation=rollback`. The launcher then runs the previous payload through the same health, probation, and commit flow. A successful switch exchanges the current and previous pointers while retaining both payloads; the application does not edit the pointer or delete `data/`.
+
 ---
 
 ## 42.3 Managed Docker
@@ -5029,6 +5133,8 @@ The stable `docker_launcher` is responsible for:
 - probation;
 - commit;
 - rollback.
+
+Manual rollback shares the restart signal and launcher flow with updates and may target only a verifiable previous payload from `current.json`. A Docker payload must satisfy `data_rollback_safe=true` before the old application is pointed at the shared data directory.
 
 ---
 
@@ -6010,3 +6116,24 @@ ADR/*                       reasons behind long-term design decisions
 ```
 
 Until then, this single document can be used directly as the complete onboarding entry point for new developers.
+
+## DF Agent application orchestration
+
+The owner application shell mounts a shared `AssistantShell` across business routes; Appearance settings can hide it. Public/player routes do not mount the owner agent. A single `AssistantPanel` switches between a side drawer and a centered larger window, with desktop chat/task columns and a narrow-screen single column. Switching layouts preserves the component, unsent input and local draft edits. The read-only `/api/assistant/chat` contract remains; `/api/assistant/agent/*` adds owner-only execution, review, confirmation and recovery.
+
+`useAssistantLauncherPosition` owns PointerEvent dragging, browser-local position persistence and viewport clamping, separating a drag from click or keyboard activation. Batches of registered immediate read/draft tools execute sequentially in the framework. Batches containing deferred writes, final output or unknown tools are rejected as a whole and corrected, preserving one server-held approval at a time. Exhausted format retries return `MODEL_RESPONSE_INVALID` while retaining the session and existing drafts.
+
+`assistant_agent_framework.py` directly uses Pydantic AI's Agent executor, validation retries, usage limits and deferred approvals, adapting the existing configured model transport. `assistant_agent.py` owns business-tool adapters, sessions and server-held confirmation plans. `assistant_agent_application.py` and `assistant_authoring.py` adapt existing content, game, plugin and image services through explicit dependencies. Model output is an untrusted named-tool candidate; schemas, framework deferral and server-held confirmation plans gate mutations, while domain services retain authority.
+
+`assistant_content.py` generates side-effect-free drafts and delegates to ContentTextReview's ContentDraft/CommitPlan review/commit boundary. Game creation preserves transactions, rules and explicit canonical book bindings; actions use the server actor and server dice. Durable execution receipts live under the data directory's `assistant_agent` folder. Repeated confirmations return the original result; interrupted writes with uncertain outcomes cannot be blindly replayed. See [DF_AGENT_IMPLEMENTATION.md](design/DF_AGENT_IMPLEMENTATION.md) for the complete capability and transport contract.
+
+
+## Storage branch recognition and integration ownership
+
+GameInstance schema 44 preserves main's migrations through 43 and initializes missing AI-seat/check-grant slots without replacing existing or future slots. The new reader fence protects policies and linked Push consent from older readers that cannot enforce them.
+
+Unreleased local schemas 36-38 used the same numbers for different changes. `src/migrations/local_instance_branch.py` recognizes only the known room_access v1 plus AI/check-slot shape before replaying main's content-binding and credential migrations. Unknown mixed variants are rejected. Historical checks and pending Push data are retained without rolling again.
+
+Lorebook SQLite 12 adds owner-private recovery records after main's external identity and source tracking. `src/migrations/lorebook_branches.py` recognizes the local v10 journal, establishes main's identity columns in the normal SQLite transaction, then applies v11/v12. Existing books, entries, bindings and journals remain intact; failures roll back all steps.
+
+AI seats and check grants register their cleanup/reset lifecycle hooks in their own modules. `adventure_commands.py` owns node/choice transactions, authoritative admission, current-run fences, module preflight and owner-mediated compensation. Game Lorebook selection also restores through its content-binding owner; preview round reads do not materialize missing slots. The imagegen game projection captures storyboard inputs so core round orchestration does not increase narrative-module coupling.

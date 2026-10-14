@@ -212,13 +212,15 @@
 
 .character-detail-block .item-chip {
   max-width: 100%;
-  padding: 1px 7px;
+  min-height: 27px;
+  padding: 4px 8px;
   border: 1px solid var(--df-border-soft);
-  border-radius: 999px;
-  background: var(--df-surface-3);
-  color: var(--df-text);
+  border-left: 2px solid var(--df-accent);
+  border-radius: 5px;
+  background: linear-gradient(145deg, color-mix(in srgb, var(--df-surface-3) 58%, transparent), var(--df-surface-1));
+  color: var(--df-text-secondary);
   font-size: 11px;
-  line-height: 1.6;
+  line-height: 1.25;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -236,9 +238,9 @@
 .character-detail-block .item-view-all {
   align-self: flex-start;
   margin-top: 2px;
-  padding: 2px 10px;
+  padding: 4px 10px;
   border: 1px solid var(--df-border-soft);
-  border-radius: 999px;
+  border-radius: var(--df-radius-sm, 8px);
   background: transparent;
   color: var(--df-interactive-strong);
   font-size: 11px;
@@ -303,6 +305,73 @@
   font-size: 10px;
   color: var(--df-text-muted);
   word-break: break-word;
+}
+
+/* Skills and carried items are information rows, not filter tokens.  The
+   previous pill treatment made long names and effects look like a row of
+   unrelated tags, especially in the narrow character rail. */
+.play-page-immersive .character-detail-block > .chips {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+  padding: 0 10px 9px;
+}
+
+.play-page-immersive .character-detail-block > .chips > span {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+  min-width: 0;
+  min-height: 28px;
+  box-sizing: border-box;
+  padding: 5px 8px;
+  border: 1px solid var(--df-border-soft);
+  border-left: 2px solid var(--df-interactive);
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--df-surface-3) 52%, var(--df-surface-1));
+  color: var(--df-text-secondary);
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.play-page-immersive .character-detail-block .item-chips {
+  display: grid;
+  gap: 4px;
+  align-items: stretch;
+}
+
+.play-page-immersive .character-detail-block .item-chip {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+  min-height: 29px;
+  padding: 5px 8px;
+  border-radius: 4px;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.item-modal-body .item-detail-list {
+  display: grid;
+  gap: 5px;
+}
+
+.item-modal-body .item-detail-row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 4px 8px;
+  padding: 7px 9px;
+  border-radius: 5px;
+  text-align: start;
+}
+
+.item-modal-body .item-detail-row .item-detail-meta {
+  grid-column: 2;
 }
 
 .game-sidebar > .sidebar-disclosure {
@@ -624,21 +693,93 @@
 }
 
 @media (min-width: 801px) {
-  .play-layout,
-  .play-layout.no-console {
-    grid-template-columns: minmax(248px, 276px) minmax(0, 1fr) minmax(232px, 260px);
+  .play-page-immersive .play-layout {
+    grid-template-columns: minmax(0, 1fr) minmax(300px, 320px);
+    grid-template-areas: "main controls";
   }
 
-  .play-layout.no-console {
-    grid-template-columns: minmax(248px, 276px) minmax(0, 1fr);
+  .play-page-immersive .play-layout.no-console,
+  .play-page-immersive .play-layout.no-console.rail-collapsed {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas: "main";
   }
 
-  .play-layout.collapsed {
-    grid-template-columns: 48px minmax(0, 1fr) minmax(232px, 260px);
+  .play-page-immersive .play-layout.rail-collapsed {
+    grid-template-columns: minmax(0, 1fr) 48px;
+    grid-template-areas: "main controls";
   }
 
-  .play-layout.rail-collapsed {
-    grid-template-columns: minmax(248px, 276px) minmax(0, 1fr) 48px;
+  .play-page-immersive .play-control-rail {
+    min-height: 0;
+    overflow: hidden;
+  }
+
+  .play-page-immersive .play-main { grid-area: main; }
+  .play-page-immersive .play-control-rail { grid-area: controls; }
+}
+
+.play-page-immersive .play-control-rail .gm-workspace {
+  height: 100%;
+  min-height: 0;
+  grid-template-rows: auto auto minmax(0, 1fr);
+}
+
+.play-page-immersive .play-control-rail > .gm-toolbar {
+  min-height: 0;
+  height: 100%;
+  box-sizing: border-box;
+}
+
+.play-page-immersive .play-control-rail .gm-workspace-body {
+  min-height: 0;
+  overflow-y: auto;
+  align-content: start;
+}
+
+.play-page-immersive .gm-workspace-pane { align-content: start; }
+
+@media (min-width: 801px) {
+  .play-page-immersive .play-main > .table-notice {
+    margin: 0;
+    padding: 4px 8px;
+    font-size: 12px;
+  }
+  .play-page-immersive .composer { padding: 6px 8px; }
+  .play-page-immersive .composer-head { margin-bottom: 4px; min-height: 24px; }
+  .play-page-immersive .composer-head > button { min-height: 28px; }
+  .play-page-immersive .composer-row textarea { min-height: 60px; }
+}
+
+@media (min-width: 801px) {
+  .play-page-immersive .play-main .scene-strip {
+    min-height: 68px;
+    padding-block: 8px;
+  }
+
+  .play-page-immersive .play-main .scene-heading {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    align-items: center;
+    column-gap: 8px;
+  }
+
+  .play-page-immersive .play-main .scene-label {
+    grid-column: 1;
+    grid-row: 1;
+    margin: 0;
+  }
+
+  .play-page-immersive .play-main .scene-title {
+    grid-column: 2;
+    grid-row: 1;
+    min-width: 0;
+  }
+
+  .play-page-immersive .play-main .scene-subtitle { display: none; }
+  .play-page-immersive .play-main .scene-chips {
+    grid-column: 1 / -1;
+    margin-top: 4px;
+    justify-content: flex-start;
   }
 }
 

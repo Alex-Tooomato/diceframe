@@ -28,7 +28,7 @@ from src.password_hashing import hash_password
 
 logger = logging.getLogger("trpg")
 
-CURRENT_INSTANCE_SCHEMA_VERSION = 43
+CURRENT_INSTANCE_SCHEMA_VERSION = 44
 
 # 内置 freeform_coc 在 Currency Model V2 中把 base_unit 从「美元」升级为
 # 「美分」（1 amount = 1 美分），存量 CoC 存档的所有 canonical 金额必须 ×100
@@ -1020,6 +1020,22 @@ def _migrate_v42_to_v43(payload: dict[str, Any]) -> dict[str, Any]:
     return payload
 
 
+def _migrate_v43_to_v44(payload: dict[str, Any]) -> dict[str, Any]:
+    """Fence readers that cannot enforce AI overrides and linked Push consent."""
+    from src.engine.modules import ai_seats, check_modes
+
+    modules = payload.get("modules")
+    if not isinstance(modules, dict):
+        modules = {}
+    if "ai_seats" not in modules:
+        modules["ai_seats"] = ai_seats.fresh()
+    if "check_modes" not in modules:
+        modules["check_modes"] = check_modes.fresh()
+    payload["modules"] = modules
+    payload["instance_schema_version"] = 44
+    return payload
+
+
 def migrate_game_state_payload(data: Mapping[str, Any]) -> dict[str, Any]:
     """Apply sequential, idempotent migrations to one persisted save payload."""
 
@@ -1027,6 +1043,9 @@ def migrate_game_state_payload(data: Mapping[str, Any]) -> dict[str, Any]:
     version = int(payload.get("instance_schema_version", 1) or 1)
     if version < 1 or version > CURRENT_INSTANCE_SCHEMA_VERSION:
         raise ValueError(f"unsupported game instance schema version: {version}")
+    from src.migrations.local_instance_branch import main_sequence_version
+
+    version = main_sequence_version(payload, version)
     if version == 1:
         payload = _migrate_v1_to_v2(payload)
         version = 2
@@ -1153,6 +1172,9 @@ def migrate_game_state_payload(data: Mapping[str, Any]) -> dict[str, Any]:
     if version == 42:
         payload = _migrate_v42_to_v43(payload)
         version = 43
+    if version == 43:
+        payload = _migrate_v43_to_v44(payload)
+        version = 44
     payload["instance_schema_version"] = version
     return payload
 

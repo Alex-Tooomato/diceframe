@@ -1,15 +1,14 @@
-/* New campaign: journey rail and large stage replace the legacy card wizard. */
+/* Four-step creation route and its live launch summary. */
 .reference-create-page {
-  padding-top: 20px;
+  padding-top: 12px;
 }
 
 .create-page-header {
   display: flex;
   align-items: center;
   gap: 14px;
-  min-height: 78px;
-  padding: 8px 2px 17px;
-  border-bottom: 1px solid var(--df-border-soft);
+  min-height: 70px;
+  padding: 10px 2px 16px;
 }
 
 .create-page-header h1,
@@ -18,14 +17,12 @@
 }
 
 .create-page-header h1 {
-  margin-top: 4px;
-  font-size: clamp(25px, 2.8vw, 37px);
+  margin: 0;
+  color: var(--df-accent-strong);
+  font: 800 clamp(38px, 4vw, 48px)/1.02 var(--df-font-title);
+  letter-spacing: -.02em;
 }
-
-.create-page-header p {
-  margin-top: 4px;
-  color: var(--df-text-muted);
-}
+.create-page-header__eyebrow { display: block; margin-bottom: 6px; color: var(--df-interactive-strong); font-size: 11px; font-weight: 800; letter-spacing: .16em; }
 
 .create-back {
   width: 42px;
@@ -36,86 +33,105 @@
 
 .create-wizard-shell {
   display: grid;
-  grid-template-columns: 238px minmax(0, 1fr);
-  min-height: min(720px, calc(100dvh - 180px));
-  margin-top: 17px;
+  grid-template-columns: 264px minmax(0, 1fr);
+  min-height: min(720px, calc(100dvh - 130px));
+  margin-top: 10px;
   overflow: hidden;
   border: 1px solid color-mix(in srgb, var(--df-accent) 35%, var(--df-border-soft));
   border-radius: var(--df-radius-lg);
   background:
-    linear-gradient(90deg, color-mix(in srgb, var(--df-surface-1) 93%, transparent), color-mix(in srgb, var(--df-surface-1) 88%, transparent)),
+    linear-gradient(180deg, color-mix(in srgb, var(--df-surface-1) 93%, transparent), color-mix(in srgb, var(--df-surface-1) 88%, transparent)),
     var(--df-bg-ruins-image) center / cover no-repeat;
   box-shadow: var(--df-shadow-strong);
 }
 
-.create-journey-rail {
-  position: relative;
+.create-stage-panel {
   display: flex;
-  overflow: hidden;
+  min-width: 0;
   flex-direction: column;
-  padding: 27px 18px 20px;
+  padding: 14px 20px 16px;
+  background: color-mix(in srgb, var(--df-surface-1) 66%, transparent);
+}
+.create-ready-fields { display: contents; margin: 0; padding: 0; border: 0; min-width: 0; }
+
+.create-step-rail {
+  display: flex;
+  flex-direction: column;
+  /* Stretch with the stage column.  The previous start alignment left the
+     wizard rail ending at its minimum height while a long stage continued
+     below it, which looked like a clipped background on step 1/2. */
+  align-self: stretch;
+  min-height: min(670px, calc(100dvh - 210px));
+  padding: 28px 18px;
   border-right: 1px solid var(--df-border-soft);
-  background: linear-gradient(180deg, color-mix(in srgb, var(--df-canvas) 24%, transparent), color-mix(in srgb, var(--df-surface-1) 50%, transparent));
+  background: color-mix(in srgb, var(--df-surface-2) 58%, transparent);
 }
 
-.create-journey-rail::after {
-  position: absolute;
-  right: -85px;
-  bottom: -85px;
-  width: 190px;
-  height: 190px;
-  border: 1px solid color-mix(in srgb, var(--df-accent) 27%, transparent);
-  border-radius: 50%;
-  content: "";
-}
+.create-step-rail__sigil { display: grid; width: 44px; height: 44px; margin-bottom: 24px; place-items: center; border: 1px solid var(--df-accent); border-radius: 50%; color: var(--df-accent-strong); }
 
-.create-rail-sigil {
-  display: grid;
-  width: 46px;
-  height: 46px;
-  place-items: center;
-  margin-bottom: 39px;
-  border: 1px solid color-mix(in srgb, var(--df-accent) 54%, transparent);
-  border-radius: 50%;
-  color: var(--df-accent-strong);
-  background: color-mix(in srgb, var(--df-canvas) 72%, transparent);
-  box-shadow: 0 0 28px color-mix(in srgb, var(--df-accent) 22%, transparent);
-}
-
-.create-step-nav {
-  display: grid;
-  gap: 0;
-}
-
-.create-step-nav-item {
+.create-step-rail__item {
   position: relative;
   display: grid;
-  grid-template-columns: 34px minmax(0, 1fr);
-  gap: 10px;
-  min-height: 86px;
+  grid-template-columns: 32px minmax(0, 1fr);
+  align-items: start;
+  gap: 12px;
+  min-height: 84px;
+  padding: 12px 0;
+  border-radius: var(--df-radius-sm);
   color: var(--df-text-muted);
 }
 
-.create-step-nav-item::after {
+.create-step-rail__item > span:last-child { display: grid; gap: 3px; min-width: 0; }
+.create-step-rail__item:not(.last-step)::after { position: absolute; left: 16px; top: 44px; bottom: -12px; width: 1px; content: ''; background: var(--df-border-soft); }
+.create-step-rail__item.complete::after { background: var(--df-interactive); }
+.create-step-rail .create-progress-marker { width: 32px; height: 32px; }
+.create-step-rail__item strong { font-size: 14px; }
+.create-step-rail__item small { color: var(--df-text-muted); font-size: 10px; line-height: 1.45; letter-spacing: .1em; }
+.create-step-rail__item.current { color: var(--df-accent-strong); }
+.create-step-rail__item.current small { color: var(--df-accent-strong); }
+.create-step-rail__item.current .create-progress-marker { border-color: var(--df-interactive); background: color-mix(in srgb, var(--df-interactive) 12%, var(--df-surface-1)); box-shadow: 0 0 0 4px color-mix(in srgb, var(--df-interactive) 8%, transparent); }
+.create-step-rail__item.complete .create-progress-marker { color: var(--df-interactive-strong); border-color: var(--df-interactive); }
+.create-rail-summary { display: grid; gap: 8px; margin-top: auto; padding: 14px 12px; border: 1px solid var(--df-border-soft); border-radius: var(--df-radius-sm); background: var(--df-control-bg); }
+.create-rail-summary > div { display: grid; grid-template-columns: 70px minmax(0, 1fr); align-items: baseline; gap: 8px; font-size: 11px; }
+.create-rail-summary span { color: var(--df-text-muted); }
+.create-rail-summary strong { font-weight: 600; overflow-wrap: anywhere; }
+
+.create-progress {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+  margin-bottom: 12px;
+  padding: 8px 10px;
+  border: 1px solid var(--df-border-soft);
+  border-radius: var(--df-radius-md);
+  background: color-mix(in srgb, var(--df-surface-2) 58%, transparent);
+}
+
+.create-progress-item {
+  position: relative;
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  gap: 7px;
+  color: var(--df-text-muted);
+  font-size: 11px;
+}
+
+.create-progress-item:not(:last-child)::after {
   position: absolute;
-  top: 34px;
-  bottom: 0;
-  left: 16px;
-  width: 1px;
+  top: 50%;
+  right: 0;
+  width: 22%;
+  height: 1px;
   content: "";
   background: var(--df-border-soft);
 }
 
-.create-step-nav-item:last-child::after {
-  display: none;
-}
-
-.create-step-nav-item > span {
-  position: relative;
-  z-index: 1;
+.create-progress-marker {
   display: grid;
-  width: 33px;
-  height: 33px;
+  flex: 0 0 24px;
+  width: 24px;
+  height: 24px;
   place-items: center;
   border: 1px solid var(--df-border-soft);
   border-radius: 50%;
@@ -123,64 +139,21 @@
   font-family: var(--df-font-title);
 }
 
-.create-step-nav-item strong,
-.create-step-nav-item small {
-  display: block;
-}
-
-.create-step-nav-item strong {
-  margin-top: 3px;
-  color: inherit;
-}
-
-.create-step-nav-item small {
-  margin-top: 5px;
-  font-size: 9px;
-  letter-spacing: .14em;
-}
-
-.create-step-nav-item.active,
-.create-step-nav-item.done {
+.create-progress-item.current,
+.create-progress-item.complete {
   color: var(--df-accent-strong);
 }
 
-.create-step-nav-item.active > span,
-.create-step-nav-item.done > span {
+.create-progress-item.current .create-progress-marker,
+.create-progress-item.complete .create-progress-marker {
   border-color: var(--df-interactive);
   background: color-mix(in srgb, var(--df-interactive) 15%, var(--df-surface-1));
-  box-shadow: 0 0 0 4px color-mix(in srgb, var(--df-interactive) 8%, transparent);
 }
 
-.create-rail-summary {
-  position: relative;
-  z-index: 1;
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  gap: 8px 12px;
-  margin-top: auto;
-  padding: 13px;
-  border: 1px solid var(--df-border-soft);
-  border-radius: var(--df-radius-md);
-  color: var(--df-text-muted);
-  background: color-mix(in srgb, var(--df-canvas) 64%, transparent);
-  font-size: 10px;
-  backdrop-filter: blur(8px);
-}
-
-.create-rail-summary strong {
-  max-width: 95px;
+.create-progress-item strong {
   overflow: hidden;
-  color: var(--df-text-secondary);
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-
-.create-stage-panel {
-  display: flex;
-  min-width: 0;
-  flex-direction: column;
-  padding: 24px 28px 18px;
-  background: color-mix(in srgb, var(--df-surface-1) 66%, transparent);
 }
 
 .create-api-hint {
@@ -564,6 +537,8 @@
   display: grid;
   gap: 8px;
 }
+.adventure-issue-guide { margin: 6px 0 8px; color: var(--df-text-secondary); }
+.adventure-issue-actions { display: flex; flex-wrap: wrap; gap: 8px; }
 
 .create-adventure-select-row {
   display: grid;
@@ -633,6 +608,26 @@
 }
 
 @media (max-width: 620px) {
+  .create-progress {
+    gap: 4px;
+    padding: 7px;
+  }
+
+  .create-progress-item {
+    gap: 4px;
+    font-size: 10px;
+  }
+
+  .create-progress-marker {
+    flex-basis: 21px;
+    width: 21px;
+    height: 21px;
+  }
+
+  .create-progress-item:not(:last-child)::after {
+    display: none;
+  }
+
   .narrative-perspective-cards,
   .advancement-policy-grid {
     grid-template-columns: minmax(0, 1fr);
@@ -677,4 +672,317 @@
   background: var(--df-control-bg);
   text-decoration: none;
   white-space: nowrap;
+}
+
+/* Create polish: the wizard should read as one launch decision, with each
+   choice visibly flowing into the next one. */
+.create-stage-head-copy {
+  min-width: 0;
+}
+
+.create-step-guidance {
+  max-width: 72ch;
+  line-height: 1.55;
+}
+
+.create-selected-adventure {
+  display: grid;
+  gap: 0;
+}
+
+.create-selected-adventure .content-launch-summary {
+  margin-bottom: 0;
+  border-bottom-right-radius: 0;
+  border-bottom-left-radius: 0;
+}
+
+.create-selected-adventure-note {
+  margin: 0;
+  padding: 9px 14px;
+  border: 1px solid var(--df-border-soft);
+  border-top: 0;
+  border-radius: 0 0 var(--df-radius-lg) var(--df-radius-lg);
+  color: var(--df-text-muted);
+  background: color-mix(in srgb, var(--df-interactive) 5%, var(--df-surface-2));
+  font-size: 11px;
+  line-height: 1.55;
+}
+
+.create-mode-cards button {
+  align-content: start;
+  justify-items: start;
+  text-align: left;
+}
+
+.create-mode-cards button small {
+  color: var(--df-text-muted);
+  font-size: 10px;
+  font-weight: 400;
+  line-height: 1.45;
+}
+
+.create-confirm-context,
+.create-confirm-settings,
+.create-confirm-party {
+  display: grid;
+  gap: 10px;
+}
+
+.create-confirm-section-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+}
+
+.create-confirm-section-head > span {
+  color: var(--df-interactive-strong);
+  font-family: var(--df-font-title);
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.create-confirm-section-head > div {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.create-confirm-section-head strong {
+  color: var(--df-text-secondary);
+  font-size: 12px;
+}
+
+.create-confirm-section-head small {
+  color: var(--df-text-muted);
+  font-size: 10px;
+  line-height: 1.45;
+}
+
+.create-confirm-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.create-confirm-grid article {
+  min-height: 72px;
+}
+
+.create-confirm-grid article small {
+  color: var(--df-text-muted);
+  font-size: 10px;
+  line-height: 1.4;
+}
+
+.create-actions button {
+  min-height: 40px;
+}
+
+@media (max-width: 800px) {
+  .reference-create-page {
+    padding: 10px 10px calc(18px + env(safe-area-inset-bottom));
+  }
+
+  .create-page-header {
+    padding-inline: 0;
+  }
+
+  .create-wizard-shell {
+    min-height: 0;
+    margin-top: 4px;
+  }
+
+  .create-stage-panel {
+    padding: 12px 13px calc(0px + env(safe-area-inset-bottom));
+  }
+
+  .create-progress {
+    position: sticky;
+    z-index: 2;
+    top: 0;
+    backdrop-filter: blur(12px);
+  }
+
+  .create-stage-head {
+    gap: 10px;
+    padding-bottom: 12px;
+  }
+
+  .create-stage-head > span {
+    font-size: 28px;
+  }
+
+  .create-stage-head h2 {
+    font-size: 18px;
+  }
+
+  .create-field-grid,
+  .create-config-surface {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .create-mode-cards,
+  .create-confirm-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .create-actions {
+    position: sticky;
+    z-index: 3;
+    bottom: 0;
+    flex-wrap: wrap;
+    margin: 0 -13px;
+    padding: 10px 13px calc(10px + env(safe-area-inset-bottom));
+    border-top: 1px solid var(--df-border-soft);
+    background: color-mix(in srgb, var(--df-surface-1) 94%, transparent);
+    box-shadow: 0 -10px 24px color-mix(in srgb, var(--df-canvas) 20%, transparent);
+    backdrop-filter: blur(14px);
+  }
+
+  .create-actions button {
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+
+  .create-actions button:first-child {
+    margin-right: 0;
+  }
+
+  .create-character-card {
+    grid-template-columns: 60px minmax(0, 1fr);
+    gap: 10px;
+  }
+
+  .create-character-card .actions {
+    display: flex;
+    flex-wrap: wrap;
+  }
+
+  .create-character-card .actions button {
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+
+  .create-character-actions > button {
+    flex: 1 1 auto;
+  }
+
+  .create-import-lore {
+    flex: 1 1 100%;
+  }
+
+  .create-confirm-cover {
+    min-height: 150px;
+  }
+}
+
+@media (max-width: 420px) {
+  .create-page-header h1 {
+    font-size: 28px;
+  }
+
+  .create-progress-item strong {
+    display: none;
+  }
+
+  .create-progress-item {
+    justify-content: center;
+  }
+
+  .create-actions button {
+    flex-basis: calc(50% - 5px);
+  }
+
+  .create-actions .primary {
+    flex-basis: 100%;
+  }
+}
+
+.create-source-summary {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) minmax(0, 2fr);
+  align-items: center;
+  gap: 9px;
+  padding: 10px 12px;
+  border: 1px solid var(--df-border-soft);
+  border-radius: var(--df-radius-sm);
+  background: color-mix(in srgb, var(--df-surface-2) 60%, transparent);
+  font-size: 11px;
+}
+.create-source-summary__label { color: var(--df-text-muted); font-size: 10px; font-weight: 800; text-transform: uppercase; letter-spacing: .06em; }
+.create-source-summary strong { overflow: hidden; color: var(--df-accent-strong); text-overflow: ellipsis; white-space: nowrap; }
+.create-source-summary > span:last-child { overflow: hidden; color: var(--df-text-muted); text-overflow: ellipsis; white-space: nowrap; }
+.create-mode-segmented { gap: 0; border: 1px solid var(--df-border-soft); border-radius: var(--df-radius-sm); overflow: hidden; }
+.create-mode-segmented button { min-height: 58px; border: 0; border-right: 1px solid var(--df-border-soft); border-radius: 0; box-shadow: none; }
+.create-mode-segmented button:last-child { border-right: 0; }
+.create-mode-segmented button b, .create-mode-segmented button small { display: none; }
+.create-launch-advanced { display: grid; gap: 12px; }
+.create-launch-advanced summary { cursor: pointer; color: var(--df-text-secondary); font-size: 12px; font-weight: 800; }
+.create-launch-advanced[open] { padding: 12px; border: 1px solid var(--df-border-soft); border-radius: var(--df-radius-sm); background: color-mix(in srgb, var(--df-surface-2) 40%, transparent); }
+
+@media (max-width: 800px) {
+  .create-wizard-shell { display: block; }
+  .create-step-rail { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 4px; padding: 8px; min-height: 0; border-right: 0; border-bottom: 1px solid var(--df-border-soft); }
+  .create-step-rail__sigil, .create-step-rail__item::after { display: none; }
+  .create-step-rail__item { grid-template-columns: 22px minmax(0, 1fr); gap: 5px; padding: 5px; min-height: 0; }
+  .create-step-rail .create-progress-marker { width: 22px; height: 22px; }
+  .create-step-rail__item small { font-size: 9px; }
+  .create-step-rail__item strong { overflow: hidden; font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
+  .create-rail-summary { grid-column: 1 / -1; grid-template-columns: repeat(3, minmax(0, 1fr)); margin-top: 8px; padding: 9px; }
+  .create-rail-summary > div { display: flex; flex-wrap: wrap; gap: 4px 8px; }
+  .create-source-summary { grid-template-columns: auto minmax(0, 1fr); }
+  .create-source-summary > span:last-child { grid-column: 1 / -1; }
+  .create-mode-segmented button { min-height: 48px; padding-inline: 8px; }
+}
+
+@media (max-width: 420px) {
+  .create-step-rail__item strong { display: block; font-size: 10px; text-align: center; }
+  .create-step-rail__item { grid-template-columns: 1fr; justify-items: center; }
+}
+
+@media (max-width: 620px) {
+  .create-step-card input:not([type="checkbox"]), .create-step-card select, .create-step-card textarea { font-size: 16px; min-height: 44px; }
+  .create-step-card textarea { min-height: 100px; }
+  .create-mode-segmented { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+
+/* Keep this feature contract stronger than legacy cinematic create overrides. */
+.create-page .create-mode-segmented { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0; }
+.create-page .create-mode-segmented button { min-height: 44px; place-items: center; align-content: center; padding: 8px; }
+.create-page .create-mode-segmented button b, .create-page .create-mode-segmented button small { display: none; }
+.create-page .create-recommended-rules summary { cursor: pointer; font-size: 12px; color: var(--df-text-secondary); }
+.create-page .create-selected-adventure .content-launch-summary { padding: 12px; margin: 0; gap: 10px; }
+.create-page .create-selected-adventure .content-launch-story h2 { font-size: 18px; }
+.create-page .create-selected-adventure .content-launch-story p { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; font-size: 12px; }
+.create-page .create-selected-adventure-note { display: none; }
+.create-page .create-selected-adventure + .create-source-summary { display: none; }
+
+/* The launch form starts with defaults and expands only the requested choices. */
+.create-page .create-content-stage > .create-config-surface { padding: 0; border: 0; background: none; box-shadow: none; gap: 14px; }
+.create-page .create-field-title { color: var(--df-text-secondary); font-size: 12px; font-weight: 700; }
+.create-page .create-play-mode { display: grid; gap: 9px; }
+.create-page .create-play-mode .narrative-perspective-cards { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.create-page .create-play-mode .narrative-perspective-cards button { min-height: 68px; padding: 12px 14px; text-align: left; }
+.create-page .create-play-mode .narrative-perspective-cards button strong { font-size: 14px; }
+.create-page .create-world-source { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.create-page .create-world-source .create-mode-segmented { width: min(100%, 400px); }
+.create-page .create-world-source .create-mode-segmented button { min-height: 38px; font-size: 12px; }
+.create-page .create-rule-settings { min-width: 0; border: 1px solid var(--df-border-soft); border-radius: var(--df-radius-sm); background: var(--df-control-bg); }
+.create-page .create-setup-summary { display: grid; grid-template-columns: 96px minmax(0, 1fr) auto; align-items: center; gap: 12px; padding: 14px; min-height: 54px; cursor: pointer; list-style: none; }
+.create-page .create-setup-summary::-webkit-details-marker { display: none; }
+.create-page details > .create-setup-summary::after { content: none; display: none; }
+.create-page .create-setup-summary > span:first-child { color: var(--df-text-secondary); font-size: 12px; font-weight: 700; }
+.create-page .create-setup-summary strong { color: var(--df-text-primary); font-size: 13px; line-height: 1.5; overflow-wrap: anywhere; }
+.create-page .create-setup-adjust { color: var(--df-interactive-strong); font-size: 12px; white-space: nowrap; }
+.create-page .create-setup-adjust > span { display: inline-block; margin-left: 5px; transition: transform .15s; }
+.create-page details[open] > .create-setup-summary .create-setup-adjust > span { transform: rotate(180deg); }
+.create-page .create-setup-summary:focus-visible { outline: 2px solid var(--df-interactive-strong); outline-offset: 2px; }
+.create-page .create-rule-settings-body { display: grid; gap: 12px; padding: 0 14px 14px; }
+.create-page .create-launch-advanced { border: 1px solid var(--df-border-soft); border-radius: var(--df-radius-sm); padding: 12px 14px; }
+@media (max-width: 620px) {
+  .create-page .create-world-source { display: grid; grid-template-columns: minmax(0, 1fr); justify-content: stretch; gap: 8px; }
+  .create-page .create-world-source .create-mode-segmented { width: 100%; }
+  .create-page .create-setup-summary { grid-template-columns: minmax(0, 1fr) auto; gap: 5px 12px; }
+  .create-page .create-setup-summary > span:first-child { grid-column: 1; }
+  .create-page .create-setup-summary strong { grid-column: 1; grid-row: 2; }
+  .create-page .create-setup-adjust { grid-column: 2; grid-row: 1 / 3; }
+  .create-page .create-play-mode .narrative-perspective-cards button { padding: 10px; min-height: 74px; }
 }

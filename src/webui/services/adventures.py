@@ -269,6 +269,11 @@ def _json_files(root: Path) -> dict[str, Any]:
     return result
 
 
+def adventure_bundle_files(bundle: LoadedAdventureBundle) -> dict[str, Any]:
+    """Portable editable JSON snapshot of an already validated owner bundle."""
+    return _json_files(bundle.root)
+
+
 def adventure_detail(
     dependencies: AdventureDependencies,
     adventure_id: str,
@@ -409,6 +414,53 @@ def copy_adventure(
         "directory_id": directory_id,
         "content_digest": bundle.content_digest,
     }
+
+
+def review_native_adventure_fork(dependencies: AdventureDependencies, payload: dict[str, Any], directory_id: str,
+                                source: LoadedAdventureBundle | None = None) -> dict[str, Any]:
+    """Validate an editable native snapshot in its original graph format."""
+    from copy import deepcopy
+    if source is not None and any(path.is_file() and path.suffix.lower() != ".json" for path in source.root.rglob("*")):
+        raise ValueError("native adventure Fork currently requires a JSON-only package; copy declared module images separately")
+    directory = _validate_directory_id(directory_id)
+    identity = f"user:{directory}"
+    _ensure_identity_available(dependencies, identity)
+    if (dependencies.adventure_loader.adventures_dir / directory).exists():
+        raise ValueError("adventure target already exists")
+    files = deepcopy(payload.get("files"))
+    if not isinstance(files, dict) or not isinstance(files.get("manifest.json"), dict):
+        raise ValueError("native adventure files are required")
+    manifest = files["manifest.json"]
+    manifest.update({"adventure_id": identity, "custom": True})
+    # Locale projections must show the reviewed name too; otherwise an overlay
+    # silently hides the user's edit when the copied adventure is selected.
+    graph = files.get("adventure.json")
+    if isinstance(graph, dict):
+        name = (graph.get("tutorial") or {}).get("name") or graph.get("name")
+        for value in files.values():
+            if isinstance(value, dict) and value.get("target", {}).get("kind") == "adventure":
+                fields = value.get("fields", {})
+                if name and isinstance(fields, dict):
+                    if isinstance(fields.get("tutorial"), dict):
+                        fields["tutorial"]["name"] = name
+                    elif "name" in fields:
+                        fields["name"] = name
+    staged, temporary = _validated_stage(dependencies, directory, files)
+    try:
+        bundle = AdventureBundleLoader(staged.parent).load(directory)
+        return {"directory_id": directory, "files": files, "format": bundle.manifest.format}
+    finally:
+        temporary.cleanup()
+
+
+def create_native_adventure_fork(dependencies: AdventureDependencies, payload: dict[str, Any], directory_id: str,
+                                source: LoadedAdventureBundle) -> dict[str, Any]:
+    checked = review_native_adventure_fork(dependencies, payload, directory_id, source)
+    output = io.BytesIO()
+    with zipfile.ZipFile(output, "w", compression=zipfile.ZIP_DEFLATED) as archive:
+        for name, value in checked["files"].items():
+            archive.writestr(f"{directory_id}/{name}", json.dumps(value, ensure_ascii=False))
+    return import_adventure(dependencies, output.getvalue(), directory_id)
 
 
 def create_adventure(
@@ -564,6 +616,8 @@ def update_adventure(
     manifest = files.get("manifest.json")
     if not isinstance(manifest, dict) or str(manifest.get("adventure_id") or "") != adventure_id:
         raise ValueError("editing cannot change canonical adventure identity")
+    if current.manifest.reference_policy and manifest.get("reference_policy") != current.manifest.reference_policy:
+        raise ValueError("editing cannot change the adventure reference policy")
     staged, temporary = _validated_stage(
         dependencies, current.root.name, files,
     )
@@ -748,6 +802,7 @@ def game_adventure_projection(
     instance: Any,
     *,
     viewer_is_gm: bool,
+    viewer_uid: str = "",
 ) -> dict[str, Any]:
     """Return only the bound v2 graph that this viewer may inspect.
 
@@ -854,6 +909,12 @@ def game_adventure_projection(
     # The client receives only server-derived, viewer-safe active identities.
     # It never infers completable nodes from graph transitions.
     projection["progress"] = {"active_nodes": active_nodes}
+    visible_choices = {node['id']: {transition.get('choice_id') for transition in node.get('transitions', [])} for node in projection['nodes'] if node.get('choice_mode') == 'exclusive'}
+    if visible_choices:
+        selected = progress.get('selected_choices', {})
+        projection['progress']['selected_choices'] = {node_id: choice for node_id, choice in selected.items() if node_id in visible_choices and choice in visible_choices[node_id]} if isinstance(selected, dict) else {}
+        requests = progress.get('choice_requests', [])
+        projection['progress']['choice_requests'] = [dict(row) for row in requests[:256] if isinstance(row, dict) and set(row) == {'node_id', 'choice_id', 'actor_uid'} and row['node_id'] in active_nodes and row['choice_id'] in visible_choices.get(row['node_id'], set()) and (viewer_is_gm or row['actor_uid'] == viewer_uid)] if isinstance(requests, list) else []
     return {
         "ok": True,
         "adventure": {

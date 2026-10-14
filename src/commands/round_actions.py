@@ -12,6 +12,7 @@ from src.engine.character_utils import is_conscious
 from src.engine.game_instance import GameInstance
 from src.engine import module_hooks
 from src.engine.language import localized_text
+from src.content_modules.projection import entries_for_world
 
 logger = logging.getLogger("trpg")
 
@@ -142,6 +143,16 @@ def format_check_results_constraint(instance: GameInstance, checks: list[dict]) 
                 "Anforderung: Dieses vom Server ermittelte Ergebnis bleibt unverändert."
             ),
         }))
+        push = check.get("push")
+        if isinstance(push, dict) and push.get("status") == "resolved":
+            import json
+
+            # An explicit domain record, not executable narrative instructions.
+            blocks.append("[Accepted Push decision] " + json.dumps({
+                "check_id": check.get("check_id"), "original_roll": push.get("original", {}).get("roll"),
+                "new_roll": check.get("roll"), "new_approach": push.get("reason"),
+                "failed": push.get("failed"), "failure_consequence": push.get("consequence"),
+            }, ensure_ascii=False) + "\nApply the accepted consequence only if Push failed. Do not re-roll or spend Luck. No automatic damage multiplier.")
     return "\n\n" + "\n\n".join(blocks)
 
 
@@ -163,7 +174,7 @@ def initialize_puzzles_from_lorebook(
             instance, viewer_kind="gm",
         )
     else:
-        entries = lorebook_store.list_entries(instance.world_id)
+        entries = entries_for_world(lorebook_store, instance.world_id)
     all_entries = localize_lorebook_entries(entries, world_data)
     for entry in all_entries:
         if entry.get("type") != "puzzle":

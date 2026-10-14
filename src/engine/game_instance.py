@@ -1097,6 +1097,7 @@ class GameInstance:
         expected_control_revision: int,
         action_metadata: dict | None = None,
         requires_structured_intent: StructuredIntentRequirement = False,
+        admission_check: Callable[[], str] | None = None,
     ) -> str:
         """Atomically re-confirm a hosted seat and commit its action.
 
@@ -1135,6 +1136,10 @@ class GameInstance:
             )
             if stale:
                 return stale
+            if admission_check is not None:
+                code = admission_check()
+                if code:
+                    return code
             code = evaluate(
                 self,
                 GateRequest(
@@ -1288,6 +1293,8 @@ class GameInstance:
     async def advance_round(self) -> bool:
         """显式推进回合。未行动的存活玩家标记为已就绪。"""
         async with self._lock:
+            if not progression.accepts_narrative(self):
+                return False
             from src.engine.economy import has_blocking_economy_decision
 
             progression.require_writable(self)
@@ -1302,6 +1309,8 @@ class GameInstance:
     async def try_advance(self) -> bool:
         """原子推进：检查条件 + 推进在同一个锁内完成，消除 TOCTOU 竞态。"""
         async with self._lock:
+            if not progression.accepts_narrative(self):
+                return False
             from src.engine.economy import has_blocking_economy_decision
 
             progression.require_writable(self)
@@ -1319,6 +1328,8 @@ class GameInstance:
 
     def _do_advance_locked(self) -> bool:
         """在锁内执行推进（调用方需持锁；实现见 turn_state）。"""
+        if not progression.accepts_narrative(self):
+            return False
         progression.require_writable(self)
         checks.require_writable(self)
         round_safety.require_writable(self)
@@ -1423,7 +1434,6 @@ class GameInstance:
             ruleset_runtime.require_writable(self)
             narrative_notes.require_writable(self)
             adventure_runtime_state.require_writable(self)
-            module_hooks.run(module_hooks.INSTANCE_RESET_PREFLIGHT, self)
             module_hooks.run(module_hooks.INSTANCE_RESET_PREFLIGHT, self)
             from src.engine.modules import room_access
 

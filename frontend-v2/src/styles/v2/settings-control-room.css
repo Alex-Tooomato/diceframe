@@ -322,11 +322,6 @@
 }
 
 @media (min-width: 801px) {
-  .game-grid {
-    grid-template-columns: repeat(2, minmax(420px, 480px));
-    justify-content: start;
-  }
-
   .app-workspace .play-page {
     height: calc(100dvh - 68px);
   }
@@ -346,12 +341,6 @@
   .timeline .message.gm {
     width: min(88%, 980px);
     margin-right: auto;
-  }
-}
-
-@media (min-width: 1320px) {
-  .game-grid {
-    grid-template-columns: repeat(3, minmax(420px, 1fr));
   }
 }
 

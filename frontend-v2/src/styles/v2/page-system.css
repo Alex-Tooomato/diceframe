@@ -1,0 +1,193 @@
+/*
+ * Shared page frame
+ *
+ * Section pages used to choose their own max-width and horizontal padding.
+ * That made the left edge visibly jump when moving between Characters,
+ * Content, Management and their child routes.  Keep the feature-owned inner
+ * grids, but give every section page one outer frame.
+ */
+.view.overview-page,
+.view.characters-page,
+.view.content-library,
+.view.modules-page,
+.view.creator-workshop,
+.view.plugin-page,
+.view.worlds-page,
+.view.lorebook-page,
+.view.memory-page,
+.view.logs-page,
+.view.rules-page,
+.view.adventures-page,
+.view.settings-page,
+.view.reference-create-page,
+.view.map-page {
+  width: min(var(--df-page-max), 100%);
+  max-width: var(--df-page-max);
+  box-sizing: border-box;
+  margin-inline: auto;
+  padding-inline: var(--df-page-gutter);
+  padding-top: var(--df-page-top);
+  padding-bottom: 42px;
+}
+
+/* A few feature sheets declared their own outer width/padding.  The frame is
+   deliberately stronger than those declarations; children retain their own
+   cards and grids. */
+.content-workspace-main > .view.content-library {
+  width: min(var(--df-page-max), 100%);
+  max-width: var(--df-page-max);
+  padding: var(--df-page-top) var(--df-page-gutter) 42px;
+}
+
+/* The creator landing page lives inside the content workspace, but it is a
+   full section surface in its own right.  Give it the same outer frame as
+   Characters, Content and Management so entering it cannot change the page
+   edge or title rhythm. */
+.content-workspace-main > .view.creator-workshop {
+  width: min(var(--df-page-max), 100%);
+  max-width: var(--df-page-max);
+  margin-inline: auto;
+  padding: var(--df-page-top) var(--df-page-gutter) 42px;
+  box-sizing: border-box;
+}
+
+/*
+ * One heading contract for the section surfaces.  Several pages still own
+ * their inner markup (the library, module catalogue and lorebook), but their
+ * heading boxes start at the same frame edge and use the same breathing room.
+ * Keeping this contract in the final page sheet makes feature-specific CSS
+ * unable to reintroduce a route-dependent top jump.
+ */
+.view.overview-page .overview-hero,
+.view.characters-page > .content-page-heading,
+.view.plugin-page .plugin-workspace > .content-page-heading,
+.view.settings-page > .settings-overview-grid > .content-page-heading,
+.view.memory-page > .content-page-heading,
+.view.logs-page .logs-document-head,
+.view.rules-page > .content-page-heading,
+.view.worlds-page > .content-page-heading,
+.view.content-library > .library-heading,
+.view.modules-page > .modules-heading,
+.view.creator-workshop > .content-page-heading,
+.view.lorebook-page .lorebook-workspace > .archive-hero,
+.view.adventures-page .content-page-heading,
+.view.reference-create-page .content-page-heading,
+.view.map-page .content-page-heading {
+  box-sizing: border-box;
+  margin-top: 0 !important;
+  margin-bottom: 20px !important;
+  padding: 12px 0 18px !important;
+}
+
+/* Overview used to pin the hero to a 114px band and then add only 14px of
+   top space.  Let the shared frame own the vertical rhythm so GAME ARCHIVE
+   sits as far from the global navigation as the Characters heading. */
+.view.overview-page .overview-hero {
+  height: auto !important;
+  min-height: 0 !important;
+}
+
+/* The old archive header rules also shrink a few custom h1 blocks.  Preserve
+   each page's copy, but keep the title scale and line box predictable. */
+.view.content-library > .library-heading h1,
+.view.modules-page > .modules-heading h1,
+.view.creator-workshop > .content-page-heading h1,
+.view.lorebook-page .lorebook-workspace > .archive-hero h1 {
+  line-height: 1.15;
+}
+
+/* Secondary navigation starts beneath the first primary section button.  The
+   brand occupies the same fixed block in the desktop header, so the two rows
+   share one vertical alignment line. */
+@media (min-width: 1261px) {
+  .content-workspace[data-workspace="content"] .content-workspace-rail,
+  .content-workspace[data-workspace="management"] .content-workspace-rail {
+    /* Match .app-header-inner -> brand -> gap -> first primary link.  The
+       header is capped and centered at 1680px, so the extra centering offset
+       is required once the viewport grows beyond that cap. */
+    padding-left: calc(max(0px, (100vw - 1680px) / 2) + clamp(16px, 3.8vw, 64px) + 210px);
+  }
+}
+
+@media (min-width: 801px) and (max-width: 1260px) {
+  .content-workspace[data-workspace="content"] .content-workspace-rail,
+  .content-workspace[data-workspace="management"] .content-workspace-rail {
+    /* At this width the header uses a 10px inset, a 146px brand and a 6px
+       flex gap (981-1260), while narrower tablet widths use the 3.8vw inset
+       and a 10px gap. */
+    padding-left: 200px;
+  }
+}
+
+@media (min-width: 801px) and (max-width: 980px) {
+  .content-workspace[data-workspace="content"] .content-workspace-rail,
+  .content-workspace[data-workspace="management"] .content-workspace-rail {
+    padding-left: calc(clamp(16px, 3.8vw, 48px) + 194px);
+  }
+}
+
+@media (max-width: 800px) {
+  .view.overview-page,
+  .view.characters-page,
+  .view.content-library,
+  .view.modules-page,
+  .view.creator-workshop,
+  .view.plugin-page,
+  .view.worlds-page,
+  .view.lorebook-page,
+  .view.memory-page,
+  .view.logs-page,
+  .view.rules-page,
+  .view.adventures-page,
+  .view.settings-page,
+  .view.reference-create-page,
+  .view.map-page,
+  .content-workspace-main > .view.content-library,
+  .content-workspace-main > .view.creator-workshop {
+    width: 100%;
+    max-width: 100%;
+    padding-inline: 12px;
+    padding-top: var(--df-page-top-mobile);
+    padding-bottom: 32px;
+  }
+
+  .view.overview-page .overview-hero,
+  .view.characters-page > .content-page-heading,
+  .view.plugin-page .plugin-workspace > .content-page-heading,
+  .view.settings-page > .settings-overview-grid > .content-page-heading,
+  .view.memory-page > .content-page-heading,
+  .view.logs-page .logs-document-head,
+  .view.rules-page > .content-page-heading,
+  .view.worlds-page > .content-page-heading,
+  .view.content-library > .library-heading,
+  .view.modules-page > .modules-heading,
+  .view.creator-workshop > .content-page-heading,
+  .view.lorebook-page .lorebook-workspace > .archive-hero,
+  .view.adventures-page .content-page-heading,
+  .view.reference-create-page .content-page-heading,
+  .view.map-page .content-page-heading {
+    margin-bottom: 16px !important;
+    padding-top: 10px !important;
+    padding-bottom: 14px !important;
+  }
+
+  .content-workspace[data-workspace="content"] .content-workspace-rail,
+  .content-workspace[data-workspace="management"] .content-workspace-rail {
+    padding-left: 12px;
+  }
+}
+
+/* All horizontal section rails use the same button height and center their
+   labels/icons, which keeps Content and Management visually interchangeable. */
+.content-workspace[data-workspace="content"] .content-workspace-nav > a,
+.content-workspace[data-workspace="management"] .content-workspace-nav > a {
+  min-height: 40px;
+  align-items: center;
+}
+
+@media (max-width: 800px) {
+  .content-workspace[data-workspace="content"] .content-workspace-nav > a,
+  .content-workspace[data-workspace="management"] .content-workspace-nav > a {
+    min-height: 44px;
+  }
+}

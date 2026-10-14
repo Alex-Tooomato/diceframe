@@ -170,7 +170,7 @@
 }
 
 .content-workspace-main > .view {
-  width: min(1560px, 100%);
+  width: min(var(--df-page-max), 100%);
   margin: 0 auto;
 }
 

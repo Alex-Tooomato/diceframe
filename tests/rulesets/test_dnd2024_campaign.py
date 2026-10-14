@@ -6,6 +6,7 @@ import pytest
 
 from src.commands.round_effects import apply_ruleset_combat_signal
 from src.engine.game_instance import GameInstance
+from src.engine.player_control import set_control
 from src.rulesets.dnd2024.runtime import Dnd2024Runtime
 from src.rulesets.dnd2024.play import resolve_story_encounter_access
 from src.rulesets.automation import apply_director_automation
@@ -320,6 +321,70 @@ def test_multiplayer_encounter_readiness_is_authoritative_and_visible_to_gm() ->
     request = runtime.gameplay_view(instance, "ally", False)["encounter_request"]
     assert request["readiness"]["ready_count"] == 0
     assert request["readiness"]["players"][0]["ready"] is False
+
+
+def test_ai_seats_do_not_block_encounter_readiness_or_receive_ready_intents() -> None:
+    runtime, instance = _instance(multiplayer=True)
+    set_control(instance, "ally", "ai")
+    assert runtime.apply_narrative_combat_signal(instance, "start", {
+        "kind": "combat", "mode": "assist", "confidence": 0.92,
+        "encounter_preset_id": "goblin_patrol",
+    }) is True
+
+    request = runtime.gameplay_view(instance, "gm", True)["encounter_request"]
+    assert request["readiness"] == {
+        "ready_player_ids": [], "required_player_ids": [],
+        "ready_count": 0, "required_count": 0, "all_ready": True,
+        "players": [],
+    }
+    assert "encounter.ready" not in {
+        item["type"] for item in runtime.available_intents(instance, "ally")
+    }
+    denied = runtime.validate_intent(instance, {
+        "intent_id": "ai-ready", "type": "encounter.ready",
+        "expected_version": ruleset_runtime.state(instance)["version"],
+        "submitted_by": "ally",
+    })
+    assert denied["ok"] is False
+
+
+def test_encounter_readiness_requires_only_the_active_human_seat() -> None:
+    runtime, instance = _instance(multiplayer=True)
+    guest = _character(runtime, "stalwart_guardian", "Nora")
+    instance.players["guest"] = {
+        "character_name": "Nora", "character_sheet": guest,
+    }
+    set_control(instance, "ally", "ai")
+    assert runtime.apply_narrative_combat_signal(instance, "start", {
+        "kind": "combat", "mode": "assist", "confidence": 0.92,
+        "encounter_preset_id": "goblin_patrol",
+    }) is True
+
+    request = runtime.gameplay_view(instance, "gm", True)["encounter_request"]
+    assert request["readiness"]["required_player_ids"] == ["guest"]
+    assert "encounter.ready" in {
+        item["type"] for item in runtime.available_intents(instance, "guest")
+    }
+    assert "encounter.ready" not in {
+        item["type"] for item in runtime.available_intents(instance, "ally")
+    }
+
+
+def test_session_zero_does_not_wait_for_an_ai_seat() -> None:
+    runtime, instance = _instance(multiplayer=True)
+    set_control(instance, "ally", "ai")
+    defaults = runtime.gameplay_view(instance, "gm", True)["campaign"][
+        "session_zero_defaults"
+    ]
+    _submit(runtime, instance, "session_zero.propose", agreement=defaults)
+    assert "session_zero.respond" not in {
+        item["type"] for item in runtime.available_intents(instance, "ally")
+    }
+
+    _submit(runtime, instance, "session_zero.respond", "gm", response="accept")
+    assert "session_zero.lock" in {
+        item["type"] for item in runtime.available_intents(instance, "gm")
+    }
 
 
 def test_combat_communication_is_shared_without_spending_turn_resources() -> None:

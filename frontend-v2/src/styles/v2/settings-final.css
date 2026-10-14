@@ -1,0 +1,182 @@
+/*
+ * Final control-room geometry.
+ *
+ * Settings contains several feature panes (the provider library is the most
+ * visible one), so their backgrounds must belong to one stretchable surface.
+ * Keeping the geometry here, after the feature sheets, prevents a pane from
+ * ending at its own content height and exposing a hard vertical seam.
+ */
+.reference-settings-page {
+  width: 100%;
+  max-width: 1480px;
+  box-sizing: border-box;
+}
+
+.reference-settings-page .settings-layout {
+  align-items: stretch;
+  min-height: clamp(620px, calc(100dvh - 220px), 900px);
+  overflow: hidden;
+  box-sizing: border-box;
+}
+
+.reference-settings-page .settings-nav,
+.reference-settings-page .settings-content {
+  min-height: 100%;
+}
+
+.reference-settings-page .settings-content {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  background: color-mix(in srgb, var(--df-surface-1) 72%, transparent);
+}
+
+.reference-settings-page .settings-content > .n-spin-container,
+.reference-settings-page .settings-content > .n-spin-container > .n-spin-content {
+  display: flex;
+  min-width: 0;
+  min-height: 100%;
+  flex: 1 1 auto;
+  flex-direction: column;
+}
+
+.reference-settings-page .settings-pane {
+  width: 100%;
+  min-width: 0;
+  min-height: 100%;
+  box-sizing: border-box;
+}
+
+.reference-settings-page .ai-management-pane {
+  display: flex;
+  flex: 1 1 auto;
+  min-height: 100%;
+  flex-direction: column;
+  overflow: hidden;
+  background:
+    radial-gradient(circle at 82% 0, color-mix(in srgb, var(--df-interactive) 5%, transparent), transparent 33%),
+    color-mix(in srgb, var(--df-surface-1) 72%, transparent);
+}
+
+.reference-settings-page .ai-provider-workspace {
+  flex: 1 1 auto;
+  min-height: 0;
+  background: color-mix(in srgb, var(--df-surface-1) 42%, transparent);
+}
+
+.reference-settings-page .provider-library,
+.reference-settings-page .provider-editor {
+  min-height: 0;
+  box-sizing: border-box;
+}
+
+.reference-settings-page .provider-library {
+  background: color-mix(in srgb, var(--df-canvas) 34%, var(--df-surface-1));
+}
+
+.reference-settings-page select {
+  text-align: left;
+  text-align-last: left;
+}
+
+/* Native details markers sit low in a few browsers. All rebuilt expandable
+   rows use flex summaries so the action glyph shares the text's centerline. */
+.reference-settings-page details > summary,
+.create-page details > summary,
+.overview-page .overview-archive-tools > summary,
+.overview-page .overview-game-tools > summary {
+  display: flex;
+  align-items: center;
+  min-height: 38px;
+  line-height: 1.25;
+}
+
+.reference-settings-page details > summary::-webkit-details-marker,
+.create-page details > summary::-webkit-details-marker,
+.overview-page .overview-archive-tools > summary::-webkit-details-marker,
+.overview-page .overview-game-tools > summary::-webkit-details-marker {
+  display: none;
+}
+
+.reference-settings-page .settings-status-disclosure > summary::after,
+.create-page details > summary::after {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 1.2em;
+  margin-left: auto;
+  color: var(--df-text-muted);
+  content: '⌄';
+  line-height: 1;
+  transform: translateY(0);
+  transition: transform .18s ease;
+}
+
+.reference-settings-page .settings-status-disclosure[open] > summary::after,
+.create-page details[open] > summary::after {
+  transform: rotate(180deg);
+}
+
+.overview-page .overview-archive-tools > summary::after,
+.overview-page .overview-game-tools > summary::after {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin-left: auto;
+  line-height: 1;
+  transform: translateY(0);
+}
+
+/* The left journey rail and its atmospheric background must reach the same
+   bottom edge as the stage, including when a later step grows taller. */
+.create-wizard-shell {
+  align-items: stretch;
+}
+
+.create-step-rail {
+  align-self: stretch;
+  height: auto;
+  min-height: 100%;
+  box-sizing: border-box;
+}
+
+.create-stage-panel {
+  min-height: 100%;
+  box-sizing: border-box;
+}
+
+@media (max-width: 900px) {
+  .reference-settings-page .settings-layout {
+    min-height: 0;
+    overflow: visible;
+  }
+
+  .reference-settings-page .settings-nav,
+  .reference-settings-page .settings-content,
+  .reference-settings-page .settings-pane {
+    min-height: 0;
+  }
+
+  .reference-settings-page .settings-content > .n-spin-container,
+  .reference-settings-page .settings-content > .n-spin-container > .n-spin-content {
+    min-height: 0;
+  }
+
+  .reference-settings-page .ai-management-pane {
+    min-height: 620px;
+  }
+
+  .reference-settings-page .ai-provider-workspace {
+    min-height: 0;
+  }
+}
+
+@media (max-width: 640px) {
+  .reference-settings-page .ai-management-pane {
+    min-height: 0;
+  }
+
+  .create-step-rail {
+    min-height: 0;
+  }
+}

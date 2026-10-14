@@ -299,6 +299,11 @@ class WebUIBootstrap:
         signal.raise_signal(signal.SIGINT)
 
     async def on_cleanup(self, app: web.Application) -> None:
+        api = app.get("api")
+        if api is not None and hasattr(api, "close_assistant_agent"):
+            await api.close_assistant_agent()
+        if api is not None and hasattr(api, "close_hosted_combat"):
+            await api.close_hosted_combat()
         plugin_host = app.get("plugin_host")
         if plugin_host:
             await plugin_host.cleanup()

@@ -27,9 +27,9 @@
   align-items: center;
   gap: 18px;
   width: min(1680px, 100%);
-  min-height: 68px;
+  min-height: 58px;
   margin: 0 auto;
-  padding: 0 24px;
+  padding: 0 clamp(16px, 3.8vw, 64px);
 }
 
 .app-brand {
@@ -43,7 +43,13 @@
 
 .app-brand:hover { text-decoration: none; }
 .app-brand .brand-text strong { color: var(--df-accent-strong); letter-spacing: .045em; }
-.app-brand .brand-text small { color: var(--df-text-muted); }
+.app-brand .brand-text small { display: none; color: var(--df-text-muted); }
+
+@media (min-width: 801px) {
+  .app-brand .brand-mark { width: 34px; height: 34px; }
+  .app-brand .brand-text strong { font-size: 24px; }
+  .desktop-nav-link .n-icon { display: none; }
+}
 
 .desktop-nav {
   display: flex;
@@ -147,7 +153,7 @@
 .mobile-bottom-nav { display: none; }
 
 @media (max-width: 1260px) {
-  .app-header-inner { gap: 10px; padding-inline: 14px; }
+  .app-header-inner { gap: 10px; padding-inline: clamp(16px, 3.8vw, 48px); }
   .app-brand { min-width: 146px; padding-right: 12px; }
   .desktop-nav-link { min-width: 48px; padding-inline: 10px; }
   .desktop-nav-link span { display: none; }
@@ -204,4 +210,100 @@
 @media (max-width: 420px) {
   .app-brand .brand-text strong { font-size: 16px; }
   .app-header .theme-toggle { width: 34px; min-width: 34px; height: 34px; min-height: 34px; }
+}
+
+/* Management uses the same compact horizontal section bar as content.
+   Keep the group-specific session link and route identity intact. */
+.content-workspace[data-workspace="management"] {
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: auto minmax(0, 1fr);
+  align-content: start;
+}
+
+.content-workspace[data-workspace="management"] .content-workspace-rail {
+  position: static;
+  top: auto;
+  display: flex;
+  width: auto;
+  height: auto;
+  min-height: 0;
+  flex-direction: row;
+  align-items: center;
+  gap: 12px;
+  overflow: hidden;
+  padding: 8px var(--df-page-gutter);
+  border-right: 0;
+  border-bottom: 1px solid var(--df-border-soft);
+  box-shadow: none;
+  background: var(--df-surface-1);
+}
+
+.content-workspace[data-workspace="management"] .content-workspace-nav {
+  display: flex;
+  flex: 1 1 auto;
+  gap: 6px;
+  min-width: 0;
+  overflow-x: auto;
+  scrollbar-width: thin;
+}
+
+.content-workspace[data-workspace="management"] .content-workspace-nav > a {
+  display: flex;
+  flex: 0 0 auto;
+  grid-template-columns: none;
+  grid-template-rows: none;
+  align-items: center;
+  gap: 7px;
+  min-height: 36px;
+  padding: 8px 12px;
+}
+
+.content-workspace[data-workspace="management"] .content-workspace-nav > a > .n-icon { font-size: 17px; }
+.content-workspace[data-workspace="management"] .content-workspace-nav > a > span { display: block; }
+.content-workspace[data-workspace="management"] .content-workspace-nav > a strong { font-size: 12px; white-space: nowrap; }
+.content-workspace[data-workspace="management"] .content-workspace-nav > a small { display: none; }
+
+.content-workspace[data-workspace="management"] .content-workspace-session {
+  display: none;
+}
+
+.content-workspace[data-workspace="management"] .content-workspace-session > a {
+  display: inline-flex;
+  min-height: 36px;
+  padding: 8px 12px;
+  gap: 7px;
+}
+
+.content-workspace[data-workspace="management"] .content-workspace-session > a > span {
+  position: static;
+  width: auto;
+  height: auto;
+  overflow: visible;
+  clip: auto;
+}
+
+@media (max-width: 800px) {
+  .content-workspace[data-workspace="management"] .content-workspace-rail {
+    position: sticky;
+    top: 51px;
+    display: block;
+    width: 100%;
+    padding: 7px var(--df-page-gutter);
+    border-right: 0;
+    border-bottom: 1px solid var(--df-border-soft);
+    box-shadow: 0 10px 26px rgba(0, 0, 0, .18);
+  }
+
+  .content-workspace[data-workspace="management"] .content-workspace-nav {
+    display: grid;
+    grid-auto-columns: minmax(104px, 1fr);
+    grid-auto-flow: column;
+    gap: 6px;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+
+  .content-workspace[data-workspace="management"] .content-workspace-nav::-webkit-scrollbar { display: none; }
+  .content-workspace[data-workspace="management"] .content-workspace-nav > a { min-height: 44px; padding: 5px 8px; }
+  .content-workspace[data-workspace="management"] .content-workspace-session { display: none; }
 }

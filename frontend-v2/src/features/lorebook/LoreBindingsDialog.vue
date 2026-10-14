@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import { useLocale } from '@/composables/useLocale'
+import Modal from '@/components/ui/Modal.vue'
 
 export interface LoreBinding {
   id: string
@@ -30,6 +31,7 @@ const emit = defineEmits<{
 }>()
 
 const { t } = useLocale()
+const dialogTitle = computed(() => `${t('loreBindingsAria')}${props.bookName ? `：${props.bookName}` : ''}`)
 
 type ScopeChoice = 'world' | 'game' | 'character' | 'global'
 const scope = ref<ScopeChoice>('world')
@@ -66,10 +68,8 @@ function add() {
 </script>
 
 <template>
-  <div v-if="open" class="lore-bindings-dialog" role="dialog" aria-modal="true" :aria-label="t('loreBindingsAria')">
-    <div class="lore-bindings-dialog__panel">
-      <h2>{{ t('loreBindingsAria') }}<template v-if="bookName">：{{ bookName }}</template></h2>
-
+  <Modal v-if="open" :title="dialogTitle" dialog-class="lore-bindings-dialog" @close="emit('close')">
+    <div class="lore-bindings-dialog__body">
       <table class="lore-bindings-dialog__table">
         <thead>
           <tr><th>{{ t('loreBindingsScopeTh') }}</th><th>{{ t('loreBindingsTargetTh') }}</th><th>{{ t('loreBindingsRoleTh') }}</th><th></th></tr>
@@ -111,9 +111,9 @@ function add() {
         <button :disabled="addDisabled" @click="add()">{{ t('loreBindingsAdd') }}</button>
       </fieldset>
 
-      <div class="lore-bindings-dialog__buttons">
-        <button @click="emit('close')">{{ t('close') }}</button>
-      </div>
     </div>
-  </div>
+    <template #actions>
+        <button @click="emit('close')">{{ t('close') }}</button>
+    </template>
+  </Modal>
 </template>

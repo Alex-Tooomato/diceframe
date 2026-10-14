@@ -68,7 +68,20 @@ class CheckRequest(TypedDict, total=False):
     planner_source: str
 
 
+class PercentileDice(TypedDict):
+    units: int
+    tens: list[int]
+    candidates: list[int]
+    taken_index: int
+    bonus_dice: int
+    penalty_dice: int
+
+
 class CheckResult(TypedDict, total=False):
+    attribute_key: str
+    push: dict[str, Any]
+    dice_mechanic: str
+    percentile_dice: PercentileDice
     check_id: str
     label: str
     actor_uid: str

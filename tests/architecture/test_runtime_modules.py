@@ -333,6 +333,8 @@ MODULE_API_WRITERS: dict[str, tuple[frozenset[str], frozenset[Path]]] = {
             SRC / "commands" / "game_lifecycle.py",
             SRC / "commands" / "round_processor.py",
             SRC / "webui" / "services" / "adventure_runtime.py",
+            # Node/choice transactions and their compensated before-images.
+            SRC / "webui" / "services" / "adventure_commands.py",
             SRC / "webui" / "services" / "game_lifecycle.py",
             SRC / "webui" / "services" / "game_seed_lifecycle.py",
             SRC / "webui" / "services" / "ruleset_gameplay.py",

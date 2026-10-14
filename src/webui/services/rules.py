@@ -168,6 +168,12 @@ def list_rules(
                 dependencies,
                 runtime_template,
             )
+            item["scene_image"] = runtime_template.get("scene_image")
+            item["scene_images"] = (
+                runtime_template.get("scene_images")
+                if isinstance(runtime_template.get("scene_images"), list)
+                else []
+            )
         except (OSError, ValueError, TypeError) as exc:
             raise ValueError(f"规则 {rule_id} 的内容或运行时无效：{exc}") from exc
     seen = {str(rule.get("rule_id") or "") for rule in rules}
@@ -442,6 +448,11 @@ def _plugin_rule_items(
                 "custom": False,
                 "source_rule_id": template.get("source_rule_id", ""),
                 "scene_image": template.get("scene_image"),
+                "scene_images": (
+                    template.get("scene_images")
+                    if isinstance(template.get("scene_images"), list)
+                    else []
+                ),
                 "plugin_id": item.plugin_id,
                 "plugin_name": item.plugin_name,
                 "readonly": True,

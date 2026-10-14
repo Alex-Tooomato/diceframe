@@ -48,14 +48,19 @@ logger = logging.getLogger("trpg")
 
 
 def all_alive_ready(instance: GameInstance) -> bool:
-    """多人模式下，所有未暂离的存活真人席位都提交行动后才自动推进。
+    """多人模式下，所有负责本轮的存活席位都提交行动后才自动推进。
 
-    AI 托管与未认领的席位不参与等待：它们不是"还没交行动的真人"。
+    有真人时只等待真人；纯 AI 桌则等待已被 AI 补行动或安全回退标记为
+    ready 的 AI 席位。未认领席位永远不会被当成已准备。
     """
     active = instance.active_human_players
-    if not active:
-        return False
-    return active.issubset(instance.ready_players)
+    if active:
+        return active.issubset(instance.ready_players)
+    active_ai = {
+        uid for uid in ai_controlled_players(instance)
+        if uid in instance.active_alive_players
+    }
+    return bool(active_ai) and active_ai.issubset(instance.ready_players)
 
 
 def human_actions_ready(instance: GameInstance) -> bool:

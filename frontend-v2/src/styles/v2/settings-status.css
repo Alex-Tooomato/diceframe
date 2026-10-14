@@ -180,6 +180,36 @@
   box-shadow: inset 2px 0 0 var(--df-accent-strong);
 }
 
+/* Group labels are navigation landmarks, not another muted menu row.  Give
+   them their own gold rule so the dark rail reads as three clear sections. */
+.reference-settings-page .settings-nav .settings-nav-group-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 16px 10px 5px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid color-mix(in srgb, var(--df-accent) 24%, var(--df-border-soft));
+  color: var(--df-accent-strong);
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: .08em;
+  line-height: 1.35;
+}
+
+.reference-settings-page .settings-nav .settings-nav-group-label::before {
+  width: 4px;
+  height: 4px;
+  flex: 0 0 auto;
+  border: 1px solid var(--df-accent);
+  border-radius: 50%;
+  content: "";
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--df-accent) 10%, transparent);
+}
+
+.reference-settings-page .settings-nav .settings-nav-group-label:first-of-type {
+  margin-top: 4px;
+}
+
 .reference-settings-page .settings-content {
   min-width: 0;
 }
@@ -228,6 +258,19 @@
 
   .reference-settings-page .settings-nav .nav-item.active {
     box-shadow: inset 0 -2px 0 var(--df-accent-strong);
+  }
+
+  .reference-settings-page .settings-nav .settings-nav-group-label {
+    flex: 0 0 auto;
+    margin: 0 3px;
+    padding: 0 7px;
+    border: 0;
+    color: var(--df-accent-strong);
+    white-space: nowrap;
+  }
+
+  .reference-settings-page .settings-nav .settings-nav-group-label::before {
+    display: none;
   }
 }
 

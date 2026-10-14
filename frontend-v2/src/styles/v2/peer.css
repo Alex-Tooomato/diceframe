@@ -74,6 +74,12 @@
 
 .peer-mode-tabs { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 22px; }
 .peer-mode-tabs button.active { border-color: var(--df-accent); color: var(--df-accent-strong); background: var(--df-accent-soft); }
+.peer-flow-steps { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; margin: 0 0 18px; padding: 0; list-style: none; }
+.peer-flow-steps li { display: flex; align-items: center; gap: 6px; min-width: 0; color: var(--df-text-muted); font-size: 11px; }
+.peer-flow-steps li span { display: grid; flex: 0 0 24px; width: 24px; height: 24px; place-items: center; border: 1px solid var(--df-border-soft); border-radius: 50%; font-weight: 800; }
+.peer-flow-steps li.active { color: var(--df-accent-strong); font-weight: 800; }
+.peer-flow-steps li.active span { border-color: var(--df-accent); background: var(--df-accent-soft); }
+.peer-flow-steps li.complete span { color: var(--df-success); border-color: color-mix(in srgb, var(--df-success) 55%, var(--df-border-soft)); }
 
 .peer-field { display: grid; gap: 7px; margin-bottom: 16px; }
 .peer-field > span { font-weight: 700; }
@@ -107,6 +113,7 @@
 .peer-direct-consent input { width: auto; margin-top: 3px; flex: 0 0 auto; }
 .peer-direct-consent a { color: var(--df-accent-strong); }
 .peer-primary { width: 100%; justify-content: center; }
+.peer-page button.primary.success { background: linear-gradient(180deg, var(--df-interactive), color-mix(in srgb, var(--df-interactive) 78%, var(--df-canvas))); color: var(--df-text); border-color: color-mix(in srgb, var(--df-interactive) 65%, transparent); }
 
 /* 开房后的邀请操作归入右侧房间控制台，与连接状态保持同一上下文。 */
 .peer-invite {
@@ -204,6 +211,11 @@
   .peer-page-embedded { min-height: 0; padding: 12px 10px calc(20px + env(safe-area-inset-bottom)); }
   .peer-layout { grid-template-columns: 1fr; grid-template-rows: auto; align-items: start; }
   .peer-card { padding: 16px; }
+  .peer-field input, .peer-field select, .peer-field textarea, .peer-mode-tabs button,
+  .peer-primary, .peer-copy-all, .peer-invite-copy, .peer-disconnect, .peer-enter-game { min-height: 44px; }
+  .peer-flow-steps { gap: 3px; }
+  .peer-flow-steps li { display: grid; justify-items: center; gap: 3px; text-align: center; font-size: 10px; }
+  .peer-flow-steps li span { width: 28px; height: 28px; }
   .peer-status > header { align-items: start; flex-direction: column; }
   .peer-status-room { justify-items: start; }
   .peer-invite-header { align-items: stretch; flex-direction: column; }

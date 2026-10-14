@@ -89,6 +89,8 @@ class FakeInstance:
     def pending_luck_checks(self) -> list[dict]:
         return list(self.pending_luck)
 
+    round_checks_prepared = False
+
     def multiplayer_status(self) -> dict:
         acted = {action.get("user_id") for action in self.action_queue}
         waiting = [player for uid, player in self.players.items() if uid not in acted]

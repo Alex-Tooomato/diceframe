@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from aiohttp import web
+from src.webui.routes.game_lorebooks import api_game_lorebooks
 
 from src.engine.game_instance import MAX_SAVE_PACKAGE_BYTES
 
@@ -110,11 +111,18 @@ async def _read_save_upload(reader) -> bytes:
 
 
 def register_games(app: web.Application) -> None:
+    from src.webui.routes.ai_seats import register as register_ai_seats
+    register_ai_seats(app)
+    from src.webui.routes.check_modes import register as register_check_modes
+    register_check_modes(app)
+    from src.webui.routes.check_decisions import register as register_check_decisions
+    register_check_decisions(app)
     app.router.add_get("/api/games", api_games)
     app.router.add_post("/api/games/import", api_import_game)
     app.router.add_get("/api/games/{game_key}", api_detail)
     app.router.add_get("/api/games/{game_key}/adventure", api_game_adventure_projection)
     app.router.add_get("/api/games/{game_key}/scene-image", api_game_scene_image_file)
+    app.router.add_get('/api/games/{game_key}/lorebooks', api_game_lorebooks)
     app.router.add_post(
         "/api/games/{game_key}/scene-image", api_game_scene_image_update
     )
@@ -244,3 +252,5 @@ def register_games(app: web.Application) -> None:
     app.router.add_post("/api/games/{game_key}/switch-world", api_switch_world)
     app.router.add_post(r"/api/games/{game_key}/swipe/{round:\d+}", api_swipe)
     app.router.add_put(r"/api/games/{game_key}/swipe/{round:\d+}", api_swipe)
+    from src.webui.routes.game_profiles import register as register_profiles
+    register_profiles(app)

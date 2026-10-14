@@ -216,4 +216,41 @@ describe('RulesView combat editor integration', () => {
       maximum: 10,
     }])
   })
+
+  it('keeps built-in templates distinct from professional runtimes and filters the list', async () => {
+    mocks.api.mockImplementation(async (path: string, init?: RequestInit) => {
+      if (path === '/rules' && (!init || !init.method || init.method === 'GET')) return {
+        rules: [
+          { ...builtinRules().rules[0], ruleset_runtime: { id: 'dnd2024', version: 1 } },
+          { rule_id: 'story_template', rule_name: 'Story Template', custom: true },
+        ],
+      }
+      throw new Error(`unexpected api call: ${path} ${init?.method || 'GET'}`)
+    })
+    const wrapper = mount(RulesView, { global: { plugins: [i18n] } })
+    await flushPromises()
+    expect(wrapper.text()).toContain('dnd2024')
+    expect(wrapper.text()).toContain('仅模板')
+    const search = wrapper.get('input[type="search"]')
+    await search.setValue('story_template')
+    expect(wrapper.findAll('.rule-card')).toHaveLength(1)
+    expect(wrapper.text()).toContain('Story Template')
+    expect(wrapper.text()).not.toContain('Classic Fantasy')
+    wrapper.unmount()
+  })
+
+  it('searches the localized display name used by the active locale', async () => {
+    i18n.global.locale.value = 'en'
+    mocks.api.mockImplementation(async (path: string, init?: RequestInit) => {
+      if (path === '/rules' && (!init || !init.method || init.method === 'GET')) return {
+        rules: [{ rule_id: 'coc_template', rule_name: '模板', rule_name_en: 'Night Investigation', custom: false }],
+      }
+      throw new Error(`unexpected api call: ${path} ${init?.method || 'GET'}`)
+    })
+    const wrapper = mount(RulesView, { global: { plugins: [i18n] } })
+    await flushPromises()
+    await wrapper.get('input[type="search"]').setValue('night investigation')
+    expect(wrapper.findAll('.rule-card')).toHaveLength(1)
+    wrapper.unmount()
+  })
 })

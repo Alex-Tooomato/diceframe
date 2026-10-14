@@ -1,3 +1,4 @@
+from src.engine.modules import checks
 """Public log responses must not expose snapshots or future internal fields."""
 
 from copy import deepcopy
@@ -6,6 +7,7 @@ from types import SimpleNamespace
 
 import pytest
 
+from src.engine.game_state import GameState
 from src.webui.services import logs
 
 
@@ -211,3 +213,22 @@ def test_public_log_strips_gm_written_scene_image_prompts(log_context):
     assert "lich" not in json.dumps(public)
     assert all("lich" in entry["scene_image"]["prompt"] for entry in gm["log"])
     assert instance.log[0]["scene_image"]["prompt"] == "the hidden lich lair beneath the vault"
+
+
+def test_log_projection_keeps_reveal_marker_for_visible_current_round_checks(log_context):
+    dependencies, instance = log_context
+    instance.log[0]["check_results"] = [{"check_id": "history-check", "roll": 40}]
+    checks.replace_last_checks(instance, [{'check_id': 'current-check', 'roll': 60}])
+    checks.replace_round_checks_prepared(instance, True)
+    instance.state = GameState.ACTIVE_JUDGMENT
+    instance.modules["check_reveals"] = {
+        "schema_version": 1,
+        "records": {
+            "history-check": {"by": "gm", "at": "2026-09-23T12:01:00Z"},
+            "current-check": {"by": "gm", "at": "2026-09-23T12:02:00Z"},
+        },
+    }
+
+    result = logs.get_log(dependencies, "web|room|bot")
+
+    assert set(result["check_reveals"]) == {"history-check", "current-check"}

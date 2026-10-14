@@ -1,6 +1,7 @@
 """完整回合推进流程。"""
 
 from __future__ import annotations
+from src.imagegen.game_context import capture_storyboard_context
 
 import asyncio
 import json
@@ -288,6 +289,7 @@ class RoundProcessor:
         # generic round processor owns world-time settlement but must not import
         # the Adventure application service or a concrete ruleset.
         self._advance_adventure_world = advance_adventure_world
+        self._defer_hosted_players = False
         # 后台摘要任务引用持有，避免被 GC 中断
         self._pending_summary_tasks: set = set()
         self._image_generation = None
@@ -300,6 +302,9 @@ class RoundProcessor:
 
     def set_image_generation_service(self, service) -> None:
         self._image_generation = service
+
+    def set_defer_hosted_players(self, enabled: bool) -> None:
+        self._defer_hosted_players = enabled
 
     def set_adventure_world_advance(
         self, callback: Callable[[GameInstance], dict[str, Any]] | None,
@@ -357,6 +362,9 @@ class RoundProcessor:
                 check["check_id"] = uuid.uuid4().hex
             if check.get("luck_spend_available"):
                 check["luck_decision"] = "pending"
+        from src.engine import check_decisions
+
+        check_decisions.prepare(instance, rule_ctx.rule)
         instance.complete_round_check_preparation()
         return list(checks.last_checks(instance))
 
@@ -522,6 +530,9 @@ class RoundProcessor:
                 check["check_id"] = uuid.uuid4().hex
             if check.get("luck_spend_available"):
                 check["luck_decision"] = "pending"
+        from src.engine import check_decisions
+
+        check_decisions.prepare(instance, rule_ctx.rule)
         instance.complete_round_check_preparation()
         return list(checks.last_checks(instance))
 
@@ -547,7 +558,9 @@ class RoundProcessor:
             logger.info("等待经济提案结算，暂不生成叙事: %s", instance.game_key)
             raise RoundNotProcessed("economy_pending")
         await self.prepare_round_checks_ai(instance)
-        if instance.pending_luck_checks():
+        from src.engine import check_decisions
+
+        if check_decisions.pending_any(instance):
             logger.info("等待幸运选择，暂不生成叙事: %s", instance.game_key)
             self._schedule_luck_timeouts(instance)
             raise RoundNotProcessed("luck_pending")
@@ -765,6 +778,7 @@ class RoundProcessor:
         if existing is not None and not existing.done():
             return None
 
+        storyboard_context = capture_storyboard_context(instance)
         task = asyncio.create_task(self._infer_storyboard_draft_background(
             game_key=game_key,
             expected_run_id=expected_run_id,
@@ -773,8 +787,8 @@ class RoundProcessor:
             source_revision=source_revision,
             narration=str(entry.get("gm_response") or ""),
             actions=deepcopy(entry.get("actions") or []),
-            current_scene=str(getattr(instance, "scene", "") or ""),
-            players=deepcopy(getattr(instance, "players", {}) or {}),
+            current_scene=storyboard_context["current_scene"],
+            players=storyboard_context["players"],
         ))
         self._storyboard_draft_tasks[task_key] = task
         task.add_done_callback(
@@ -1103,7 +1117,7 @@ class RoundProcessor:
                     panels,
                     narration=str(entry.get("gm_response") or ""),
                     actions=entry.get("actions") or [],
-                    current_scene=current_scene or str(getattr(current, "scene", "") or ""),
+                    current_scene=current_scene or capture_storyboard_context(current)["current_scene"],
                     source_revision=draft_revision,
                 )
                 try:
@@ -1469,6 +1483,7 @@ class RoundProcessor:
             try:
                 automation_batches = apply_director_automation(
                     runtime, instance, director_proposal_data, random.SystemRandom(),
+                    defer_hosted_players=self._defer_hosted_players,
                 )
             except (ValueError, KeyError, TypeError):
                 # The advisory encounter request remains visible for GM review.

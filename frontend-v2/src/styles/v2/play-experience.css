@@ -1,0 +1,216 @@
+/* Adventure journal: character first, continuous story, original rule tools. */
+.play-page-immersive { --play-paper: color-mix(in srgb, var(--df-accent) 4%, var(--df-surface-1)); }
+.play-page-immersive .play-gm-toggle { display: inline-flex; align-items: center; gap: 7px; border-color: var(--df-interactive); color: var(--df-interactive-strong); }
+.play-page-immersive .play-hud { box-shadow: none; z-index: 67; }
+.play-page-immersive .play-titleblock h1 { font-size: 19px; letter-spacing: .04em; }
+.play-page-immersive .play-main { min-width: 0; gap: 6px; background: linear-gradient(180deg, color-mix(in srgb, var(--df-canvas) 91%, transparent), color-mix(in srgb, var(--df-canvas) 97%, transparent)), var(--df-bg-atmosphere-image) center / cover no-repeat; border-left: 1px solid var(--df-border-soft); }
+.play-page-immersive .play-main .scene-strip { min-height: 40px; padding: 5px 10px; border: 1px solid color-mix(in srgb, var(--df-accent) 28%, var(--df-border-soft)); border-radius: 6px; background: linear-gradient(90deg, color-mix(in srgb, var(--df-canvas) 90%, transparent), color-mix(in srgb, var(--df-canvas) 42%, transparent)), var(--df-bg-scene-image) center 43% / cover no-repeat; box-shadow: inset 0 1px 0 color-mix(in srgb, var(--df-accent) 14%, transparent); }
+.play-page-immersive .scene-strip::after, .play-page-immersive .scene-subtitle { display: none; }
+.play-page-immersive .play-main .scene-heading-compact { display: flex; flex-wrap: wrap; align-items: center; gap: 7px 12px; }
+.play-page-immersive .play-main .scene-label { font-size: 10px; }
+.play-page-immersive .play-main .scene-title { font-size: 16px; margin: 0; }
+.play-page-immersive .play-main .scene-chips { display: flex; max-width: none; margin: 0; gap: 5px; }
+.play-page-immersive .scene-chips span { padding: 2px 7px; font-size: 10px; }
+.play-page-immersive .play-control-rail { position: fixed; z-index: 72; inset: 0 0 0 auto; width: min(400px, 29.7vw); height: 100dvh; padding: 14px 14px calc(14px + env(safe-area-inset-bottom)); overflow: auto; background: var(--df-surface-1); box-shadow: -18px 0 48px color-mix(in srgb, var(--df-canvas) 65%, transparent); }
+.play-page-immersive .play-control-rail.collapsed { transform: translateX(102%); visibility: hidden; pointer-events: none; }
+.play-page-immersive .play-control-rail.mobile-open { transform: none; visibility: visible; pointer-events: auto; }
+.play-page-immersive .play-control-rail .rail-toggle { position: sticky; inset: 0 auto auto 0; display: flex; margin-bottom: 8px; }
+.play-page-immersive .gm-workspace-body { display: block; overflow: visible; }
+.play-page-immersive .gm-workspace-pane { align-content: start; }
+.play-page-immersive .gm-console-head { padding: 8px 0 12px; }
+.play-page-immersive .play-main .timeline-wrap { border: 1px solid color-mix(in srgb, var(--df-border-soft) 42%, transparent); border-radius: 8px; background: linear-gradient(180deg, color-mix(in srgb, var(--df-surface-1) 72%, transparent), color-mix(in srgb, var(--df-canvas) 78%, transparent)), var(--df-bg-atmosphere-image) center / cover no-repeat; }
+.play-page-immersive .message { margin-block: 4px; padding: 8px 10px; box-shadow: none; }
+.play-page-immersive .play-main .timeline .message.player { width: min(88%, 980px); max-width: 88%; margin-left: auto; border-radius: 8px 8px 2px 8px; }
+.play-page-immersive .play-main .timeline .message.gm { width: min(100%, 1100px); max-width: 100%; margin-right: auto; padding: 9px 12px; border: 1px solid color-mix(in srgb, var(--df-border-soft) 52%, transparent); border-left: 3px solid color-mix(in srgb, var(--df-accent) 68%, transparent); border-radius: 8px; background: color-mix(in srgb, var(--df-surface-2) 54%, transparent); }
+.play-page-immersive .message.gm .message-copy { border-left: 0; padding-left: 0; }
+.play-page-immersive .message-copy { min-width: 0; font-size: 14px; line-height: 1.65; }
+.play-page-immersive .message-copy > strong { padding-bottom: 3px; color: var(--df-accent-strong); font-size: 11px; }
+.play-page-immersive .message-copy p { margin-block: 5px; }
+.play-page-immersive .message-copy .chat-gm { margin: 0 0 12px; text-indent: 2em; white-space: pre-wrap; }
+.play-page-immersive .message-copy .chat-gm:last-of-type { margin-bottom: 5px; }
+.play-page-immersive .narrator-avatar { width: 32px; height: 38px; border-radius: 3px 3px 14px 14px; border-color: color-mix(in srgb, var(--df-accent) 58%, var(--df-border-soft)); background: var(--df-surface-2); color: var(--df-accent-strong); font-family: var(--df-font-title); }
+.play-page-immersive .timeline { padding: 6px 16px 16px; background: linear-gradient(180deg, color-mix(in srgb, var(--df-surface-1) 28%, transparent), color-mix(in srgb, var(--df-canvas) 52%, transparent) 72%, transparent); }
+.play-page-immersive .round-divider {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  margin: 13px 0 9px;
+  color: var(--df-text-muted);
+  text-align: center;
+}
+.play-page-immersive .round-divider::before,
+.play-page-immersive .round-divider::after {
+  flex: 1 1 0;
+  min-width: 0;
+}
+.play-page-immersive .check-reveal-card { max-width: 760px; margin-block: 5px; border-radius: 8px; background: linear-gradient(130deg, var(--df-surface-2), var(--df-surface-1)); }
+.play-page-immersive .check-reveal-card.pending { border-left-color: var(--df-border-soft); }
+.play-page-immersive .check-math { text-align: center; padding-left: 0; font-size: 15px; }
+.play-page-immersive .composer { border: 1px solid var(--df-border-soft); border-radius: 6px; padding: 7px 10px; background: var(--df-surface-1); box-shadow: none; }
+.play-page-immersive .composer-title-row { gap: 8px; }
+.play-page-immersive .game-sidebar .character { padding: 10px; border: 1px solid var(--df-border-soft); border-radius: 10px; background: linear-gradient(180deg, transparent, color-mix(in srgb, var(--df-surface-1) 92%, transparent) 160px); }
+.play-page-immersive .game-sidebar .character-profile .portrait-image { width: 68px !important; height: 84px !important; border-radius: 7px; }
+.play-page-immersive .game-sidebar .portrait-edit-button { width: 68px; }
+.play-page-immersive .character-title h3 { font-size: 20px; letter-spacing: .04em; }
+.play-page-immersive .game-sidebar .character-profile { padding: 48px 0 10px; border: 0; border-bottom: 1px solid var(--df-border-soft); border-radius: 0; background: transparent; }
+.play-page-immersive .game-sidebar .character-vitals .hp { margin-top: 0; }
+.play-page-immersive .character-attributes { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }
+.play-page-immersive .game-sidebar .character-attributes > span { display: flex; align-items: center; justify-content: space-between; gap: 5px; padding: 7px 8px; white-space: normal; text-align: start; }
+.play-page-immersive .character-attributes small { font-size: 12px; color: var(--df-text-secondary); }
+.play-page-immersive .character-attributes strong { font-size: 15px; font-variant-numeric: tabular-nums; color: var(--df-text); }
+.play-page-immersive .character-detail-block summary { min-height: 38px; display: flex; align-items: center; list-style: none; }
+.play-page-immersive .character-detail-block summary::-webkit-details-marker { display: none; }
+.play-page-immersive .character-detail-block summary::after { display: inline-flex; align-items: center; justify-content: center; width: 1.1em; height: 1.1em; margin-left: auto; content: '›'; color: var(--df-text-muted); line-height: 1; transform-origin: center; }
+.play-page-immersive .character-detail-block[open] summary::after { transform: rotate(90deg); }
+.play-page-immersive .game-sidebar .sidebar-disclosure { border: 0; border-bottom: 1px solid var(--df-border-soft); border-radius: 0; background: transparent; box-shadow: none; }
+.play-page-immersive .play-toolbar .play-utility-panel .play-secondary-action { display: flex; }
+.play-page-immersive .play-main > .play-quick-status { display: none; }
+@media(min-width: 801px) {
+  .play-page-immersive .mobile-drawer-trigger { display: none; }
+  /* The dock and control rail are actual desktop columns.  Keeping the rail
+     in normal flow prevents it from becoming an accidental third grid row. */
+  .play-page-immersive .play-layout,
+  .play-page-immersive .play-layout.no-console,
+  .play-page-immersive .play-layout.rail-collapsed { grid-template-columns: minmax(232px, 252px) minmax(0, 1fr) minmax(224px, 276px); grid-template-areas: 'character story party'; }
+  .play-page-immersive .play-sidebar-drawer.docked { position: static; grid-area: character; width: auto; height: 100%; min-height: 0; visibility: visible; pointer-events: auto; transform: none; z-index: auto; overflow: hidden; }
+  .play-page-immersive .play-sidebar-drawer.docked .game-sidebar { position: static; width: 100%; height: 100%; padding: 14px 12px; overflow-y: auto; box-shadow: none; }
+  .play-page-immersive .play-sidebar-drawer.docked .sidebar-toggle { display: none; }
+  .play-page-immersive .play-main { grid-area: story; }
+  .play-page-immersive .play-party-dock { grid-area: party; min-height: 0; }
+  .play-page-immersive .play-control-rail { position: fixed; inset: 54px 0 0 auto; z-index: 72; width: min(410px, 100vw); height: calc(100dvh - 54px); transform: translateX(102%); visibility: hidden; pointer-events: none; overflow: auto; }
+  .play-page-immersive .play-control-rail:not(.collapsed),
+  .play-page-immersive .play-control-rail.mobile-open { transform: none; visibility: visible; pointer-events: auto; }
+  .play-page-immersive .play-control-rail.collapsed { width: min(410px, 100vw); transform: translateX(102%); visibility: hidden; pointer-events: none; }
+  .play-page-immersive .game-sidebar .character-profile { grid-template-columns: 68px minmax(0, 1fr); align-items: end; gap: 10px; }
+  .play-page-immersive .play-hud-stats { display: none; }
+  .play-page-immersive .play-hud { grid-template-columns: minmax(180px, 1fr) auto; grid-template-areas: 'title tools'; min-height: 54px; }
+  .play-page-immersive .play-toolbar { max-width: none; flex-wrap: wrap; justify-content: flex-end; }
+}
+
+/* The GM workbench is a focused control state. The reference composition
+   leaves a quiet upper breathing band and lets the rail own the full right
+   edge, while the ordinary play view keeps its compact HUD. */
+@media (min-width: 801px) {
+  .play-page-immersive.play-workbench-mode {
+    box-sizing: border-box;
+    padding-top: 42px;
+  }
+
+  .play-page-immersive.play-workbench-mode .play-hud {
+    min-height: 68px;
+    box-sizing: border-box;
+  }
+
+  .play-page-immersive.play-workbench-mode .play-layout {
+    height: calc(100dvh - 110px);
+  }
+
+  .play-page-immersive.play-workbench-mode .play-control-rail {
+    inset: 42px 0 0 auto;
+    width: min(397px, 29.5vw);
+    height: calc(100dvh - 42px);
+  }
+}
+
+@media (min-width: 801px) and (max-width: 1200px) {
+  /* Keep the GM drawer in the same right-side footprint as the party rail so
+     opening it never paints over the story column. */
+  .play-page-immersive .play-control-rail,
+  .play-page-immersive.play-workbench-mode .play-control-rail {
+    width: min(276px, 28vw);
+  }
+}
+@media(max-width: 800px) {
+  .play-page-immersive .play-party-dock { display: none; }
+  .play-page-immersive .play-main > .play-quick-status { display: flex; flex-shrink: 0; align-items: center; gap: 8px; min-height: 44px; padding: 4px 8px; width: 100%; border: 1px solid var(--df-border-soft); border-radius: 4px; background: var(--play-paper); color: var(--df-text-secondary); font-size: 11px; overflow: hidden; }
+  .play-quick-status strong { max-width: 96px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+  .play-quick-status span { white-space: nowrap; }
+  .play-page-immersive .play-toolbar .play-gm-toggle { display: flex; padding: 4px 7px; font-size: 11px; }
+  .play-page-immersive .play-main .scene-strip.compact-on-mobile { padding: 5px 8px; min-height: 36px; }
+  .play-page-immersive .play-main .scene-label { display: none; }
+  .play-page-immersive .play-main .scene-chips { display: none; }
+  .play-page-immersive .play-control-rail { width: min(410px, 100vw); }
+  .play-page-immersive .composer { padding: 7px 8px; }
+  .play-page-immersive .timeline { padding: 8px 10px 20px; }
+  .play-page-immersive .message.player { max-width: 96%; }
+  .play-page-immersive .play-toolbar { max-width: none; gap: 4px; }
+  .play-page-immersive .play-toolbar > button { min-height: 44px; }
+  .play-page-immersive .play-main .message.gm { gap: 7px; }
+  .play-page-immersive .message-copy { font-size: 14px; line-height: 1.75; }
+  .play-page-immersive .message.gm .message-copy { padding-left: 0; }
+  .play-page-immersive .narrator-avatar { width: 24px; height: 30px; font-size: 10px; }
+}
+@media(prefers-reduced-motion: reduce) { .play-page-immersive .play-sidebar-drawer, .play-page-immersive .play-control-rail { transition: none; } }
+
+/* Dock controls stay anchored while the generic button hover treatment lifts
+   ordinary buttons.  Preserve the positioning transforms for these overlays. */
+button.new-message:hover { transform: translateX(-50%); }
+button.mobile-drawer-trigger:hover { transform: translateY(-50%); }
+.play-page-immersive .play-control-rail .rail-toggle:hover { transform: none; }
+.play-page-immersive .party-rail__toggle:hover,
+.play-page-immersive .party-rail__gm-toggle:hover,
+.play-page-immersive .game-sidebar .sidebar-toggle:hover { transform: none; }
+
+@media (min-width: 801px) {
+  .play-page-immersive .play-sidebar-drawer.docked .sidebar-toggle { display: inline-flex; }
+  .play-page-immersive .play-layout.character-sidebar-collapsed,
+  .play-page-immersive .play-layout.character-sidebar-collapsed.rail-collapsed {
+    grid-template-columns: 48px minmax(0, 1fr) minmax(224px, 276px);
+  }
+  .play-page-immersive .play-layout.party-rail-collapsed,
+  .play-page-immersive .play-layout.party-rail-collapsed.rail-collapsed {
+    grid-template-columns: minmax(232px, 252px) minmax(0, 1fr) 48px;
+  }
+  .play-page-immersive .play-layout.character-sidebar-collapsed.party-rail-collapsed,
+  .play-page-immersive .play-layout.character-sidebar-collapsed.party-rail-collapsed.rail-collapsed {
+    grid-template-columns: 48px minmax(0, 1fr) 48px;
+  }
+  .play-page-immersive .party-rail__toolbar { display: flex; align-items: center; gap: 6px; min-width: 0; }
+  .play-page-immersive .party-rail__toolbar .party-rail__gm-toggle { flex: 1 1 auto; min-width: 0; justify-content: space-between; }
+  .play-page-immersive .party-rail__toggle { display: inline-flex; flex: 0 0 auto; align-items: center; justify-content: center; width: 34px; min-height: 34px; padding: 0; }
+  .play-page-immersive .party-rail.party-rail--collapsed { align-content: start; padding-inline: 6px; }
+  .play-page-immersive .party-rail.party-rail--collapsed > :not(.party-rail__toolbar) { display: none; }
+  .play-page-immersive .party-rail.party-rail--collapsed .party-rail__toolbar { display: grid; justify-items: center; gap: 4px; }
+.play-page-immersive .party-rail.party-rail--collapsed .party-rail__gm-toggle { display: inline-flex; align-items: center; justify-content: center; width: 34px; min-width: 34px; min-height: 34px; margin-inline: auto; padding: 0; font-size: 0; }
+  .play-page-immersive .party-rail.party-rail--collapsed .party-rail__gm-toggle .party-rail__gm-label { display: none; }
+}
+
+/* Native summary markers sit on the text baseline in Chromium.  Give every
+   play disclosure a fixed, centered affordance so open/closed rows don't
+   appear to jump vertically. */
+.play-page-immersive .sidebar-disclosure > summary,
+.play-page-immersive .play-control-rail details > summary,
+.play-page-immersive .game-sidebar details > summary { list-style: none; }
+.play-page-immersive .sidebar-disclosure > summary::-webkit-details-marker,
+.play-page-immersive .play-control-rail details > summary::-webkit-details-marker,
+.play-page-immersive .game-sidebar details > summary::-webkit-details-marker { display: none; }
+.play-page-immersive .sidebar-disclosure > summary::after,
+.play-page-immersive .play-control-rail details > summary::after,
+.play-page-immersive .game-sidebar details > summary::after { display: inline-flex; align-items: center; justify-content: center; min-width: 1.1em; height: 1.1em; margin-left: auto; line-height: 1; transform-origin: center; }
+.play-page-immersive .sidebar-disclosure > summary::after { content: '+'; }
+.play-page-immersive .sidebar-disclosure[open] > summary::after { content: '−'; }
+.play-page-immersive .play-control-rail details > summary::after,
+.play-page-immersive .game-sidebar details > summary::after { content: '›'; color: var(--df-text-muted); }
+.play-page-immersive .play-control-rail details[open] > summary::after,
+.play-page-immersive .game-sidebar details[open] > summary::after { transform: rotate(90deg); }
+
+@media (max-width: 800px) {
+  .play-page-immersive .party-rail__toolbar { display: none; }
+  .play-page-immersive .play-party-dock.mobile-open .party-rail__toolbar { display: flex; justify-content: flex-end; }
+  .play-page-immersive .play-party-dock.mobile-open .party-rail__toggle { margin-left: auto; }
+  .play-page-immersive .play-party-dock.mobile-open {
+    position: fixed;
+    z-index: 72;
+    inset: 0 0 0 auto;
+    display: block;
+    width: min(86vw, 370px);
+    height: 100dvh;
+    transform: translateX(0);
+    overflow: auto;
+    border-left: 1px solid var(--df-border-soft);
+    box-shadow: -18px 0 48px color-mix(in srgb, var(--df-canvas) 65%, transparent);
+  }
+  .play-page-immersive .play-party-dock.mobile-open .party-rail { height: 100%; }
+  .play-page-immersive .mobile-drawer-trigger-party { top: calc(50% + 58px); }
+}

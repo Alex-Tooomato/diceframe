@@ -21,6 +21,8 @@ from src.engine.game_instance import GameInstance, GameState
 from src.engine.modules import adventure_runtime_state, room_access
 from src.rulesets.dnd2024.runtime import Dnd2024Runtime
 from src.webui.services.legal import bundled_documents
+from scripts.e2e_coc_fixture import write_coc_fixture
+from scripts.e2e_choice_fixture import write_choice_fixtures
 
 
 E2E_GAME_KEY = ("web", "e2e-room", "web_bot")
@@ -66,13 +68,15 @@ def _write_e2e_module(data_dir: Path) -> None:
         "plugin_type": "content-pack",
         "content_profile": "adventure-module",
         "content_delivery_mode": "catalog",
-        "contributes": {},
+        "contributes": {"world_templates": ["content/worlds/*.json"], "character_templates": ["content/characters/*.json"]},
         "adventure_packages": [f"adventures/{E2E_MODULE_ADVENTURE_DIRECTORY}"],
         "config_schema": "config.schema.json",
     }
     files: dict[str, dict] = {
         "plugin.json": manifest,
         "config.schema.json": {"type": "object", "properties": {}},
+        "content/worlds/resource_world.json": {"world_schema_version": 2, "world_id": "resource_world", "world_name": "E2E Resource World", "starter_lorebook": [{"id": "gate", "name": "Gate", "content": "Module gate prose", "keywords": ["gate"]}]},
+        "content/characters/resource_hero.json": {"id": "resource_hero", "character_name": "E2E Resource Hero", "background": "Module hero background"},
         f"adventures/{E2E_MODULE_ADVENTURE_DIRECTORY}/manifest.json": {
             "schema_version": 1,
             "adventure_id": E2E_MODULE_ADVENTURE_ID,
@@ -338,6 +342,7 @@ def prepare_e2e_data(data_dir: Path) -> Path:
     if not dnd_instance.bind_ruleset_runtime(dnd_character["rule_binding"]):
         raise RuntimeError("failed to bind D&D 2024 runtime in E2E fixture")
     _write_save(data_dir, dnd_instance)
+    write_choice_fixtures(data_dir, dnd_instance, _write_save)
     # FIX-06：模组库的浏览器验收需要真实 content-pack 包（§8 的产品面）。
     _write_e2e_module(data_dir)
     # Lorebook Golden 的真实链路验收需要一个**真的 v4 老库**：服务器启动时会跑
@@ -356,6 +361,7 @@ def prepare_e2e_data(data_dir: Path) -> Path:
     lore_instance.round_number = 2
     lore_instance.players = _e2e_players()
     _write_save(data_dir, lore_instance)
+    write_coc_fixture(data_dir, _write_save)
     return save_file
 
 

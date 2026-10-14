@@ -105,14 +105,20 @@ test.describe('Lorebook Golden (real chain)', () => {
 
     const contextBar = page.locator('.lore-context-bar')
     const worldSelect = contextBar.locator('select').nth(1)
-    const bookSelect = contextBar.locator('select').nth(2)
+    const bookSelect = contextBar.locator('select.lore-context-select[aria-label="当前资料册"]')
     const bookMenu = contextBar.locator('details.lore-menu').nth(1)
     await worldSelect.selectOption(LORE_WORLD_ID)
 
-    // 迁移产物：主世界书是默认当前 Book，信息行表达 primary + 当前上下文。
-    await expect(bookSelect).toBeVisible()
-    const bookMeta = contextBar.locator('.lore-book-meta')
-    await expect(bookMeta).toContainText('主世界书')
+    // 迁移 fixture 可能已经包含多本资料册；此时主资料册显示在选择器中，
+    // 单资料册部署仍使用静态名称。
+    await expect(contextBar.locator('.lore-book-static, select.lore-context-select[aria-label="当前资料册"]')).toHaveCount(1)
+    if (await contextBar.locator('.lore-book-static').count()) {
+      await expect(contextBar.locator('.lore-book-static')).toContainText('Golden Lore World')
+    } else {
+      await expect(bookSelect.locator('option:checked')).toContainText('Golden Lore World')
+    }
+    const bookMeta = contextBar.locator('.lore-book-meta:not(.lore-context-hint)')
+    await expect(bookMeta).toContainText('主资料册')
     await expect(bookMeta).toContainText('当前上下文：当前世界')
     // 真实条目来自迁移后的 SQLite，不是测试 fabricate 的 JSON。
     await expect(page.locator('.lore-row', { hasText: '旧城门' }).first()).toBeVisible()
@@ -150,8 +156,11 @@ test.describe('Lorebook Golden (real chain)', () => {
     await page.getByRole('button', { name: 'GM 全知', exact: true }).click()
 
     // ---- 4. Book 产品流：新建 → 重命名 → 停用/启用 -------------------------
-    page.once('dialog', dialog => dialog.accept('Golden Extra Book'))
-    await contextBar.getByRole('button', { name: '新建世界书', exact: true }).click()
+    await contextBar.getByRole('button', { name: /新建(世界书|资料册)/ }).click()
+    const createDialog = page.getByRole('dialog', { name: /新建(世界书|资料册)/ })
+    await expect(createDialog).toBeVisible()
+    await createDialog.locator('.lore-book-create-name').fill('Golden Extra Book')
+    await createDialog.getByRole('button', { name: /创建(世界书|资料册)/ }).click()
     // 新建后自动选中：book selector 立即指向它。
     await expect(bookSelect.locator('option', { hasText: 'Golden Extra Book' })).toHaveCount(1)
 
@@ -165,7 +174,7 @@ test.describe('Lorebook Golden (real chain)', () => {
     await expect(contextBar.locator('.lore-book-state')).toContainText('已停用')
     await bookMenu.locator('summary').click()
     await bookMenu.getByRole('button', { name: '启用', exact: true }).click()
-    await expect(contextBar.locator('.lore-book-state')).toContainText('启用中')
+    await expect(contextBar.locator('.lore-book-state')).toContainText('资料册已启用')
 
     // 点击菜单外任意位置应自动收起下拉菜单。
     await bookMenu.locator('summary').click()
@@ -189,7 +198,7 @@ test.describe('Lorebook Golden (real chain)', () => {
     await page.locator('input[type=file]').setInputFiles({
       name: 'golden-import.json', mimeType: 'application/json', buffer: Buffer.from(IMPORT_FIXTURE),
     })
-    const importDialog = page.getByRole('dialog', { name: '导入世界书' })
+    const importDialog = page.getByRole('dialog', { name: '导入资料册' })
     // 格式由真实后端 detect，不是前端猜的。
     await expect(importDialog).toContainText('lorebook_v3')
     // 默认是「新建独立 Book」，不会隐式写进主世界书。
@@ -220,11 +229,11 @@ test.describe('Lorebook Golden (real chain)', () => {
     await page.locator('input[type=file]').setInputFiles({
       name: 'golden-import-2.json', mimeType: 'application/json', buffer: Buffer.from(IMPORT_FIXTURE),
     })
-    const secondDialog = page.getByRole('dialog', { name: '导入世界书' })
+    const secondDialog = page.getByRole('dialog', { name: '导入资料册' })
     await secondDialog.locator('.lore-import-dialog__target input[value=existing]').check()
     await secondDialog.locator('.lore-import-dialog__book').selectOption(`world:${LORE_WORLD_ID}`)
     await expect(secondDialog.locator('.lore-import-dialog__primary-warning'))
-      .toContainText('将导入当前世界主世界书')
+      .toContainText('将导入当前世界主资料册')
     await secondDialog.getByRole('button', { name: '取消', exact: true }).click()
 
     // ---- 8. export → reimport 往返（真实 exporter / importer）-------------
@@ -241,7 +250,7 @@ test.describe('Lorebook Golden (real chain)', () => {
     await page.locator('input[type=file]').setInputFiles({
       name: 'golden-roundtrip.json', mimeType: 'application/json', buffer: Buffer.from(exportedJson),
     })
-    const roundTripDialog = page.getByRole('dialog', { name: '导入世界书' })
+    const roundTripDialog = page.getByRole('dialog', { name: '导入资料册' })
     await expect(roundTripDialog).toContainText('lorebook_v3')
     await roundTripDialog.locator('.lore-import-dialog__binding input[value=none]').check()
     await roundTripDialog.getByRole('button', { name: '导入', exact: true }).click()
@@ -250,15 +259,20 @@ test.describe('Lorebook Golden (real chain)', () => {
     // ---- 9. 删除非主世界书；主世界书没有删除入口 --------------------------
     await bookSelect.selectOption(`world:${LORE_WORLD_ID}`)
     await expect(bookSelect).toHaveValue(`world:${LORE_WORLD_ID}`)
-    await expect(bookMeta).toContainText('主世界书')
+    await expect(bookMeta).toContainText('主资料册')
+    await expect(bookMeta).toContainText('当前资料册 · 3 条')
     await bookMenu.locator('summary').click()
-    await expect(bookMenu.getByRole('button', { name: '删除', exact: true })).toHaveCount(0)
+    await expect(bookMenu.getByRole('button', { name: '删除资料册', exact: true })).toHaveCount(0)
     await bookMenu.locator('summary').click()
 
-    await bookSelect.selectOption({ label: 'Golden Renamed Book' })
+    const renamedOption = bookSelect.locator('option', { hasText: 'Golden Renamed Book' })
+    await expect(renamedOption).toHaveCount(1)
+    const renamedValue = await renamedOption.getAttribute('value')
+    expect(renamedValue).toBeTruthy()
+    await bookSelect.selectOption(renamedValue!)
     await bookMenu.locator('summary').click()
-    await bookMenu.getByRole('button', { name: '删除', exact: true }).click()
-    await page.getByRole('button', { name: '删除世界书', exact: true }).click()
+    await bookMenu.getByRole('button', { name: '删除资料册', exact: true }).click()
+    await page.getByRole('button', { name: '删除资料册', exact: true }).click()
     await expect(bookSelect.locator('option', { hasText: 'Golden Renamed Book' })).toHaveCount(0)
 
     expect(failures, `backend 5xx during the golden run:\n${failures.join('\n')}`).toEqual([])
@@ -285,7 +299,7 @@ test.describe('Lorebook Golden (real chain)', () => {
     await page.locator('input[type=file]').setInputFiles({
       name: 'golden-st.json', mimeType: 'application/json', buffer: Buffer.from(ST_FIXTURE),
     })
-    const stDialog = page.getByRole('dialog', { name: '导入世界书' })
+    const stDialog = page.getByRole('dialog', { name: '导入资料册' })
     // 格式由真实后端 detect，不是前端猜的。
     await expect(stDialog).toContainText('sillytavern')
     // §7：JS-only 正则必须被报告为 unsupported，而不是静默执行。
@@ -300,7 +314,7 @@ test.describe('Lorebook Golden (real chain)', () => {
     await page.locator('input[type=file]').setInputFiles({
       name: 'golden-ccv3.json', mimeType: 'application/json', buffer: Buffer.from(CCV3_FIXTURE),
     })
-    const ccDialog = page.getByRole('dialog', { name: '导入世界书' })
+    const ccDialog = page.getByRole('dialog', { name: '导入资料册' })
     await expect(ccDialog).toContainText('character_card_v3')
     // 产品流必须明确告诉用户这是谁的内嵌角色世界书。
     await expect(ccDialog.locator('.lore-import-dialog__character-summary')).toContainText('Golden Keeper')

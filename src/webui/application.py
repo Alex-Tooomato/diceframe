@@ -30,6 +30,7 @@ from src.webui.routes.avatars import register_avatars
 from src.webui.routes.bot import register_bot
 from src.webui.routes.character_cards import register_character_cards
 from src.webui.routes.content import register_content
+from src.webui.routes.content_review import register as register_content_review
 from src.webui.routes.games import register_games
 from src.webui.routes.generated_images import register_generated_images
 from src.webui.routes.generation import register_generation
@@ -153,6 +154,7 @@ def register_routes(
     register_modules(application)
     register_character_cards(application)
     register_content(application)
+    register_content_review(application)
     register_avatars(application)
     register_scene_images(application)
     register_maps(application)

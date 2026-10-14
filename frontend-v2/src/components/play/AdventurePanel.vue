@@ -4,6 +4,7 @@ import { useRouter } from 'vue-router'
 import { api } from '@/api/client'
 import { submitRulesetIntent } from '@/api/rulesets'
 import { useLocale } from '@/composables/useLocale'
+import AdventureNodeActions from '@/features/adventures/AdventureNodeActions.vue'
 
 type AdventureNode = {
   id: string
@@ -15,14 +16,15 @@ type AdventureNode = {
   scene_ref?: string | null
   encounter_ref?: string | null
   npc_refs?: string[]
-  transitions?: Array<{ to: string }>
+  choice_mode?: string
+  transitions?: Array<{ to: string; choice_id?: string; choice_label?: string }>
 }
 type AdventureGraph = {
   chapters: Array<{ id: string; name?: string }>
   nodes: AdventureNode[]
   objectives: Array<{ id: string; name?: string; node_ids?: string[] }>
   milestones: Array<{ id: string; name?: string; node_ids?: string[] }>
-  progress?: { active_nodes?: string[] }
+  progress?: { active_nodes?: string[]; selected_choices?: Record<string, string>; choice_requests?: Array<{ node_id: string; choice_id: string; actor_uid: string }> }
 }
 type AdventureResponse = {
   adventure: null | {
@@ -87,14 +89,15 @@ function linkedNames(ids: string[] | undefined): string {
 function isActiveNode(nodeId: string): boolean {
   return activeNodeIds.value.has(nodeId)
 }
-async function completeNode(nodeId: string): Promise<void> {
-  if (!props.isGm || !isActiveNode(nodeId) || completingNodeId.value) return
+async function completeNode(nodeId: string, choiceId?: string): Promise<void> {
+  if ((!props.isGm && !choiceId) || !isActiveNode(nodeId) || completingNodeId.value) return
   completingNodeId.value = nodeId
   error.value = ''
   try {
     await submitRulesetIntent(props.gameKey, {
-      type: 'adventure.node.complete',
+      type: props.isGm ? 'adventure.node.complete' : 'adventure.choice.request',
       node_id: nodeId,
+      ...(choiceId ? { choice_id: choiceId } : {}),
     })
     await load()
     emit('completed')
@@ -176,14 +179,7 @@ onMounted(() => { void load() })
           <p v-if="node.scene_ref" class="muted">{{ t('adventureSceneRef', { ref: node.scene_ref }) }}</p>
           <p v-if="node.encounter_ref" class="muted">{{ t('adventureEncounterRef', { ref: node.encounter_ref }) }}</p>
           <p v-if="node.transitions?.length" class="muted">{{ t('adventureNextNodes', { nodes: linkedNames(node.transitions.map(item => item.to)) }) }}</p>
-          <button
-            v-if="isGm && isActiveNode(node.id)"
-            :data-testid="`adventure-complete-${node.id}`"
-            class="primary adventure-complete"
-            type="button"
-            :disabled="loading || Boolean(completingNodeId)"
-            @click="completeNode(node.id)"
-          >{{ t('adventureCompleteNode') }}</button>
+          <AdventureNodeActions :node="node" :is-gm="isGm" :active="isActiveNode(node.id)" :busy="loading || Boolean(completingNodeId)" :requests="graph.progress?.choice_requests" :selected="graph.progress?.selected_choices?.[node.id]" @submit="completeNode(node.id, $event)" />
         </article>
       </section>
       <section v-if="ungroupedNodes.length" class="adventure-chapter">
@@ -191,14 +187,7 @@ onMounted(() => { void load() })
         <article v-for="node in ungroupedNodes" :key="node.id" class="adventure-node">
           <div class="adventure-node-heading"><strong>{{ nodeLabel(node) }}</strong><span>{{ nodeKindLabel(node.type) }}</span></div>
           <p v-if="node.description">{{ node.description }}</p>
-          <button
-            v-if="isGm && isActiveNode(node.id)"
-            :data-testid="`adventure-complete-${node.id}`"
-            class="primary adventure-complete"
-            type="button"
-            :disabled="loading || Boolean(completingNodeId)"
-            @click="completeNode(node.id)"
-          >{{ t('adventureCompleteNode') }}</button>
+          <AdventureNodeActions :node="node" :is-gm="isGm" :active="isActiveNode(node.id)" :busy="loading || Boolean(completingNodeId)" :requests="graph.progress?.choice_requests" :selected="graph.progress?.selected_choices?.[node.id]" @submit="completeNode(node.id, $event)" />
         </article>
       </section>
       <section v-if="graph.objectives.length || graph.milestones.length" class="adventure-goals">

@@ -1,4 +1,6 @@
 /* AI service management: a quiet provider library inside the shared settings frame. */
+.settings-content { container: settings-content / inline-size; }
+
 .reference-settings-page .ai-management-pane {
   padding: 0;
   overflow: visible;
@@ -89,7 +91,7 @@
   overflow-y: auto;
 }
 
-.provider-list-item {
+button.provider-list-item {
   position: relative;
   display: grid;
   grid-template-columns: 34px minmax(0, 1fr) 7px;
@@ -103,6 +105,10 @@
   border-radius: 9px;
   color: var(--df-text-secondary);
   background: transparent;
+  /* The shared button primitive centers flex children.  This element is a
+     real grid list row, so keep its tracks pinned to the normal left edge. */
+  justify-content: stretch;
+  justify-items: stretch;
   text-align: left;
 }
 
@@ -136,6 +142,8 @@
   display: grid;
   min-width: 0;
   gap: 2px;
+  justify-self: stretch;
+  text-align: left;
 }
 
 .provider-list-copy strong,
@@ -213,6 +221,7 @@
 }
 
 .provider-editor {
+  container: provider-editor / inline-size;
   min-width: 0;
   padding: 22px clamp(22px, 3vw, 42px) 32px;
 }
@@ -311,6 +320,8 @@
 .provider-field select {
   width: 100%;
   min-height: 34px;
+  text-align: start;
+  text-align-last: start;
 }
 
 .provider-model-add {
@@ -786,7 +797,7 @@
   background: color-mix(in srgb, var(--df-surface-2) 48%, transparent);
 }
 
-.provider-catalog-row {
+button.provider-catalog-row {
   display: grid;
   grid-template-columns: 32px minmax(0, 1fr) 28px;
   align-items: center;
@@ -797,6 +808,8 @@
   border: 0;
   color: var(--df-text-secondary);
   background: transparent;
+  justify-content: stretch;
+  justify-items: stretch;
   text-align: left;
 }
 
@@ -819,6 +832,16 @@
   display: grid;
   min-width: 0;
   gap: 2px;
+  justify-self: stretch;
+  text-align: left;
+}
+
+/* Naive UI renders its option menu in a body-level portal. Keep the menu's
+   labels in the same left-to-right order as the native routing selects. */
+.n-base-select-menu .n-base-select-option,
+.n-base-select-menu .n-base-select-option__content {
+  justify-content: flex-start;
+  text-align: left;
 }
 
 .provider-catalog-copy strong {
@@ -1045,6 +1068,13 @@
   color: var(--df-text);
   background-color: var(--df-control-bg);
   text-overflow: ellipsis;
+  text-align: start;
+  text-align-last: start;
+}
+
+.provider-field select option,
+.model-role-card select option {
+  text-align: left;
 }
 
 .model-role-card select:disabled {
@@ -1385,4 +1415,18 @@
   .reference-settings-page .system-status-card {
     flex-basis: 230px;
   }
+}
+
+/* The available form width includes the settings and provider navigation. */
+@container provider-editor (max-width: 740px) {
+  .provider-test-section { grid-template-columns: minmax(0, 1fr) minmax(0, 180px); }
+  .provider-test-actions { grid-column: 1 / -1; justify-self: stretch; flex-wrap: wrap; }
+}
+
+@container settings-content (max-width: 650px) {
+  .ai-provider-workspace { grid-template-columns: minmax(0, 1fr); }
+  .provider-library { grid-template-rows: auto auto auto; border-right: 0; border-bottom: 1px solid var(--df-border-soft); }
+  .provider-list { display: grid; grid-auto-columns: minmax(190px, 240px); grid-auto-flow: column; overflow-x: auto; overflow-y: hidden; }
+  .provider-field-grid, .model-capability-grid, .provider-test-section { grid-template-columns: minmax(0, 1fr); }
+  .provider-field-wide { grid-column: auto; }
 }

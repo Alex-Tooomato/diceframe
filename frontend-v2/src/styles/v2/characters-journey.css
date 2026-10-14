@@ -1,0 +1,114 @@
+.characters-page {
+  --characters-panel: var(--df-surface-1);
+  --characters-border: var(--df-border-soft);
+}
+
+.characters-page .characters-page-heading {
+  margin-block: .5rem .75rem;
+  padding-block: .75rem;
+}
+
+.characters-page .characters-page-heading h1 { font-size: clamp(30px, 3vw, 42px); }
+.characters-page .characters-page-heading .view-intro { margin-top: .25rem; }
+.characters-page .standalone-rule-select { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.characters-page .standalone-rule-select > span { flex-shrink: 0; }
+.characters-page .standalone-rule-select select { min-width: 0; }
+
+.characters-page .character-collection-tabs {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: .25rem;
+  width: max-content;
+  max-width: 100%;
+  margin: .75rem auto 1.1rem;
+  padding: .25rem;
+  border: 1px solid color-mix(in srgb, var(--df-accent) 26%, var(--characters-border));
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--df-surface-2) 88%, var(--df-canvas));
+  box-shadow: 0 8px 24px color-mix(in srgb, var(--df-canvas) 28%, transparent);
+}
+
+.characters-page .character-collection-tabs button {
+  position: relative;
+  min-height: 40px;
+  padding: .45rem .85rem;
+  color: var(--df-text-muted);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  cursor: pointer;
+  font-size: .86rem;
+  font-weight: 700;
+  letter-spacing: .01em;
+  transition: color .16s ease, background-color .16s ease, border-color .16s ease, box-shadow .16s ease, transform .16s ease;
+}
+
+.characters-page .character-collection-tabs button:hover {
+  color: var(--df-text);
+  background: color-mix(in srgb, var(--df-surface-1) 78%, transparent);
+  border-color: var(--characters-border);
+}
+
+.characters-page .character-collection-tabs button.active,
+.characters-page .character-collection-tabs button[aria-selected="true"] {
+  color: var(--df-text);
+  border-color: color-mix(in srgb, var(--df-interactive) 60%, var(--df-border-soft));
+  background: linear-gradient(145deg, color-mix(in srgb, var(--df-interactive) 20%, var(--df-surface-1)), var(--df-surface-1));
+  box-shadow: 0 5px 14px color-mix(in srgb, var(--df-interactive) 18%, transparent), inset 0 1px 0 color-mix(in srgb, white 10%, transparent);
+}
+
+.characters-page .character-collection-tabs button:focus-visible {
+  outline: 2px solid var(--df-interactive);
+  outline-offset: 2px;
+}
+
+.characters-page .character-current-guide {
+  max-width: 42rem;
+  padding: 1rem;
+  background: var(--characters-panel);
+  border: 1px solid var(--characters-border);
+  border-radius: .65rem;
+}
+
+.characters-page .character-game-context {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: .75rem;
+  margin-bottom: .75rem;
+  flex-wrap: wrap;
+}
+.characters-page .character-game-context > span { min-width: 0; overflow-wrap: anywhere; }
+
+.characters-page .character-library-toolbar {
+  gap: .5rem;
+  padding-block: .5rem;
+  margin-top: 0;
+}
+.characters-page .character-section { margin-top: 0; }
+.characters-page .character-library-grid { padding-top: 0; }
+
+.characters-page .character-library-grid {
+  gap: .75rem;
+}
+
+.characters-page .character-view-switch button {
+  min-width: 44px;
+  min-height: 44px;
+}
+
+@media (max-width: 600px) {
+  .characters-page .characters-page-heading { min-height: 0; gap: 12px; }
+  .characters-page .character-page-actions { display: grid; grid-template-columns: minmax(0, 1fr) auto; width: 100%; gap: 8px; }
+  .characters-page .standalone-rule-select { grid-column: 1 / -1; }
+  .characters-page .standalone-rule-select select { flex: 1; }
+  .characters-page .character-page-actions > .form-hint { grid-column: 1 / -1; }
+  .characters-page .character-collection-tabs { width: 100%; margin-inline: 0; }
+  .characters-page .character-collection-tabs button { min-height: 42px; padding-inline: .55rem; font-size: .84rem; }
+  .characters-page .character-library-toolbar { grid-template-columns: minmax(0, 1fr) auto; gap: .5rem; }
+  .characters-page .character-library-toolbar > input { grid-column: 1 / -1; }
+  .characters-page .character-import-actions { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+  .characters-page .character-import-actions button { min-height: 44px; padding-inline: 6px; white-space: normal; }
+  .characters-page .character-library-toolbar input,
+  .characters-page .character-library-toolbar select { min-height: 44px; font-size: 16px; }
+}

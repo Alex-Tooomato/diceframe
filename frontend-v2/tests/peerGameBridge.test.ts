@@ -7,6 +7,26 @@ import {
 import type { MultiPeerConnectionSession } from '@/peer/session/MultiPeerConnectionSession'
 
 describe('peer host game bridge', () => {
+  it('Push uses the bound player and cannot carry Keeper approval or client dice', async () => {
+    const execute = vi.fn<PeerLocalApiExecutor>(async path => path.endsWith('host') ? { game_key: 'web|game|host', player_access_open: true } : { ok: true })
+    const bridge = new PeerHostGameBridge('web|game|host', execute, () => undefined, {}, { peer_1: 'player_1' })
+    await bridge.handle('peer_1', 'push.resolve', { check_id: 'c1', operation: 'request', run_id: 'run', round_number: 3, expected_revision: 0, reason: 'new approach', roll: 1, consequence: 'no risk', user_id: 'gm' })
+    const call = execute.mock.calls.at(-1)
+    expect(call?.[0]).toContain('/checks/c1/push/request?user=player_1')
+    expect(JSON.parse(String(call?.[1]?.body))).toEqual({ run_id: 'run', round_number: 3, expected_revision: 0, reason: 'new approach' })
+    await expect(bridge.handle('peer_1', 'push.resolve', { check_id: 'c1', operation: 'offer' })).rejects.toThrow('Keeper')
+  })
+  it('check-mode requests use the bound actor and strip grant or identity injection', async () => {
+    const execute = vi.fn<PeerLocalApiExecutor>(async path => path.endsWith('host') ? { game_key: 'web|game|host', player_access_open: true } : { ok: true })
+    const bridge = new PeerHostGameBridge('web|game|host', execute, () => undefined, {}, { peer_1: 'player_1' })
+    await bridge.handle('peer_1', 'check_modes.read', {})
+    expect(execute.mock.calls.at(-1)?.[0]).toContain('/check-modes?user=player_1&share=1&delegate=1')
+    await bridge.handle('peer_1', 'check_modes.request', { expected_revision: 2, run_id: 'run', context_id: 'round:1', mode: 'advantage', reason: 'help', uid: 'other', operation: 'grant', owner_authenticated: true })
+    const call = execute.mock.calls.at(-1)
+    expect(call?.[0]).toContain('/check-modes/seats/player_1/request?user=player_1')
+    expect(JSON.parse(String(call?.[1]?.body))).toEqual({ expected_revision: 2, run_id: 'run', context_id: 'round:1', mode: 'advantage', reason: 'help' })
+    await expect(bridge.handle('unbound', 'check_modes.read', {})).rejects.toThrow()
+  })
   const lobbyMultiplayer = {
     state: 'active_action', round_number: 3, solo_mode: false,
     player_count: 5, max_players: 6, ready_count: 1, alive_count: 5,

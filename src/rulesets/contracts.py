@@ -12,6 +12,13 @@ CharacterBuilderMode = Literal["legacy", "guided", "professional"]
 CharacterLifecycleMode = Literal["legacy", "rules_aware"]
 
 
+@runtime_checkable
+class CheckModePolicyRuntime(Protocol):
+    """Runtime owns supported dice modes, their lifetime and public previews."""
+
+    def check_mode_policy(self, instance: Any, rule: Any, uid: str) -> dict[str, Any]: ...
+
+
 @dataclass(frozen=True, slots=True)
 class RulesetCapabilities:
     """Feature switches exposed to API clients without leaking runtime classes."""
@@ -287,6 +294,15 @@ class AutomaticIntentRuntime(Protocol):
     """Optional server-owned turn automation for non-player actors."""
 
     def next_automatic_intent(self, instance: Any) -> dict[str, Any] | None: ...
+
+
+@runtime_checkable
+class HostedIntentChoiceRuntime(Protocol):
+    """Ruleset-owned finite, validated operations for a hosted player seat."""
+
+    def hosted_intent_choices(self, instance: Any, seat_uid: str) -> list[dict[str, Any]]: ...
+
+    def hosted_intent_context(self, instance: Any, seat_uid: str) -> dict[str, Any]: ...
 
 
 @runtime_checkable

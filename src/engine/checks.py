@@ -1,6 +1,7 @@
 """统一检定请求：从玩家行动生成规则无关的 CheckRequest，并完成原始掷骰。"""
 
 from __future__ import annotations
+from src.engine.modules import progression_state
 
 import json
 import logging
@@ -22,6 +23,7 @@ from src.engine.dice import (
 from src.engine.game_instance import GameInstance
 from src.engine.language import localized_text, normalize_language
 from src.engine.modules import ruleset_runtime, table_settings
+from src.engine.modules.check_modes import apply_grant
 from src.rules.rule_system import RuleSystem
 
 logger = logging.getLogger("trpg")
@@ -361,9 +363,8 @@ def build_check_request(
         "ja": f"{subject}判定",
         "de": f"{subject}-Probe",
     })
-    advantage_mode, advantage_note = detect_advantage_mode(text, action, rule)
     actor_name = str(instance.players.get(uid, {}).get("character_name") or uid)
-    return {
+    request = {
         "check_id": uuid.uuid4().hex,
         "required": True,
         "actor_uid": uid,
@@ -375,11 +376,14 @@ def build_check_request(
         "intent": intent or "generic",
         "skill": skill,
         "attribute": attribute,
-        "advantage_mode": advantage_mode,
-        "advantage_note": advantage_note or None,
+        "advantage_mode": "",
+        "advantage_note": None,
         "kind": kind,
         "opponent": opponent,
     }
+    if rule and rule.advantage_mechanic.get("type") in {"coc_bonus_penalty", "d20_keep_high_low"}:
+        apply_grant(instance, request, f"round:{progression_state.round_value(instance)}")
+    return request
 
 
 def _effective_advantage_mode(request: dict[str, Any], rule: RuleSystem | None) -> str:
@@ -690,6 +694,11 @@ def resolve_check_request(
     }
 
     if dice_system == "d100":
+        if rule and rule.advantage_mechanic.get("type") == "coc_bonus_penalty":
+            from src.engine.dice_rules_coc import project_percentile_dice
+
+            common["dice_mechanic"] = "coc_bonus_penalty"
+            common["percentile_dice"] = project_percentile_dice(rolls, roll_value, advantage_mode)
         if matched_skill:
             threshold = int(matched_skill.get("value", 20) or 20)
             attribute_key = ""
@@ -705,6 +714,7 @@ def resolve_check_request(
         common.update({
             "label": common["label"] or f"{skill_name or _attribute_label(rule, attribute_key)}检定",
             "attribute": _attribute_label(rule, attribute_key) if attribute_key else None,
+            "attribute_key": attribute_key,
             "threshold": threshold,
             "hard_threshold": threshold // 2,
             "extreme_threshold": threshold // 5,

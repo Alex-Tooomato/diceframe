@@ -138,6 +138,7 @@
 .characters-page .library-character-card .character-card-summary {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
+  min-height: 200px;
   gap: 10px;
 }
 
@@ -168,14 +169,30 @@
 .characters-page .library-character-card .actions {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
+  align-content: end;
   gap: 6px;
   margin-top: auto;
+  min-height: 78px;
+}
+
+/* Professional cards expose four actions. Keep them in a balanced 2×2
+   block so the extra controls do not create a dangling third-column button. */
+.characters-page .library-character-card .actions:has(> button:nth-child(4)) {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
 .characters-page .library-character-card .actions button {
   min-width: 0;
   padding-inline: 5px;
   font-size: 10px;
+}
+
+.characters-page .current-character-actions button {
+  min-height: 38px;
+  padding: 8px 10px;
+  font-size: 12px;
+  line-height: 1.25;
+  white-space: normal;
 }
 
 .characters-page .character-library-grid.view-list {
@@ -191,4 +208,46 @@
 .characters-page .view-list .library-character-card .actions {
   align-self: center;
   margin: 0;
+  min-height: 36px;
+}
+
+.characters-page .view-list .library-character-card .character-card-summary {
+  min-height: 0;
+}
+
+.characters-page .view-list .library-character-card .actions:has(> button:nth-child(4)) {
+  min-height: 78px;
+}
+
+/* Keep the library actions readable when a card has four controls. */
+.characters-page .library-character-card .actions button {
+  min-height: 36px;
+  height: 36px;
+  padding: 7px 8px;
+  color: var(--df-text-secondary);
+  font-size: 12px;
+  line-height: 1.25;
+  white-space: normal;
+}
+
+/* Avoid the generic button border being rendered as a second avatar frame. */
+.characters-page button.portrait-edit-button {
+  min-height: 0;
+  padding: 0;
+  border: 0 !important;
+  outline: 0;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+/* Keep the portrait itself as the only visible frame inside a library card. */
+.characters-page .library-character-card .portrait-edit-button .portrait-image {
+  display: grid;
+  margin: 0;
+}
+
+@media (max-width: 560px) {
+  .characters-page .library-character-card .character-card-summary {
+    min-height: 0;
+  }
 }

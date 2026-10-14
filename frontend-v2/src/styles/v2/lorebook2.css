@@ -15,12 +15,75 @@
   min-width: 0;
 }
 
+.lorebook-page { padding-top: 16px; }
+.lorebook-page button.primary.success { background: linear-gradient(180deg, var(--df-interactive), color-mix(in srgb, var(--df-interactive) 78%, var(--df-canvas))); color: var(--df-text); border-color: color-mix(in srgb, var(--df-interactive) 65%, transparent); }
+.lorebook-page .archive-hero { padding: 0 0 8px; }
+.lorebook-page .archive-hero h1 { font-size: 28px; }
+.lorebook-page .archive-hero p { font-size: 12px; line-height: 1.5; }
+
+/* A compact breadcrumb keeps the ownership boundary visible while editing.
+   The world is the background, the book owns reference material, and an entry
+   is the editable leaf. */
+.lore-context-crumbs {
+  display: flex;
+  align-items: stretch;
+  gap: 7px;
+  margin: 4px 0 10px;
+  padding: 7px;
+  border: 1px solid color-mix(in srgb, var(--df-accent) 22%, var(--df-border-soft));
+  border-radius: var(--df-radius-md);
+  background: linear-gradient(90deg, color-mix(in srgb, var(--df-accent) 8%, transparent), transparent 70%), var(--df-surface-1);
+}
+
+.lore-context-crumb {
+  display: grid;
+  min-width: 0;
+  flex: 1 1 0;
+  gap: 2px;
+  padding: 5px 9px;
+  border-radius: calc(var(--df-radius-md) - 2px);
+  background: color-mix(in srgb, var(--df-surface-2) 75%, transparent);
+}
+
+.lore-context-crumb small {
+  color: var(--df-text-muted);
+  font-size: 10px;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+
+.lore-context-crumb strong {
+  overflow: hidden;
+  color: var(--df-text);
+  font-size: 12px;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.lore-context-crumb--world strong { color: var(--df-accent-strong); }
+.lore-context-crumb--book strong { color: var(--df-info, var(--df-accent-strong)); }
+.lore-context-crumb-separator {
+  display: grid;
+  flex: 0 0 auto;
+  place-items: center;
+  color: var(--df-text-muted);
+  font-size: 14px;
+}
+
 /* World → Book → Entry 上下文条：每行一个层级，Book 行带状态与管理菜单。 */
 .lore-context-bar {
   display: grid;
-  gap: 8px;
-  margin-top: 18px;
-  padding: 12px;
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-areas:
+    "world language"
+    "book book"
+    "meta meta"
+    "hint hint"
+    "warning warning";
+  gap: 6px;
+  margin-top: 12px;
+  padding: 10px;
   border-radius: var(--df-radius-md);
   background:
     linear-gradient(90deg, color-mix(in srgb, var(--df-accent) 6%, transparent), transparent),
@@ -33,6 +96,13 @@
   align-items: center;
   gap: 10px;
 }
+
+.lore-context-row--language { grid-area: language; }
+.lore-context-row--world { grid-area: world; }
+.lore-context-row--book { grid-area: book; }
+.lore-context-bar > .lore-book-meta { grid-area: meta; }
+.lore-context-bar > .lore-context-hint { grid-area: hint; }
+.lore-context-bar > .lore-book-binding-warning { grid-area: warning; }
 
 .lore-context-label {
   flex: 0 0 auto;
@@ -58,10 +128,129 @@
   color: var(--df-text-muted);
 }
 
+.lore-scope-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 28px;
+  padding: 3px 9px;
+  border: 1px solid color-mix(in srgb, var(--df-accent) 42%, var(--df-border-soft));
+  border-radius: 999px;
+  color: var(--df-accent-strong);
+  background: color-mix(in srgb, var(--df-accent) 10%, transparent);
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.lore-scope-chip small {
+  color: var(--df-text-muted);
+  font-size: 10px;
+}
+
+.lore-scope-chip.unbound {
+  border-color: color-mix(in srgb, var(--df-danger) 42%, var(--df-border-soft));
+  color: var(--df-danger);
+  background: color-mix(in srgb, var(--df-danger) 8%, transparent);
+}
+
 .lore-book-meta {
   margin: 0;
   color: var(--df-text-muted);
   font-size: .8rem;
+}
+
+.lore-book-binding-warning {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 12px;
+  border: 1px solid color-mix(in srgb, var(--df-danger) 38%, var(--df-border-soft));
+  border-radius: var(--df-radius-md);
+  color: var(--df-danger);
+  background: color-mix(in srgb, var(--df-danger) 7%, transparent);
+}
+
+.lore-book-binding-retry {
+  min-height: 32px;
+}
+
+.lore-book-static {
+  min-width: 0;
+  color: var(--df-text);
+  font-weight: 650;
+  overflow-wrap: anywhere;
+}
+
+.lore-book-create-dialog {
+  width: min(520px, calc(100vw - 24px));
+}
+
+.dialog.lore-bindings-dialog {
+  width: min(760px, calc(100vw - 24px));
+}
+
+.lore-bindings-dialog__body {
+  display: grid;
+  gap: 14px;
+  min-width: 0;
+}
+
+.lore-bindings-dialog__table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.lore-bindings-dialog__table th,
+.lore-bindings-dialog__table td {
+  padding: 8px;
+  border-bottom: 1px solid var(--df-border-soft);
+  text-align: left;
+  vertical-align: top;
+  overflow-wrap: anywhere;
+}
+
+.lore-bindings-dialog__table th {
+  color: var(--df-text-muted);
+  font-size: .8rem;
+}
+
+.lore-bindings-dialog__add {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 10px;
+  border: 1px solid var(--df-border-soft);
+  border-radius: var(--df-radius-md);
+  background: color-mix(in srgb, var(--df-accent) 5%, transparent);
+}
+
+.lore-bindings-dialog__add label {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin: 0;
+}
+
+.lore-bindings-dialog__add input[type='radio'] {
+  width: auto;
+  margin: 0;
+}
+
+.lore-book-create-form {
+  display: grid;
+  gap: 14px;
+}
+
+.lore-book-create-form label {
+  display: grid;
+  gap: 6px;
+}
+
+.lore-book-create-form input,
+.lore-book-create-form select {
+  width: 100%;
+  box-sizing: border-box;
 }
 
 /* 下拉管理菜单：details/summary，零依赖；菜单项点击后由 runBookMenu 收起。 */
@@ -454,11 +643,50 @@ body.light .lore-filter-options button.active:not(.primary):not(.danger):not(.su
 }
 
 @media (max-width: 600px) {
+  .lore-context-crumbs {
+    gap: 4px;
+  }
+
+  .lore-context-crumb {
+    padding-inline: 6px;
+  }
+
+  .lore-context-crumb strong {
+    font-size: 11px;
+  }
+
   /* 窄屏行会换行；菜单从触发器左缘展开，避免右对齐后越出视口左侧。 */
   .lore-context-row .lore-menu-list {
     right: auto;
     left: 0;
     max-width: calc(100vw - 24px);
+  }
+}
+
+@media (max-width: 420px) {
+  .lore-context-crumbs {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 4px;
+  }
+
+  .lore-context-crumb { padding: 4px 5px; }
+
+  .lore-context-crumb-separator {
+    display: none;
+  }
+}
+
+@media (max-width: 736px) {
+  .lore-context-bar {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas:
+      "language"
+      "world"
+      "book"
+      "meta"
+      "hint"
+      "warning";
   }
 }
 
@@ -483,7 +711,9 @@ body.light .lore-filter-options button.active:not(.primary):not(.danger):not(.su
 
 .lorebook-page .lore-entry-filter {
   flex: 0 1 auto;
-  max-width: 180px;
+  width: 120px;
+  max-width: 120px;
+  min-width: 0;
   font-size: 12px;
 }
 
@@ -501,6 +731,24 @@ body.light .lore-filter-options button.active:not(.primary):not(.danger):not(.su
 .lorebook-page .lore-entry-bulk button {
   padding: 4px 10px;
   font-size: 12px;
+}
+
+.lorebook-page .lore-world-gallery-link {
+  display: inline-flex;
+  align-items: center;
+  min-height: 32px;
+  padding: 0 10px;
+  border: 1px solid var(--df-border-soft);
+  border-radius: 8px;
+  color: var(--df-text-muted);
+  background: var(--df-surface-1);
+  font-size: 12px;
+  text-decoration: none;
+}
+
+.lorebook-page .lore-world-gallery-link:hover {
+  border-color: color-mix(in srgb, var(--df-interactive) 48%, var(--df-border-soft));
+  color: var(--df-text);
 }
 
 .lorebook-page .lore-entry-bulk__select {
@@ -532,3 +780,7 @@ body.light .lore-filter-options button.active:not(.primary):not(.danger):not(.su
   font-size: 12px;
   color: var(--df-accent-strong);
 }
+
+.dialog.lore-import-dialog { width: min(760px, calc(100vw - 24px)); }
+.lore-import-dialog__panel { display: grid; gap: 12px; }
+.lore-import-dialog__panel > p { margin: 0; }

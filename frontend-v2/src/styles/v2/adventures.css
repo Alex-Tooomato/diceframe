@@ -9,8 +9,52 @@
 }
 
 .adventure-header-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 7px;
   justify-content: flex-end;
   margin-left: auto;
+}
+
+.adventure-header-more {
+  position: relative;
+}
+
+.adventure-header-more > summary {
+  display: inline-flex;
+  align-items: center;
+  min-height: 36px;
+  padding: 0 12px;
+  border: 1px solid var(--df-border-soft);
+  border-radius: var(--df-radius-md);
+  color: var(--df-text-secondary);
+  background: var(--df-surface-1);
+  cursor: pointer;
+  font-size: 12px;
+  list-style: none;
+}
+
+.adventure-header-more > summary::-webkit-details-marker { display: none; }
+.adventure-header-more[open] > summary { border-color: var(--df-interactive); color: var(--df-accent-strong); }
+.adventure-header-menu {
+  position: absolute;
+  z-index: 20;
+  top: calc(100% + 7px);
+  right: 0;
+  display: grid;
+  min-width: 190px;
+  gap: 5px;
+  padding: 7px;
+  border: 1px solid var(--df-border-soft);
+  border-radius: var(--df-radius-md);
+  background: var(--df-surface-raised);
+  box-shadow: var(--df-shadow-strong);
+}
+.adventure-header-menu button { width: 100%; justify-content: flex-start; min-height: 34px; padding-inline: 10px; }
+
+.adventures-page .content-page-heading-actions {
+  align-self: end;
 }
 
 .adventure-boundary-note span,
@@ -89,12 +133,23 @@
   margin-top: auto;
 }
 
-.adventures-page .adventure-package-actions button {
+.adventures-page .adventure-package-actions button,
+.adventures-page .adventure-package-actions > a.primary {
   width: 100%;
   min-width: 0;
   min-height: 36px;
   padding-inline: 8px;
   white-space: nowrap;
+}
+
+.adventures-page .adventure-package-actions > a.primary {
+  grid-column: 1 / -1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid color-mix(in srgb, var(--df-interactive-strong) 68%, var(--df-border-soft));
+  border-radius: var(--df-radius-md);
+  text-decoration: none;
 }
 
 .adventure-create-progress {
@@ -578,6 +633,20 @@
 }
 
 @media (max-width: 640px) {
+  .adventures-page .content-page-heading-actions,
+  .adventures-page .adventure-header-actions {
+    width: 100%;
+  }
+
+  .adventures-page .adventure-header-actions > button {
+    flex: 1 1 calc(50% - 7px);
+    min-width: 0;
+  }
+
+  .adventures-page .adventure-header-actions > .adventure-header-more { flex: 1 1 calc(50% - 7px); }
+  .adventures-page .adventure-header-more > summary { width: 100%; justify-content: center; box-sizing: border-box; }
+  .adventure-header-menu { position: static; margin-top: 6px; }
+
   .adventures-page .adventure-package-card > .adventure-package-actions {
     grid-template-columns: 1fr;
   }

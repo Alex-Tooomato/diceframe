@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from src.engine import check_decisions
+
 import logging
 from dataclasses import dataclass
 from typing import Any, Callable
@@ -21,6 +23,7 @@ from src.rulesets.contracts import GameDetailProjectionRuntime
 from src.rulesets.registry import RulesetRuntimeRegistry
 from src.webui.services._common import _GAME_KEY_SEP
 from src.webui.ruleset_rest_projection import public_rest_session
+from src.game_profiles.projection import routing_descriptor
 
 logger = logging.getLogger("trpg")
 
@@ -218,6 +221,7 @@ def game_detail(
         "quick_actions": module_hooks.read(instance, module_hooks.QUICK_ACTIONS),
         "economy_proposals": economy_proposals,
         "pending_luck_decisions": instance.pending_luck_checks(),
+        "pending_push_decisions": check_decisions.pending(instance),
         "round_check_results": (
             [dict(item) for item in checks.last_checks(instance)]
             if (
@@ -247,6 +251,7 @@ def game_detail(
             getattr(instance, "adventure_binding", {}) or {}
         ),
         "play_mode": str(adventure_runtime_state.play_mode(instance) or "free"),
+        "game_profile": routing_descriptor(instance),
         "manual_rolls": _public_manual_rolls(instance, viewer_uid),
     }
     if ruleset_runtime.binding(instance):

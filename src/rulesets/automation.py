@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 from copy import deepcopy
 from datetime import datetime, timezone
 from typing import Any
@@ -10,6 +10,7 @@ from typing import Any
 from src.engine import progression
 from src.rulesets.contracts import (
     AutomaticIntentRuntime,
+    HostedIntentChoiceRuntime,
     NarrativeDirectorAutomationRuntime,
     PublicTimelineProjectionRuntime,
 )
@@ -100,17 +101,42 @@ def advance_automatic_intents(
         intent = runtime.next_automatic_intent(instance)
         if intent is None:
             return batches, results
-        resolved = runtime.resolve_intent(instance, intent, rng)
-        if not resolved.get("ok"):
-            raise ValueError(
-                str(resolved.get("error") or "automatic intent was rejected")
-            )
-        batch = resolved.get("event_batch")
-        if not isinstance(batch, dict):
-            raise ValueError("automatic intent returned no event batch")
-        applied = runtime.apply_event_batch(instance, batch)
-        if not applied.get("applied"):
-            raise ValueError("automatic intent did not advance state")
+        batch, applied = _apply_automatic_intent(runtime, instance, intent, rng)
+        batches.append(deepcopy(batch))
+        results.append(deepcopy(applied))
+        if on_applied is not None:
+            on_applied(batch, applied)
+    raise ValueError("automatic turn exceeded the safety limit")
+
+
+def _apply_automatic_intent(runtime: Any, instance: Any, intent: dict, rng: Any) -> tuple[dict, dict]:
+    resolved = runtime.resolve_intent(instance, intent, rng)
+    if not resolved.get("ok"):
+        raise ValueError(str(resolved.get("error") or "automatic intent was rejected"))
+    batch = resolved.get("event_batch")
+    if not isinstance(batch, dict):
+        raise ValueError("automatic intent returned no event batch")
+    applied = runtime.apply_event_batch(instance, batch)
+    if not applied.get("applied"):
+        raise ValueError("automatic intent did not advance state")
+    return batch, applied
+
+
+async def advance_automatic_intents_with_choice(
+    runtime: AutomaticIntentRuntime, instance: Any, rng: Any, *,
+    choose: Callable[[Any, dict], Awaitable[dict]], limit: int = 256,
+    on_applied: Callable[[dict, dict], None] | None = None,
+) -> tuple[list[dict], list[dict]]:
+    """The same authority ladder against an isolated stage, with an injected chooser."""
+    if on_applied is not None:
+        progression.require_writable(instance)
+    batches, results = [], []
+    for _ in range(limit):
+        fallback = runtime.next_automatic_intent(instance)
+        if fallback is None:
+            return batches, results
+        intent = await choose(instance, fallback)
+        batch, applied = _apply_automatic_intent(runtime, instance, intent, rng)
         batches.append(deepcopy(batch))
         results.append(deepcopy(applied))
         if on_applied is not None:
@@ -129,7 +155,7 @@ def is_public_story_milestone(runtime: Any, batch: dict[str, Any]) -> bool:
 
 def apply_director_automation(
     runtime: Any, instance: Any, proposal: dict[str, Any], rng: Any,
-    *, limit: int = 256,
+    *, limit: int = 256, defer_hosted_players: bool = False,
 ) -> list[dict[str, Any]]:
     """Apply one Director intent and bounded follow-up automatic intents atomically."""
 
@@ -182,6 +208,10 @@ def apply_director_automation(
                     if isinstance(runtime, AutomaticIntentRuntime)
                     else None
                 )
+                if defer_hosted_players and pending and isinstance(runtime, HostedIntentChoiceRuntime):
+                    actor = str(pending.get("actor_id") or "")
+                    if actor.startswith("player:") and runtime.hosted_intent_choices(instance, actor.removeprefix("player:")):
+                        return batches
         raise ValueError("Director automation exceeded the safety limit")
     except Exception:
         instance.restore_ruleset_transaction(before)

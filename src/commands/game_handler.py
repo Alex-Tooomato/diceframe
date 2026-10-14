@@ -68,6 +68,8 @@ class GameHandler:
         self._dice = DiceResolver()
         self._puzzles = PuzzleProcessor()
         self.llm_client = llm_client
+        self.ai_seat_runtime = None
+        self._after_round_completed = None
         self.matcher = lorebook_matcher
         self.lorebook_store = lorebook_store
         self.memory_store = memory_store
@@ -281,7 +283,15 @@ class GameHandler:
         Returns: (narration: str, info_asymmetry: dict | None)
             info_asymmetry 格式: {"user_qq_xxx": "仅该玩家可见的消息", ...}
         """
-        return await self._round_processor.process_round(instance, on_delta=on_delta, on_reset=on_reset)
+        result = await self._round_processor.process_round(instance, on_delta=on_delta, on_reset=on_reset)
+        callback = getattr(self, "_after_round_completed", None)
+        if callback is not None:
+            callback(instance)
+        return result
+
+    def set_hosted_combat_resume(self, callback) -> None:
+        self._after_round_completed = callback
+        self._round_processor.set_defer_hosted_players(callback is not None)
 
     def prepare_round_checks(self, instance: GameInstance) -> list[dict]:
         """结算本轮结构化检定；若可消耗幸运，叙事会等待玩家选择。"""
@@ -301,6 +311,7 @@ class GameHandler:
             llm_client=self.llm_client,
             prompt_composer=self._prompt,
             requires_structured_intent=requires_structured_intent,
+            seat_runtime=getattr(self, "ai_seat_runtime", None),
         )
 
     async def _process_round_impl(self, instance: GameInstance, *, on_delta=None, on_reset=None) -> tuple[str, dict | None]:

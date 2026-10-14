@@ -275,6 +275,7 @@ class Dnd2024CampaignEngine:
         if not (is_gm or is_player):
             return []
         actions: list[dict[str, Any]] = []
+        session_participants = self._session_zero_participant_ids(instance)
         session = campaign["session_zero"]
         tutorial = campaign["tutorial"]
         if (
@@ -299,7 +300,7 @@ class Dnd2024CampaignEngine:
                 "expected_version": version,
                 "defaults": self.default_agreement(),
             })
-        if session.get("status") == "pending" and is_player:
+        if session.get("status") == "pending" and actor_id in session_participants:
             response = session.get("responses", {}).get(actor_id, {})
             if response.get("response") != "accept":
                 actions.append({
@@ -739,7 +740,10 @@ class Dnd2024CampaignEngine:
         elif intent_type == "session_zero.propose":
             self._normalize_agreement(intent.get("agreement"))
         elif intent_type == "session_zero.respond":
-            if session.get("status") != "pending" or not is_player:
+            if (
+                session.get("status") != "pending"
+                or submitted_by not in self._session_zero_participant_ids(instance)
+            ):
                 raise CampaignIntentError("there is no Session 0 proposal to answer")
             if intent.get("response") not in {"accept", "request_changes"}:
                 raise CampaignIntentError("Session 0 response must be accept or request_changes")
@@ -832,11 +836,23 @@ class Dnd2024CampaignEngine:
     def _all_players_accepted(instance: Any, session: dict[str, Any]) -> bool:
         if session.get("status") != "pending" or not session.get("pending_agreement"):
             return False
-        players = list(instance.players)
-        return bool(players) and all(
+        players = Dnd2024CampaignEngine._session_zero_participant_ids(instance)
+        return bool(instance.players) and all(
             session.get("responses", {}).get(uid, {}).get("response") == "accept"
             for uid in players
         )
+
+    @staticmethod
+    def _session_zero_participant_ids(instance: Any) -> list[str]:
+        """Return seats that need a human Session 0 response.
+
+        Server-hosted and unavailable seats cannot click an agreement. When a
+        table contains only such seats, the GM still retains authority to lock
+        the proposal; an empty participant list therefore needs no response.
+        """
+
+        active_humans = getattr(instance, "active_human_players", set())
+        return sorted(str(uid) for uid in active_humans if str(uid))
 
     @staticmethod
     def _normalize_agreement(raw: Any) -> dict[str, Any]:

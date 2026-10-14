@@ -546,6 +546,69 @@ async def test_character_wizard_update_changes_display_name_and_sheet(web_api):
 
 
 @pytest.mark.asyncio
+async def test_dnd5e_character_equipment_preserves_and_validates_damage_dice(web_api):
+    api, _lorebook, registry, _fake_llm, worlds_dir = web_api
+    write_world(worlds_dir, "dnd5e_damage_world", default_rule="dnd5e")
+    created = await api.create_game(
+        "dnd5e_damage_world", "骰式装备测试", rule_id="dnd5e",
+        players=[{"character_name": "骰式角色", "attributes": {"str": 10}}],
+        gm_uid="web_session_gm",
+    )
+    uid = created["players"][0]["user_id"]
+    denied = await api.update_character(created["game_key"], uid, {"equipment": []})
+    assert denied["error_code"] == "FIELD_REQUIRES_GM"
+    valid = await api.update_character(created["game_key"], uid, {
+        "equipment": [{
+            "name": "长剑", "type": "weapon", "damage": 7, "damage_dice": "2d6+1",
+            "damage_type": "slashing", "item_key": "longsword", "slot": "main_hand",
+        }],
+    }, gm_authority=True)
+    assert valid["ok"] is True, valid
+    sheet = registry.get(api._parse_key(created["game_key"])).get_character_sheet(uid)
+    assert sheet["equipment"][0]["damage_dice"] == "2d6+1"
+    assert sheet["equipment"][0]["damage"] == 7
+    assert sheet["equipment"][0]["item_key"] == "longsword"
+
+    invalid = await api.update_character(created["game_key"], uid, {
+        "equipment": [{"name": "坏剑", "damage": 9, "damage_dice": "1d8+1d6"}],
+    }, gm_authority=True)
+    assert invalid["ok"] is False
+    assert "伤害骰公式无效" in invalid["error"]
+    assert sheet["equipment"][0]["damage_dice"] == "2d6+1"
+    invalid_type = await api.update_character(created["game_key"], uid, {
+        "equipment": [{"name": "布尔剑", "damage": 1, "damage_dice": True}],
+    }, gm_authority=True)
+    assert invalid_type["ok"] is False
+
+
+@pytest.mark.asyncio
+async def test_dnd5e_player_creation_preserves_damage_dice_and_rejects_invalid_formula(web_api):
+    api, _lorebook, registry, _fake_llm, worlds_dir = web_api
+    write_world(worlds_dir, "dnd5e_creation_world", default_rule="dnd5e")
+    created = await api.create_game(
+        "dnd5e_creation_world", "建卡骰式测试", rule_id="dnd5e",
+        players=[{"character_name": "主持人", "attributes": {"str": 10}}], gm_uid="web_session_gm",
+    )
+    valid = await api.create_player(created["game_key"], {
+        "name": "新骰式角色", "attributes": {"str": 10},
+        "equipment": [{"name": "弓", "damage": 5, "damage_dice": "1d8-1", "slot": "main_hand"}],
+    })
+    assert valid["ok"] is True
+    inst = registry.get(api._parse_key(created["game_key"]))
+    sheet = inst.get_character_sheet(valid["user_id"])
+    assert sheet["equipment"][0]["damage_dice"] == "1d8-1"
+
+    before_invalid = len(inst.players)
+    invalid = await api.create_player(created["game_key"], {
+        "name": "坏骰式角色", "attributes": {"str": 10},
+        "equipment": [{"name": "坏弓", "damage": 5, "damage_dice": "d1"}],
+    })
+    assert invalid["ok"] is False
+    assert "伤害骰公式无效" in invalid["error"]
+    assert len(inst.players) == before_invalid
+
+
+@pytest.mark.asyncio
 async def test_npc_portrait_is_explicit_and_persisted(web_api):
     api, _lorebook, registry, _fake_llm, _worlds_dir = web_api
     created = await api.create_game(

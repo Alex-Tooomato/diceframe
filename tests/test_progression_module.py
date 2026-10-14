@@ -584,7 +584,7 @@ def test_e2e_seed_script_constructs_and_encodes_all_fixtures(tmp_path):
 
     prepare_e2e_data(tmp_path)
     saves = list((tmp_path / "saves").rglob("state.json"))
-    assert len(saves) == 4
+    assert len(saves) == 16
     for path in saves:
         payload = json.loads(path.read_text(encoding="utf-8"))
         assert "round_number" not in payload

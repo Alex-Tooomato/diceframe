@@ -54,7 +54,7 @@ async def api_game_adventure_projection(request: web.Request) -> web.Response:
     game_key = request.match_info["game_key"]
     instance = api.get_game_instance(game_key)
     viewer = viewer_for(request, instance)
-    result = api.game_adventure_projection(game_key, viewer_is_gm=viewer.is_gm)
+    result = api.game_adventure_projection(game_key, viewer_is_gm=viewer.is_gm, viewer_uid=viewer.uid)
     return (
         web.json_response(result)
         if result is not None

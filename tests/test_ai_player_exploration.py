@@ -59,7 +59,7 @@ from src.engine.player_control import get_control, set_control
 from src.engine.world_state import apply_world_ops
 from src.rules.rule_system import RuleSystem
 from src.rulesets.registry import RulesetRuntimeRegistry
-from src.webui.services.turns import TurnDependencies, submit_action
+from src.webui.services.turns import TurnDependencies, _advance_progression, submit_action
 from src.engine.modules import private_channels, round_presentation, session_stats
 
 HUMAN_SHEET = {"hp": 10, "max_hp": 10, "attributes": {"str": 14, "dex": 10}}
@@ -444,6 +444,24 @@ async def test_provider_failure_skips_one_seat_and_keeps_the_round(
     assert ai_actions(instance, "a2")[0]["metadata"]["generated_for_round"] == 1
     assert len(llm.calls) == 2
     assert SKIP_MARKER in caplog.text
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("solo", [False, True])
+async def test_all_ai_provider_failure_uses_safe_fallback_and_advances(solo: bool) -> None:
+    instance = make_instance(humans=(), ai=("a1",), solo=solo)
+    llm = FakePlayerLLM(fail_indexes=(0,))
+    dependencies = make_dependencies(instance, llm_client=llm)
+
+    result = await _advance_progression(
+        dependencies, instance, game_key="web|ai-player|bot",
+    )
+
+    assert result is not None
+    assert result["payload"]["advanced"] is True
+    assert instance.state == GameState.ACTIVE_JUDGMENT
+    action = ai_actions(instance, "a1")[0]
+    assert action["metadata"]["fallback"] is True
 
 
 # ---- 9. 幂等：(run, round, uid) 至多一条 AI 行动 -----------------------------

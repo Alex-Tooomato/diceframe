@@ -44,6 +44,14 @@ async def api_update_apply(request: web.Request) -> web.Response:
     return web.json_response(result, status=200 if result.get("ok") else 409)
 
 
+async def api_update_rollback(request: web.Request) -> web.Response:
+    confirmed = _require_confirmed_request(request)
+    if confirmed is not None:
+        return confirmed
+    result = await request.app["updater"].rollback_update()
+    return web.json_response(result, status=200 if result.get("ok") else 409)
+
+
 async def api_update_health(request: web.Request) -> web.Response:
     """Public, non-sensitive endpoint used by the launcher during switchover."""
     return web.json_response(
@@ -81,5 +89,6 @@ def register_updater(app: web.Application) -> None:
     app.router.add_get("/api/system/update/status", api_update_status)
     app.router.add_post("/api/system/update/download", api_update_download)
     app.router.add_post("/api/system/update/apply", api_update_apply)
+    app.router.add_post("/api/system/update/rollback", api_update_rollback)
     app.router.add_get("/api/system/update/health", api_update_health)
     app.router.add_post("/api/system/restart", api_application_restart)

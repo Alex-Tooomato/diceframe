@@ -1,3 +1,4 @@
+import GmToolbar from '../src/components/play/GmToolbar.vue'
 import { flushPromises, mount } from '@vue/test-utils'
 import type { Mock } from 'vitest'
 import { createMemoryHistory, createRouter } from 'vue-router'
@@ -62,7 +63,7 @@ const STUBS = {
   GameTimeline: true,
   EconomyProposalCard: true,
   TableTalkFeed: true,
-  GmToolbar: true,
+
   MultiplayerPanel: true,
   HealthPanel: true,
   ManualRollsPanel: true,
@@ -175,6 +176,8 @@ describe('PlayView takeover link', () => {
   }
 
   async function openTakeover(wrapper: Awaited<ReturnType<typeof mountPlayView>>['wrapper']) {
+    wrapper.getComponent(GmToolbar).vm.openSection('party')
+    await flushPromises()
     wrapper.findComponent({ name: 'MultiplayerPanel' }).vm.$emit('copy-link', 'p2')
     await flushPromises()
     return wrapper.findComponent({ name: 'InviteQrModal' })

@@ -18,13 +18,18 @@ from src.engine.narrative_perspective import validate_narrative_perspective
 from src.content.gm_style import normalize_gm_style_override
 from src.rulesets.contracts import LiveAdvancementPolicyRuntime
 
-from src.webui.services._common import _GAME_KEY_SEP, _is_safe_world_id
+from src.webui.services._common import (
+    _GAME_KEY_SEP,
+    _is_safe_world_id,
+    resolve_default_scene_image,
+)
 from src.webui.services import game_creation_phases, game_seed_lifecycle
 from src.webui.game_lifecycle_context import (
     CreationPhase,
     CreationTransaction,
     GameLifecycleDependencies,
     _start_created_game,
+    resume_created_ai_table,
 )
 
 logger = logging.getLogger("trpg")
@@ -158,6 +163,13 @@ async def create_game(
                 })
         except (ContentRefError, TypeError, ValueError) as exc:
             return {"ok": False, "error_code": "INVALID_BOOK_BINDINGS", "error": str(exc)}
+        # Validate before materializing worlds or creating registry state.
+        # Explicit refs address a Book, never the world's primary-book alias.
+        store = dependencies.lorebook
+        for binding in normalized_book_bindings:
+            book_id = binding["ref"].id
+            if store is None or not hasattr(store, "get_lorebook") or not store.get_lorebook(book_id):
+                return {"ok": False, "error_code": "BOOK_NOT_FOUND", "error": book_id}
         if normalized_book_bindings and not lorebook_world_id:
             first_ref = normalized_book_bindings[0]["ref"]
             if first_ref.source_kind == "world":
@@ -181,9 +193,22 @@ async def create_game(
     if normalized_play_mode == "free" and str(adventure_id or "").strip():
         return {"ok": False, "error": "标准自由对局不能绑定冒险包"}
 
+    unique_id = f"{world_id}_{time.time_ns()}"
+    game_key = ("web", unique_id, "web_bot")
     try:
-        default_scene_image = dependencies.resolve_default_scene_image(
-            source_world_id or world_id, rule_id
+        default_scene_images = (
+            dependencies.list_default_scene_images(
+                source_world_id or world_id,
+                rule_id,
+            )
+            if dependencies.list_default_scene_images is not None
+            else []
+        )
+        default_scene_image = resolve_default_scene_image(
+            dependencies.resolve_default_scene_image,
+            source_world_id or world_id,
+            rule_id,
+            _GAME_KEY_SEP.join(game_key),
         )
         selected_scene_image = dependencies.materialize_scene_image(
             scene_image if scene_image else default_scene_image
@@ -191,9 +216,6 @@ async def create_game(
         selected_map_background = dependencies.validate_map_background(map_background)
     except ValueError as exc:
         return {"ok": False, "error": str(exc)}
-
-    unique_id = f"{world_id}_{time.time_ns()}"
-    game_key = ("web", unique_id, "web_bot")
 
     instance = dependencies.registry.get(game_key)
     if instance and instance.state not in (GameState.CREATED, GameState.ENDED):
@@ -272,6 +294,7 @@ async def create_game(
         difficulty=difficulty,
         scene_image=scene_image,
         default_scene_image=default_scene_image,
+        default_scene_images=default_scene_images,
     )
     transaction.advance(CreationPhase.WORLD_MATERIALIZED)
 
@@ -385,6 +408,8 @@ async def create_game(
                 "id": source_book_id,
                 "digest": "",
             })
+        if book_bindings is not None:
+            content_binding.select_books_explicitly(instance)
         if normalized_book_bindings:
             store = dependencies.lorebook
             if store is None or not hasattr(store, "bind_lorebook"):
@@ -468,6 +493,9 @@ async def create_game(
             "error_code": "GAME_CREATE_FAILED",
             "error": "保存新游戏失败，未留下半成品存档，请重试。",
         }
+
+    # 提交之后才唤醒纯 AI 对局；自动推进失败不会破坏已经成功保存的创建结果。
+    await resume_created_ai_table(dependencies, instance)
 
     return {
         "ok": True,

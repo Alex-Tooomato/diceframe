@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, onUnmounted, ref, watch, type Component } from 'vue'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { NButton, NInput, NInputNumber, NSelect, NSwitch, NTag, NIcon, NSpin, NProgress, NModal, NCollapse, NCollapseItem } from 'naive-ui'
 import {
   ServerOutline, CubeOutline, CloudDownloadOutline,
@@ -40,8 +40,10 @@ import { copyToClipboard } from '@/utils/clipboard'
 import { useTheme } from '@/composables/useTheme'
 import { useBackgroundImages, type BackgroundSlot } from '@/composables/useBackgroundImages'
 import { useProviderModelSettings } from '@/composables/useProviderModelSettings'
+import { useAssistantPreferences } from '@/composables/useAssistantPreferences'
 import { currentBackendUrl, isStandaloneFrontend, normalizeBackendUrl, setBackendUrl } from '@/api/connection'
 import { isSettingsSectionAvailable, normalizeSettingsSection, type SettingsSectionId } from '@/utils/settingsSections'
+import ContentPageHeader from '@/components/content/ContentPageHeader.vue'
 
 type StatusTone = 'default' | 'success' | 'warning' | 'error' | 'info'
 type UpdatePackageKind = 'source' | 'portable' | 'docker'
@@ -59,7 +61,9 @@ type RuntimeLogStatus = {
 
 const store = useSettingsStore()
 const route = useRoute()
+const router = useRouter()
 const sponsorModalOpen = ref(false)
+const sponsorQrUrl = `${import.meta.env.BASE_URL}sponsor-wechat-qr.png`
 const toast = useToast()
 const { confirm } = useConfirm()
 const { updateInfo, updateChecking, checkForUpdates } = useUpdateCheck()
@@ -69,12 +73,14 @@ const {
   downloadPercent,
   startDownload,
   applyUpdate,
+  rollbackUpdate,
   refreshStatus,
   isUpdateBusy,
   restartApplication,
   waitForApplicationRestart,
 } = useUpdater()
 const { t, locale } = useLocale()
+const { enabled: assistantEnabled, setEnabled: setAssistantEnabled } = useAssistantPreferences()
 // Release 保持中英双语单文；展示层按界面语言选段，识别不到分段时整段回退。
 const releaseNotesText = computed(() =>
   selectReleaseNotes(updateInfo.value?.latest?.body, locale.value).text,
@@ -264,6 +270,27 @@ const sections: SettingsSection[] = [
   { id: 'about', labelKey: 'settingsSectionAbout', icon: InformationCircleOutline },
 ]
 
+type SettingsGroupId = 'ai' | 'access' | 'appearance'
+type SettingsGroup = { id: SettingsGroupId; label: string; sections: SettingsSection[] }
+const settingsGroupNames: Record<SettingsGroupId, Record<'zh-CN' | 'en' | 'de' | 'ja' | 'ru', string>> = {
+  ai: { 'zh-CN': 'AI 与语音', en: 'AI and speech', de: 'KI und Sprache', ja: 'AI と音声', ru: 'ИИ и речь' },
+  access: { 'zh-CN': '连接与访问', en: 'Connection and access', de: 'Verbindung und Zugriff', ja: '接続とアクセス', ru: 'Подключение и доступ' },
+  appearance: { 'zh-CN': '外观、高级与关于', en: 'Appearance, advanced, and about', de: 'Darstellung, erweitert und Info', ja: '外観・詳細・概要', ru: 'Внешний вид, расширенные и сведения' },
+}
+const settingsGroupFor = (id: SettingsSectionId): SettingsGroupId => {
+  if (id === 'api' || id === 'models') return 'ai'
+  if (id === 'appearance' || id === 'advanced' || id === 'about') return 'appearance'
+  return 'access'
+}
+const settingsGroups = computed<SettingsGroup[]>(() => {
+  const language = (String(locale.value).startsWith('zh') ? 'zh-CN' : String(locale.value).slice(0, 2)) as 'zh-CN' | 'en' | 'de' | 'ja' | 'ru'
+  return (['ai', 'access', 'appearance'] as SettingsGroupId[]).map(id => ({
+    id,
+    label: settingsGroupNames[id][language] || settingsGroupNames[id].en,
+    sections: sections.filter(sectionItem => settingsGroupFor(sectionItem.id) === id),
+  }))
+})
+
 // 窄屏（平板/手机）下节列表收成一行「当前节」，点开才展开完整目录；
 // 宽屏保持常驻侧栏。用户的选择记到 localStorage。
 const SETTINGS_NAV_OPEN_KEY = 'settings_nav_open'
@@ -311,6 +338,8 @@ watchSettingsNavWidth()
 function selectSettingsSection(id: SettingsSectionId) {
   section.value = id
   if (settingsNavNarrow.value) settingsNavOpen.value = false
+  // A copied URL or refresh should reopen the section the user is viewing.
+  void router.replace({ query: { ...route.query, section: id, focus: undefined } })
 }
 
 function queryValue(value: unknown): string {
@@ -1151,6 +1180,26 @@ async function applyDownloadedUpdate() {
   }
 }
 
+async function rollbackProgram() {
+  const targetVersion = updateStatus.value?.rollback?.target_version || ''
+  const ok = await confirm({
+    title: t('rollbackUpdateTitle'),
+    content: t('rollbackUpdateConfirm', { version: targetVersion }),
+    positiveText: t('rollbackUpdateAction'),
+    negativeText: t('cancel'),
+    type: 'warning',
+  })
+  if (!ok) return
+  try {
+    const result = await rollbackUpdate()
+    if (!result.ok) {
+      toast.error(result.error || t('rollbackUpdateFailed'))
+    }
+  } catch (e: unknown) {
+    toast.error(errorMessage(e))
+  }
+}
+
 async function restartProgram() {
   const ok = await confirm({
     title: t('restartProgram'),
@@ -1188,26 +1237,26 @@ function redownloadUpdatePackage() {
   <section class="view settings-page reference-settings-page">
     <p v-if="store.error" class="error-banner">{{ store.error }}</p>
     <div class="settings-overview-grid">
-      <header class="settings-page-heading">
-        <div>
-          <span class="section-kicker">CONTROL ROOM</span>
-          <h1>{{ t('settingsTitle') }}</h1>
-          <p>{{ t('settingsSubtitle') }}</p>
-        </div>
-        <NButton :loading="store.loading" @click="store.load()">{{ t('refresh') }}</NButton>
-      </header>
-      <section class="system-status-grid" :aria-label="t('settingsSystemStatusAria')">
-        <article v-for="item in systemStatusItems" :key="item.label" class="system-status-card">
-          <NIcon :component="item.icon" class="system-status-icon" />
-          <div class="system-status-copy">
-            <div class="system-status-head">
-              <span>{{ item.label }}</span>
-              <NTag :type="item.tone" :class="['system-status-tag', `tone-${item.tone}`]" size="small" round>{{ item.value }}</NTag>
+      <ContentPageHeader class="settings-page-heading" kicker="CONTROL ROOM" :title="t('settingsTitle')" :description="t('settingsSubtitle')">
+        <template #actions>
+          <NButton :loading="store.loading" @click="store.load()">{{ t('refresh') }}</NButton>
+        </template>
+      </ContentPageHeader>
+      <details class="settings-status-disclosure">
+        <summary>{{ t('settingsSystemStatusAria') }} <span class="settings-status-count">{{ systemStatusItems.length }}</span></summary>
+        <section class="system-status-grid" :aria-label="t('settingsSystemStatusAria')">
+          <article v-for="item in systemStatusItems" :key="item.label" class="system-status-card">
+            <NIcon :component="item.icon" class="system-status-icon" />
+            <div class="system-status-copy">
+              <div class="system-status-head">
+                <span>{{ item.label }}</span>
+                <NTag :type="item.tone" :class="['system-status-tag', `tone-${item.tone}`]" size="small" round>{{ item.value }}</NTag>
+              </div>
+              <p :title="item.detail">{{ item.detail }}</p>
             </div>
-            <p :title="item.detail">{{ item.detail }}</p>
-          </div>
-        </article>
-      </section>
+          </article>
+        </section>
+      </details>
     </div>
     <div class="settings-layout">
       <aside
@@ -1225,16 +1274,19 @@ function redownloadUpdatePackage() {
           <span>{{ t(activeSection.labelKey) }}</span>
           <NIcon :component="ChevronDownOutline" class="settings-nav-chevron" :class="{ open: settingsNavOpen }" />
         </button>
-        <button
-          v-for="s in sections"
-          v-show="!settingsNavNarrow || settingsNavOpen"
-          :key="s.id"
-          :class="['nav-item', { active: section === s.id }]"
-          @click="selectSettingsSection(s.id)"
-        >
-          <NIcon :component="s.icon" />
-          <span>{{ t(s.labelKey) }}</span>
-        </button>
+        <template v-for="group in settingsGroups" :key="group.id">
+          <div v-show="!settingsNavNarrow || settingsNavOpen" class="settings-nav-group-label">{{ group.label }}</div>
+          <button
+            v-for="s in group.sections"
+            v-show="!settingsNavNarrow || settingsNavOpen"
+            :key="s.id"
+            :class="['nav-item', { active: section === s.id }]"
+            @click="selectSettingsSection(s.id)"
+          >
+            <NIcon :component="s.icon" />
+            <span>{{ t(s.labelKey) }}</span>
+          </button>
+        </template>
       </aside>
 
       <div class="settings-content">
@@ -1560,6 +1612,16 @@ function redownloadUpdatePackage() {
                 <p class="muted">{{ t('appearanceSubtitle') }}</p>
               </div>
             </div>
+            <section class="appearance-agent-section">
+              <div>
+                <h4>{{ t('assistantTitle') }}</h4>
+                <p>{{ t('assistantAppearanceHint') }}</p>
+              </div>
+              <div class="switch-inline">
+                <NSwitch :value="assistantEnabled" @update:value="setAssistantEnabled" />
+                <span>{{ assistantEnabled ? t('enabled') : t('disabled') }}</span>
+              </div>
+            </section>
             <section class="appearance-mode-section">
               <h4>{{ t('appearanceMode') }}</h4>
               <div class="appearance-mode-grid">
@@ -2128,13 +2190,18 @@ function redownloadUpdatePackage() {
                 <strong>{{ t('releaseNotes') }}</strong>
                 <pre>{{ releaseNotesText }}</pre>
               </div>
-              <div v-if="updateInfo?.update_available && updateStatus" class="update-download">
+              <div v-if="updateStatus && (updateInfo?.update_available || updateStatus.rollback?.available)" class="update-download">
                 <div v-if="!updateStatus.self_update.supported" class="muted">
                   {{ updateStatus.self_update.reason === 'docker'
                     ? t('updateDockerHint')
                     : (updateStatus.self_update.hint || t('updateSelfUpdateUnsupported')) }}
                 </div>
                 <template v-else>
+                  <div v-if="updateStatus.rollback?.available" class="update-staged">
+                    <NTag type="warning" size="small" round>{{ t('rollbackAvailable') }}</NTag>
+                    <span class="muted">{{ t('rollbackAvailableHint', { version: updateStatus.rollback.target_version || '' }) }}</span>
+                    <NButton type="warning" :disabled="isUpdateBusy" @click="rollbackProgram">{{ t('rollbackUpdate') }}</NButton>
+                  </div>
                   <div v-if="displayedUpdateState === 'staged'" class="update-staged">
                     <NTag type="success" size="small" round>{{ t('updateStaged') }}</NTag>
                     <span class="muted">{{ t('updateStagedHint') }}</span>
@@ -2154,7 +2221,7 @@ function redownloadUpdatePackage() {
                     {{ t('updateRestarting') }}
                   </div>
                   <div v-else-if="displayedUpdateState === 'done'" class="update-staged">
-                    <NTag type="success" size="small" round>{{ t('updateApplied') }}</NTag>
+                    <NTag type="success" size="small" round>{{ updateStatus.operation === 'rollback' ? t('rollbackUpdateDone') : t('updateApplied') }}</NTag>
                     <span v-if="reloadCountdown !== null" class="muted">{{ t('updateReloadCountdown', { seconds: reloadCountdown }) }}</span>
                     <span v-else-if="updateStatus.restart_needed" class="muted">{{ t('updateRestartNeeded') }}</span>
                   </div>
@@ -2232,7 +2299,7 @@ function redownloadUpdatePackage() {
             </section>
             <NModal v-model:show="sponsorModalOpen" preset="card" :title="t('supportProject')" style="max-width: 360px;">
               <div class="sponsor-modal">
-                <img src="/sponsor-wechat-qr.png" :alt="t('wechatSponsorQr')" loading="lazy">
+                <img :src="sponsorQrUrl" :alt="t('wechatSponsorQr')" loading="lazy">
                 <p class="muted">{{ t('supportProjectText') }}</p>
               </div>
             </NModal>
@@ -2242,3 +2309,66 @@ function redownloadUpdatePackage() {
     </div>
   </section>
 </template>
+
+<style scoped>
+.settings-status-disclosure {
+  margin: 0 0 14px;
+  border: 1px solid var(--df-border-soft);
+  border-radius: var(--df-radius-md, 10px);
+  background: color-mix(in srgb, var(--df-surface-1) 88%, transparent);
+}
+
+.settings-status-disclosure > summary {
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 13px;
+  cursor: pointer;
+  color: var(--df-text-secondary);
+  font-size: 13px;
+  font-weight: 650;
+  user-select: none;
+}
+
+.settings-status-disclosure > summary:hover { color: var(--df-text); background: color-mix(in srgb, var(--df-accent) 7%, transparent); }
+.settings-status-disclosure > summary:focus-visible { outline: 2px solid var(--df-accent); outline-offset: -2px; }
+.settings-status-count { color: var(--df-text-muted); font-variant-numeric: tabular-nums; }
+.settings-status-disclosure[open] > summary { border-bottom: 1px solid var(--df-border-soft); }
+.settings-status-disclosure .system-status-grid { margin: 0; padding: 10px; }
+
+.settings-nav-group-label {
+  margin: 13px 10px 4px;
+  color: var(--df-text-muted);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+
+.settings-nav .nav-item { min-height: 44px; }
+
+.appearance-agent-section {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  margin-bottom: 22px;
+  padding: 14px 16px;
+  border: 1px solid var(--df-border-soft);
+  border-radius: var(--df-radius-md, 10px);
+  background: color-mix(in srgb, var(--df-surface-1) 88%, transparent);
+}
+
+.appearance-agent-section h4,
+.appearance-agent-section p { margin: 0; }
+.appearance-agent-section p { margin-top: 4px; color: var(--df-text-muted); font-size: 12px; line-height: 1.5; }
+
+@media (max-width: 560px) {
+  .appearance-agent-section { align-items: flex-start; flex-direction: column; }
+}
+
+@media (max-width: 980px) {
+  .settings-nav-group-label { margin-top: 9px; }
+}
+</style>

@@ -42,10 +42,11 @@ export function useGame(){
   let refreshTimer:number|undefined
   let reconnectTimer:number|undefined
   let connectVersion=0
+  let refreshEpoch=0
   let eventCursor=''
   const signatures:Record<string,string> = { detail:'', players:'', log:'', privateMessages:'', tableTalk:'', map:'', loreEntries:'', lore:'' }
-  // GM 判定与后端 is_game_gm 同口径：已登录 owner（管理员账号多人共用都算）或该局主 GM 会话。
-  const isGm = computed(()=>!!detail.value && (hasAccessToken() || (!!userId.value && detail.value.gm_uid===userId.value)))
+  // 登录 owner 在无玩家覆盖时拥有 GM 视图；选择普通玩家预览不继承 owner 的 GM 控件。
+  const isGm = computed(()=>!!detail.value && ((!userId.value && hasAccessToken()) || (!!userId.value && detail.value.gm_uid===userId.value)))
   const actorId = computed(() => userId.value || (isGm.value ? detail.value?.gm_uid || '' : ''))
   const player = computed(()=>players.value.find(p=>p.user_id===actorId.value) || players.value[0])
 
@@ -155,7 +156,10 @@ export function useGame(){
 
   async function refresh(silent=false){
     const gameKey = currentGame.value
-    if(!gameKey)return
+    if(!gameKey)return false
+    const viewerId = userId.value
+    const epoch = ++refreshEpoch
+    const current = () => epoch === refreshEpoch && currentGame.value === gameKey && userId.value === viewerId
     if(!silent){loading.value=true; error.value=''}
     try{
       const [d,c,l,p,tt,m]=await Promise.all([
@@ -166,7 +170,7 @@ export function useGame(){
         api<TableTalkResponse>(`/games/${encodeURIComponent(gameKey)}/table-talk`),
         api<MapData>(`/games/${encodeURIComponent(gameKey)}/map`)
       ])
-      if(currentGame.value !== gameKey)return
+      if(!current())return false
       setIfChanged('detail', detail, d)
       setIfChanged('players', players, c.players||[])
       setIfChanged('log', log, l.log||[])
@@ -179,9 +183,9 @@ export function useGame(){
       const nextMapSignature = signature(nextMap)
       if (signatures.map !== nextMapSignature) {
         const resolvedMap = await resolveMapBackgroundAsset(nextMap)
-        if (currentGame.value !== gameKey) {
+        if (!current()) {
           revokeMapBackgroundAsset(resolvedMap)
-          return
+          return false
         }
         revokeMapBackgroundAsset(map.value)
         signatures.map = nextMapSignature
@@ -190,11 +194,12 @@ export function useGame(){
       if(d.world_id && isGm.value){
         try{
           const lb=await api<LorebookResponse>(`/lorebook/${encodeURIComponent(d.world_id)}`)
-          if(currentGame.value !== gameKey)return
+          if(!current())return false
           const entries = lb.entries||[]
           setIfChanged('loreEntries', loreEntries, entries)
           lore.value=buildLore(entries)
         }catch{
+          if (!current()) return false
           setIfChanged('loreEntries', loreEntries, [])
           setIfChanged('lore', lore, {})
         }
@@ -204,17 +209,20 @@ export function useGame(){
         setIfChanged('lore', lore, {})
       }
       error.value=''
+      return true
     }catch(e:unknown){
+      if (!current()) return false
       if (isNotFoundError(e)) {
         clearMissingGame(gameKey)
-        return
+        return false
       }
       if (isPlayerAccessClosedError(e)) {
         if (currentGame.value === gameKey) closeForPlayerAccess()
         return
       }
       if(!silent || !detail.value) error.value=errorMessage(e)
-    }finally{if(!silent)loading.value=false}
+      return false
+    }finally{if(current())loading.value=false}
   }
 
   async function connect(){
@@ -304,6 +312,6 @@ export function useGame(){
   // 新回合写入 log 时清掉流式气泡。第一页满员后长度不再增长（旧条目被挤到下一页），
   // 须按最新条目的 round 判断，否则“GM 思考中”在正式输出落地后残留。
   watch(() => log.value[log.value.length - 1]?.round, (next, prev) => { if (next !== prev) liveNarration.value = '' })
-  onBeforeUnmount(()=>{connectVersion++;source?.close();unsubscribePeerEvents?.();revokeMapBackgroundAsset(map.value);clearRefreshTimer();if(pollTimer)clearInterval(pollTimer);if(reconnectTimer)clearTimeout(reconnectTimer)})
+  onBeforeUnmount(()=>{connectVersion++;refreshEpoch++;source?.close();unsubscribePeerEvents?.();revokeMapBackgroundAsset(map.value);clearRefreshTimer();if(pollTimer)clearInterval(pollTimer);if(reconnectTimer)clearTimeout(reconnectTimer)})
   return {currentGame,userId,actorId,detail,players,player,log,privateMessages,tableTalk,map,lore,loreEntries,loading,error,accessClosed,isGm,refresh,connect,retryAccess,selectGame,liveNarration,rulesetStateSignal,checkReveals,diceRevealMode}
 }

@@ -27,9 +27,12 @@ from src.rulesets.contracts import (
     AuthoritativeIntentHooks,
     AutomaticIntentRuntime,
     IntentResultProjectionRuntime,
+    HostedIntentChoiceRuntime,
     TemporaryEncounterPlannerRuntime,
 )
 from src.rulesets.registry import RulesetRuntimeRegistry
+from src.llm.seat_policy import SeatRuntime
+from src.webui.services import hosted_combat, adventure_commands
 
 
 logger = logging.getLogger("trpg")
@@ -49,6 +52,8 @@ class RulesetGameplayDependencies:
     # Existing authoritative-intent HTTP seam for Adventure v2 completion.
     # The callback is explicit so this service never reaches through WebAPI.
     complete_adventure_node: Callable[[Any, str, str, str], dict[str, Any]] | None = None
+    request_adventure_choice: Callable[[Any, str, str, str], dict[str, Any]] | None = None
+    seat_runtime: SeatRuntime | None = None
 
 
 def _error(code: str, message: str) -> dict[str, Any]:
@@ -96,6 +101,20 @@ def _active_combat(instance: Any) -> dict[str, Any] | None:
     if isinstance(combat, dict) and combat.get("status") == "active":
         return combat
     return None
+
+
+def current_hosted_seat(dependencies: RulesetGameplayDependencies, instance: Any) -> str | None:
+    if _active_combat(instance) is None:
+        return None
+    rule = dependencies.load_rule_for_game(instance)
+    if rule is None:
+        return None
+    runtime = dependencies.ruleset_registry.resolve(rule.template)
+    if not isinstance(runtime, HostedIntentChoiceRuntime):
+        return None
+    pending = runtime.next_automatic_intent(instance)
+    actor = str((pending or {}).get("actor_id") or "")
+    return actor.removeprefix("player:") if actor.startswith("player:") else None
 
 
 def _project_public_batch(
@@ -430,60 +449,21 @@ async def submit_intent(
     # deliberately reuses the normal authenticated intent endpoint.  It is not
     # a ruleset runtime event and therefore must be dispatched before the
     # concrete runtime validates its own intent vocabulary.
-    if isinstance(body, dict) and body.get("type") == "adventure.node.complete":
-        if not requester_is_gm:
-            return _error("GM_ONLY", "只有 GM 可以确认冒险节点完成")
-        node_id = str(body.get("node_id") or "").strip()
-        if not node_id:
-            return _error("INVALID_ADVENTURE_NODE", "node_id is required")
-        if dependencies.complete_adventure_node is None:
-            return _error("ADVENTURE_RUNTIME_UNAVAILABLE", "Adventure v2 runtime is unavailable")
-        # Node completion mutates world_state / adventure_progress / economy:
-        # it is a live authoritative write, so it must not interleave with a
-        # historical rewrite nor land on a run that was replaced meanwhile.
-        async with instance.authoritative_write() as write_entered, instance._lock:
-            if not write_entered:
-                return _gate_error(
-                    "REWRITE_IN_PROGRESS", "GM 正在重写历史回合，请等待完成后重试",
-                )
-            if dependencies.get_instance(instance.game_key) is not instance:
-                return _gate_error("STALE_RUN", "对局已重开，请刷新后重试")
-            admission_error = _intent_write_error(instance, requester_id, requester_is_gm)
-            if admission_error:
-                return admission_error
-            # Reject an unsupported progress slot before the binding check can
-            # migrate the binding or the node transaction can touch the world.
-            adventure_runtime_state.require_writable(instance)
-            binding_error = await _ensure_compatible_adventure_binding(
-                dependencies, runtime, instance,
-            )
-            if binding_error:
-                return binding_error
-            before = {
-                "world_state": deepcopy(getattr(instance, "world_state", None)),
-                "adventure_progress": deepcopy(adventure_runtime_state.progress(instance)),
-                "economy": deepcopy(economy_state.state(instance)),
-            }
-            try:
-                completed = dependencies.complete_adventure_node(
-                    instance, node_id, effective_requester, effective_requester,
-                )
-                await dependencies.save_instance(instance)
-            except (ValueError, KeyError, TypeError) as exc:
-                _restore_adventure_node_before_image(instance, before)
-                return _error("ADVENTURE_NODE_REJECTED", str(exc))
-            except Exception:
-                _restore_adventure_node_before_image(instance, before)
-                logger.exception("Adventure node transaction failed and was restored")
-                return _error(
-                    "ADVENTURE_NODE_FAILED",
-                    "冒险节点结算失败，权威状态已恢复，请重试",
-                )
-            return _response(
-                dependencies, rule, runtime, instance, effective_requester,
-                requester_is_gm=True,
-                result={"adventure_node": completed},
-            )
+    if isinstance(body, dict) and body.get("type") in {"adventure.node.complete", "adventure.choice.request"}:
+        command = await adventure_commands.execute(
+            adventure_commands.AdventureCommandDependencies(
+                save=dependencies.save_instance,
+                complete=dependencies.complete_adventure_node,
+                request_choice=dependencies.request_adventure_choice,
+                admission=lambda: _intent_write_error(instance, requester_id, requester_is_gm),
+                binding=lambda: _ensure_compatible_adventure_binding(dependencies, runtime, instance),
+                get_instance=dependencies.get_instance,
+            ), instance, body, effective_requester, is_gm=requester_is_gm,
+        )
+        if not command["ok"]:
+            return command
+        return _response(dependencies, rule, runtime, instance, effective_requester,
+                         requester_is_gm=requester_is_gm, result=command["result"])
 
     try:
         intent = deepcopy(validate_draft_shape(body))
@@ -498,6 +478,28 @@ async def submit_intent(
     intent = runtime.prepare_intent_submission(
         intent, effective_requester, requester_is_gm,
     )
+
+    if dependencies.seat_runtime is not None and isinstance(runtime, HostedIntentChoiceRuntime):
+        async def preflight() -> dict | None:
+            if dependencies.get_instance(instance.game_key) is not instance:
+                return _error("GAME_CHANGED", "游戏已替换，请刷新")
+            admission = _intent_write_error(instance, requester_id, requester_is_gm)
+            if admission:
+                return admission
+            progression.require_writable(instance)
+            session_stats.require_writable(instance)
+            return await _ensure_compatible_adventure_binding(dependencies, runtime, instance)
+
+        planned = await hosted_combat.plan_and_commit(
+            instance, runtime, dependencies.seat_runtime, preflight=preflight,
+            save=dependencies.save_instance, initial_intent=intent,
+            project_batch=lambda staged, b, a: _project_public_batch(runtime, staged, b, a),
+        )
+        if not planned.get("ok"):
+            return planned
+        await _project_batch_memory(dependencies, runtime, instance, planned["batches"])
+        return _response(dependencies, rule, runtime, instance, effective_requester,
+                         requester_is_gm=requester_is_gm, result=planned["result"])
 
     async with instance._lock:
         admission_error = _intent_write_error(instance, requester_id, requester_is_gm)
@@ -627,6 +629,30 @@ async def resume_authoritative_combat(
             "ok": True, "handled": True, "resumed": False,
             "reason": "no_automatic_intent_runtime",
         }
+
+    if dependencies.seat_runtime is not None and isinstance(runtime, HostedIntentChoiceRuntime):
+        async def preflight() -> dict | None:
+            if dependencies.get_instance(instance.game_key) is not instance:
+                return _error("GAME_CHANGED", "游戏已替换，请刷新")
+            code = check_not_judging(instance, GateRequest(actor_uid=seat_uid, source=SOURCE_INTENT))
+            if code:
+                return _error(code, "回合正在处理中，请稍后重试")
+            progression.require_writable(instance)
+            session_stats.require_writable(instance)
+            return await _ensure_compatible_adventure_binding(dependencies, runtime, instance)
+
+        planned = await hosted_combat.plan_and_commit(
+            instance, runtime, dependencies.seat_runtime, preflight=preflight,
+            save=dependencies.save_instance, resume_uid=seat_uid,
+            project_batch=lambda staged, b, a: _project_public_batch(runtime, staged, b, a),
+        )
+        if planned.get("ok") and planned.get("resumed"):
+            await _project_batch_memory(dependencies, runtime, instance, planned["batches"])
+            return {"ok": True, "handled": True, "resumed": True,
+                    "automatic_event_batches": planned["result"]["automatic_event_batches"],
+                    "automatic_results": planned["result"]["automatic_results"]}
+        return {**planned, "handled": True, "resumed": False,
+                **({"error_code": planned.get("code")} if not planned.get("ok") else {})}
 
     async with instance._lock:
         # Server-owned automation keeps its existing actor checks below; only

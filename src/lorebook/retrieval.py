@@ -392,7 +392,9 @@ class LoreRetriever:
         if self._content_projection is not None:
             entries = self._content_projection.for_world_authoring(str(world_id))
         else:
-            entries = self._store.list_entries(str(world_id))
+            from src.content_modules.projection import entries_for_world
+
+            entries = entries_for_world(self._store, str(world_id))
         if self._load_world_template is not None:
             from src.content.worlds import localize_lorebook_entries
 

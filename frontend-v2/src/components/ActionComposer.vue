@@ -1,23 +1,135 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { NIcon } from 'naive-ui'
 import { MicOutline, StopCircleOutline, CloseOutline } from '@vicons/ionicons5'
-import { api } from '@/api/client'
+import { api, ApiError } from '@/api/client'
 import type { ActionSubmitResponse, GameDetail } from '@/api/types'
 import { useLocale } from '@/composables/useLocale'
 import { appendDictated, asrLanguageFor, initializeAsr, useVoiceInput, voiceInputSupported } from '@/utils/asr'
+import ActionRecoveryBanner from '@/features/play/recovery/ActionRecoveryBanner.vue'
+import {
+  actionRecoveryMessage,
+  actionRecoveryConfirmedMessage,
+  type ActionRecoveryCode,
+} from '@/features/play/recovery/copy'
+import {
+  clearActionRecovery,
+  useActionRecovery,
+  type ActionRecoveryIdentity,
+  type ActionRecoveryRecord,
+  type ActionRecoverySnapshot,
+} from '@/features/play/recovery/useActionRecovery'
 
-const props = defineProps<{ gameKey: string; userId: string; detail: GameDetail; disabled?: boolean }>()
-const emit = defineEmits<{ refresh: []; processing: [value: boolean] }>()
+const props = defineProps<{ gameKey: string; userId: string; detail: GameDetail; disabled?: boolean; recoveryRefreshToken?: string }>()
+const emit = defineEmits<{
+  refresh: [token?: string]
+  processing: [value: boolean]
+  'recovery-status': [value: { count: number; message: string }]
+}>()
 const { t, locale } = useLocale()
 
 const text = ref(''), busy = ref(false), notice = ref('')
+const textarea = ref<HTMLTextAreaElement | null>(null)
+const recoveryBanner = ref<HTMLElement | null>(null)
+const identity = computed<ActionRecoveryIdentity>(() => ({
+  gameKey: props.gameKey,
+  runId: String(props.detail.run_id || ''),
+  actorId: props.userId,
+  round: Math.max(0, Number(props.detail.round_number || 0)),
+}))
+const { snapshot, save, read } = useActionRecovery(identity)
+const recovery = computed(() => snapshot.value?.recovery || null)
+const requiresRefresh = computed(() => recovery.value?.kind === 'refresh')
+const identityKey = computed(() => JSON.stringify(identity.value))
+let submitSerial = 0
+let activeAttempt: { serial: number; identityKey: string } | null = null
+let disposed = false
 
 const own = computed(() => props.detail.multiplayer?.submitted_actions?.find(a => a.user_id === props.userId))
 const hint = computed(() => props.detail.solo_mode ? t('soloHint') : own.value ? t('submittedHint', { count: own.value.revision_count || 1 }) : t('defaultHint'))
 const defaultQuickActions = computed(() => [t('quickObserve'), t('quickExplore'), t('quickTalk'), t('quickPrepareCombat')])
 const quickActions = computed(() => (props.detail.quick_actions?.length ? props.detail.quick_actions : defaultQuickActions.value) as string[])
-const locked = computed(() => props.disabled || busy.value)
+const locked = computed(() => props.disabled || busy.value || requiresRefresh.value)
+
+function hydrateRecovery() {
+  const current = read()
+  text.value = current?.draft || ''
+}
+
+function draftChanged(value: string) {
+  const current = snapshot.value
+  if (!value.trim() && !current?.recovery) {
+    clearActionRecovery(identity.value)
+    return
+  }
+  save(value, current?.recovery || null)
+}
+
+function codeOf(error: unknown): ActionRecoveryCode {
+  const code = typeof ApiError === 'function' && error instanceof ApiError
+    ? error.code
+    : error && typeof error === 'object' && 'code' in error
+      ? String((error as { code?: unknown }).code || '')
+      : ''
+  if (code === 'ROUND_PROCESSING_FAILED' || code === 'ROUND_POST_COMMIT_FAILED' || code === 'ROUND_NOT_PROCESSED') return code
+  return 'UNKNOWN'
+}
+
+function showRecovery(error: unknown) {
+  const code = codeOf(error)
+  const kind: ActionRecoveryRecord['kind'] = code === 'ROUND_PROCESSING_FAILED' ? 'editable' : 'refresh'
+  const record: ActionRecoveryRecord = {
+    code,
+    message: actionRecoveryMessage(locale.value, code),
+    kind,
+    createdAt: Date.now(),
+  }
+  save(text.value, record)
+}
+
+function sameIdentityKey(key: string) { return key === identityKey.value }
+
+function clearRecovery(attemptIdentityKey = identityKey.value) {
+  if (!sameIdentityKey(attemptIdentityKey)) return
+  clearActionRecovery(identity.value)
+  snapshot.value = null
+}
+
+function recoveryToken(value: ActionRecoverySnapshot | null = snapshot.value): string {
+  if (!value?.recovery) return ''
+  return JSON.stringify({
+    identity: value.identity,
+    updatedAt: value.updatedAt,
+    code: value.recovery.code,
+    createdAt: value.recovery.createdAt,
+  })
+}
+
+function requestRecoveryRefresh() {
+  const token = recoveryToken()
+  if (token) emit('refresh', token)
+}
+
+watch(identity, () => {
+  if (activeAttempt && !sameIdentityKey(activeAttempt.identityKey)) {
+    submitSerial++
+    activeAttempt = null
+    if (busy.value) { busy.value = false; emit('processing', false) }
+  }
+  hydrateRecovery()
+}, { immediate: true })
+watch(text, value => { draftChanged(value) })
+watch(recovery, value => emit('recovery-status', { count: value ? 1 : 0, message: value?.message || '' }), { immediate: true })
+watch(() => props.recoveryRefreshToken, value => {
+  const current = recovery.value
+  if (!value || !current || !requiresRefresh.value || value !== recoveryToken()) return
+  if (current.code === 'ROUND_POST_COMMIT_FAILED') {
+    text.value = ''
+    clearRecovery()
+    return
+  }
+  save(text.value, { ...current, kind: 'editable', message: actionRecoveryConfirmedMessage(locale.value), createdAt: Date.now() })
+})
 
 const micAvailable = computed(() => voiceInputSupported())
 const {
@@ -66,14 +178,41 @@ async function submit() {
   const action = text.value.trim()
   if (!action || locked.value) return
   releaseVoice()
-  busy.value = true; notice.value = ''; emit('processing', true)
+  const attemptIdentityKey = identityKey.value
+  const serial = ++submitSerial
+  activeAttempt = { serial, identityKey: attemptIdentityKey }
+  busy.value = true; notice.value = ''; clearRecovery(attemptIdentityKey); emit('processing', true)
   try {
     const r = await api<ActionSubmitResponse>(`/games/${encodeURIComponent(props.gameKey)}/action`, { method: 'POST', body: JSON.stringify({ text: action }) })
+    if (disposed || activeAttempt?.serial !== serial || !sameIdentityKey(attemptIdentityKey)) return
     text.value = ''
     notice.value = r.phase === 'luck' ? t('luckDecisionRequired') : t('actionRecorded')
     emit('refresh')
-  } catch (e: unknown) { notice.value = e instanceof Error ? e.message : String(e) } finally { busy.value = false; emit('processing', false) }
+  } catch (e: unknown) {
+    if (disposed || activeAttempt?.serial !== serial || !sameIdentityKey(attemptIdentityKey)) return
+    showRecovery(e)
+  } finally {
+    if (disposed || activeAttempt?.serial !== serial || !sameIdentityKey(attemptIdentityKey)) return
+    activeAttempt = null; busy.value = false; emit('processing', false)
+  }
 }
+
+function focusComposer() { textarea.value?.focus() }
+function focusRecovery() {
+  const target = requiresRefresh.value
+    ? recoveryBanner.value?.querySelector<HTMLElement>('button')
+    : textarea.value
+  if (!target) return
+  target.scrollIntoView?.({ block: 'center', behavior: 'smooth' })
+  target.focus()
+}
+defineExpose({ focusRecovery })
+
+onUnmounted(() => {
+  disposed = true; submitSerial++; activeAttempt = null
+  emit('recovery-status', { count: 0, message: '' })
+  if (busy.value) emit('processing', false)
+})
 </script>
 
 <template>
@@ -96,8 +235,16 @@ async function submit() {
     </div>
     <div v-else-if="recording" class="dictation-status">{{ t('asrRecording', { seconds: elapsedSeconds }) }}</div>
     <div v-else-if="transcribing" class="dictation-status">{{ t('asrTranscribing') }}</div>
+    <div v-if="recovery" ref="recoveryBanner">
+      <ActionRecoveryBanner
+        :message="recovery.message"
+        :requires-refresh="requiresRefresh"
+        @refresh="requestRecoveryRefresh"
+        @focus="focusComposer"
+      />
+    </div>
     <div class="composer-row" :class="{ 'has-dictation': micAvailable }">
-      <textarea v-model="text" :disabled="locked" :placeholder="t('actionPlaceholder')" @keydown.ctrl.enter.prevent="submit()" />
+      <textarea ref="textarea" v-model="text" :disabled="locked" :placeholder="t('actionPlaceholder')" @keydown.ctrl.enter.prevent="submit()" />
       <button
         v-if="micAvailable"
         type="button"

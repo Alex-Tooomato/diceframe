@@ -11,6 +11,8 @@ from src.engine.dice import d20_critical_thresholds, roll
 from src.engine.game_instance import GameState
 from src.engine.health import mark_health_event
 from src.engine.modules import room_access, table_settings
+from src.engine.staged_transaction import StagedGameTransaction
+from src.webui.services.check_decisions import decision_payload
 from src.engine.player_control import (
     PlayerControlError,
     away_control_policy,
@@ -315,14 +317,19 @@ class GameControlService:
                 return {"ok": False, "code": "REWRITE_IN_PROGRESS", "error": "GM 正在重写历史回合，请等待完成后重试"}
             if self._instance(game_key) is not instance:
                 return {"ok": False, "code": "STALE_RUN", "error": "对局已重开，请刷新后重试"}
-            assert instance is not None
-            result = await instance.resolve_luck_decision(check_id, actor_uid, spend, rule=self._dependencies.load_rule(instance), allow_gm=True)
-            if not result.get("ok"):
-                return result
-            await self._dependencies.save_instance(instance)
-            pending = instance.pending_luck_checks()
-            round_already_resolved = instance.state != GameState.ACTIVE_JUDGMENT
-            return {**result, "phase": "done" if round_already_resolved else ("luck" if pending else "ready"), "pending_luck_decisions": pending, "ready_to_resolve": not pending and not round_already_resolved, "round_already_resolved": round_already_resolved}
+            async with instance._lock:
+                transaction = StagedGameTransaction(instance)
+                result = await transaction.staged.resolve_luck_decision(check_id, actor_uid, spend, rule=self._dependencies.load_rule(instance), allow_gm=True)
+                if not result.get("ok"):
+                    return result
+                transaction.publish(instance)
+                try:
+                    await self._dependencies.save_instance(instance)
+                except BaseException:
+                    transaction.rollback(instance)
+                    raise
+                instance._cancel_luck_timer(check_id)
+                return decision_payload(instance, result)
 
     async def decline_pending_luck(self, game_key: str) -> dict[str, Any]:
         instance = self._instance(game_key)
@@ -337,10 +344,19 @@ class GameControlService:
                 return {"ok": False, "code": "REWRITE_IN_PROGRESS", "error": "GM 正在重写历史回合，请等待完成后重试"}
             if self._instance(game_key) is not instance:
                 return {"ok": False, "code": "STALE_RUN", "error": "对局已重开，请刷新后重试"}
-            declined = await instance.decline_pending_luck()
-            if declined:
-                await self._dependencies.save_instance(instance)
-            return {"ok": True, "declined_luck_decisions": declined}
+            async with instance._lock:
+                transaction = StagedGameTransaction(instance)
+                declined = await transaction.staged.decline_pending_luck()
+                if declined:
+                    transaction.publish(instance)
+                    try:
+                        await self._dependencies.save_instance(instance)
+                    except BaseException:
+                        transaction.rollback(instance)
+                        raise
+                    for check in declined:
+                        instance._cancel_luck_timer(str(check.get("check_id") or ""))
+                return {"ok": True, "declined_luck_decisions": declined}
 
     async def set_solo_mode(
         self, game_key: str, solo: bool,

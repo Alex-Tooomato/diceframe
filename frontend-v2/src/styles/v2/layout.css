@@ -21,6 +21,23 @@
   min-height: calc(100dvh - 68px);
 }
 
+@media (min-width: 801px) {
+  .app-workspace {
+    min-height: calc(100dvh + 1px);
+  }
+
+  /* Overview and play keep the shared application header. Their page surfaces
+     fill the remaining viewport below the global navigation. */
+  .app-shell-focus {
+    grid-template-rows: max-content max-content;
+    min-height: 100dvh;
+  }
+
+  .app-shell-focus > .app-workspace {
+    min-height: calc(100dvh - 58px);
+  }
+}
+
 @media (max-width: 800px) {
   .app-shell {
     min-height: 100dvh;
@@ -36,7 +53,7 @@
 
   .app-workspace {
     min-height: calc(100dvh - 51px);
-    padding-bottom: calc(64px + env(safe-area-inset-bottom));
+    padding-bottom: calc(76px + env(safe-area-inset-bottom));
   }
 
   .app-shell-play .app-workspace {
@@ -373,39 +390,6 @@
   .login-card,
   .lang-picker {
     padding: 28px 22px;
-  }
-}
-
-@media (max-width: 900px) {
-  .overview-hero {
-    align-items: flex-start;
-    flex-direction: column;
-  }
-
-  .overview-actions {
-    justify-content: flex-start;
-  }
-
-  .overview-stats {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
-  .overview-stats .wide {
-    grid-column: 1 / -1;
-  }
-}
-
-@media (max-width: 520px) {
-  .overview-stats {
-    grid-template-columns: minmax(0, 1fr);
-  }
-
-  .overview-stats .wide {
-    grid-column: auto;
-  }
-
-  .game-grid {
-    grid-template-columns: minmax(0, 1fr);
   }
 }
 

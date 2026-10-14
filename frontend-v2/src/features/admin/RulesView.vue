@@ -9,6 +9,7 @@ import { localizedField } from '@/utils/ruleSchema'
 import Modal from '@/components/ui/Modal.vue'
 import CombatExtensionEditor from '@/components/admin/CombatExtensionEditor.vue'
 import { blockFromDraft, draftFromBlock, emptyDraft, type CombatDraft } from '@/features/admin/combatExtensionDraft'
+import ContentPageHeader from '@/components/content/ContentPageHeader.vue'
 
 const toast = useToast()
 const { confirm } = useConfirm()
@@ -22,6 +23,20 @@ const ruleForm = ref<RuleForm | null>(null)
 const ruleJson = ref('')
 const advancedJson = ref(false)
 const combatDraft = ref<CombatDraft>(emptyDraft())
+const search = ref('')
+const kindFilter = ref<'all' | 'builtin' | 'custom'>('all')
+
+const visibleRules = computed(() => {
+  const needle = search.value.trim().toLocaleLowerCase()
+  return (data.value?.rules || []).filter(rule => {
+    if (kindFilter.value === 'custom' && !rule.custom) return false
+    if (kindFilter.value === 'builtin' && rule.custom) return false
+    if (!needle) return true
+    const text = [rule.rule_id, rule.rule_name, rule.rule_name_en, localizedField<string>(rule, 'rule_name'), localizedField<string>(rule, 'description'), rule.description, rule.ruleset_runtime?.id]
+      .filter(Boolean).join(' ').toLocaleLowerCase()
+    return text.includes(needle)
+  })
+})
 
 const editorTitle = computed(() => {
   if (!ruleEdit.value) return t('ruleEditor')
@@ -278,29 +293,38 @@ async function deleteRule(rule: RuleSummary) {
 
 <template>
   <section class="view archive-page rules-page">
-    <header class="view-title archive-hero">
-      <div>
-        <span class="section-kicker">{{ t('rulesKicker') }}</span>
-        <h1>{{ t('ruleSystem') }}</h1>
-        <p class="muted">{{ t('ruleSystemSubtitle') }}</p>
-      </div>
-      <div class="actions">
-        <button class="primary" @click="openNewRule">{{ t('newRule') }}</button>
-        <button @click="load">{{ t('refresh') }}</button>
-      </div>
-    </header>
+    <ContentPageHeader class="view-title archive-hero rules-page-heading" kicker="RULE COMPENDIUM" :title="t('ruleSystem')" :description="t('ruleSystemSubtitle')">
+      <template #actions>
+        <div class="actions">
+          <button class="primary" @click="openNewRule">{{ t('newRule') }}</button>
+          <button @click="load">{{ t('refresh') }}</button>
+        </div>
+      </template>
+    </ContentPageHeader>
 
     <p v-if="error" class="error-banner">{{ error }}</p>
+
+    <div class="rules-toolbar" role="search">
+      <input v-model="search" type="search" :placeholder="t('rulesSearchPlaceholder')" :aria-label="t('rulesSearchPlaceholder')">
+      <select v-model="kindFilter" :aria-label="t('rulesFilterLabel')">
+        <option value="all">{{ t('rulesFilterAll') }}</option>
+        <option value="builtin">{{ t('builtin') }}</option>
+        <option value="custom">{{ t('custom') }}</option>
+      </select>
+      <span class="rules-count">{{ visibleRules.length }} / {{ data?.rules?.length || 0 }}</span>
+    </div>
 
     <div v-if="(data?.rules || []).length >= 2" class="rule-warn-card">
       {{ t('multipleRulesWarning', { count: (data?.rules || []).length }) }}
     </div>
 
     <div class="card-grid">
-      <article v-for="r in data?.rules || []" :key="r.rule_id" class="rule-card">
+      <article v-for="r in visibleRules" :key="r.rule_id" class="rule-card">
         <div>
           <h2><span>{{ localizedField<string>(r, 'rule_name') || r.rule_id }}</span><small v-if="r.custom" class="badge badge-active">{{ t('custom') }}</small><small v-else class="badge">{{ t('builtin') }}</small></h2>
           <div class="rule-meta-row">
+            <span v-if="r.ruleset_runtime"><strong>{{ t('rulesRuntime') }}</strong>{{ r.ruleset_runtime.id }} · v{{ r.ruleset_runtime.version }}</span>
+            <span v-else><strong>{{ t('rulesRuntime') }}</strong>{{ t('rulesTemplateRuntime') }}</span>
             <span><strong>{{ t('dice') }}</strong>{{ r.dice_system || '-' }}</span>
             <span><strong>{{ t('combat') }}</strong>{{ r.combat_model || '-' }}</span>
             <span><strong>{{ t('attributes') }}</strong>{{ r.attr_count ?? '-' }} {{ t('itemsUnit') }}</span>
@@ -313,7 +337,8 @@ async function deleteRule(rule: RuleSummary) {
           <button v-if="r.custom" class="danger" @click="deleteRule(r)" :disabled="busy">{{ t('delete') }}</button>
         </div>
       </article>
-      <p v-if="!data?.rules?.length" class="muted">{{ t('noRules') }}</p>
+      <p v-if="data?.rules?.length && !visibleRules.length" class="muted">{{ t('rulesNoMatches') }}</p>
+      <p v-else-if="data && !data.rules?.length" class="muted">{{ t('noRules') }}</p>
     </div>
 
     <Modal v-if="ruleEdit && ruleForm" :title="editorTitle" dialog-class="rule-edit-dialog" @close="ruleEdit = null">
@@ -380,3 +405,14 @@ async function deleteRule(rule: RuleSummary) {
     </Modal>
   </section>
 </template>
+
+<style scoped>
+.rules-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: .65rem; margin: 1rem 0; }
+.rules-toolbar input { flex: 1 1 16rem; min-width: 0; }
+.rules-toolbar select { min-height: 44px; }
+.rules-count { color: var(--df-text-muted); font-size: .85rem; }
+@media (max-width: 480px) {
+  .rules-toolbar input, .rules-toolbar select { width: 100%; }
+  .rules-count { width: 100%; }
+}
+</style>

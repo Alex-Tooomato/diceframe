@@ -1,4 +1,5 @@
 import { i18n } from '@/i18n'
+import { notifyAccessTokenChange } from '@/api/authSession'
 import { activePeerGameClient } from '@/peer/game/bridge'
 import {
   accessTokenStorageKey,
@@ -262,7 +263,10 @@ export async function validateAccessToken(value: string): Promise<void> {
   if (!response.ok) throw new ApiError(i18n.global.t('incorrectPassword'), response.status)
 }
 
-export function setAccessToken(value: string) { localStorage.setItem(accessTokenStorageKey(), value) }
+export function setAccessToken(value: string) {
+  notifyAccessTokenChange()
+  localStorage.setItem(accessTokenStorageKey(), value)
+}
 export function hasAccessToken(): boolean { return !!localStorage.getItem(accessTokenStorageKey()) }
 
 export type OwnerAccessStatus = 'allowed' | 'login-required' | 'unavailable'

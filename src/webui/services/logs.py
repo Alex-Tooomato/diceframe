@@ -7,7 +7,8 @@ from dataclasses import dataclass
 from typing import Any, Callable, Protocol
 
 from src.engine import module_hooks
-from src.engine.modules import progression_state, session_stats, table_settings
+from src.engine.modules import checks, progression_state, session_stats, table_settings
+from src.engine.game_state import GameState
 from src.llm.parser import sanitize_narration
 
 GameKey = tuple[str, ...]
@@ -103,6 +104,16 @@ def get_log(
         if not isinstance(results, list):
             continue
         for check in results:
+            if isinstance(check, dict) and str(check.get("check_id") or ""):
+                page_ids.add(str(check.get("check_id")))
+    # During the judgment phase, the current round checks are projected by the
+    # game detail endpoint rather than the log. Include their reveal markers in
+    # this companion map too, while keeping historical pagination unchanged.
+    if (
+        getattr(inst, "state", None) == GameState.ACTIVE_JUDGMENT
+        and checks.round_checks_prepared(inst)
+    ):
+        for check in checks.last_checks(inst):
             if isinstance(check, dict) and str(check.get("check_id") or ""):
                 page_ids.add(str(check.get("check_id")))
     reveal_records = module_hooks.read_value(inst, module_hooks.CHECK_REVEALS) or {}

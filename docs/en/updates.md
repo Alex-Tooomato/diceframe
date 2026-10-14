@@ -22,6 +22,8 @@ Open **Management → Settings → About**, then use the Version Update section 
 
 If the new version cannot start correctly, DiceFrame automatically returns to the previous version. Downloaded packages and older unused versions are removed after a successful update.
 
+When a previous payload is available, the Version Update section also shows **Restore previous version**. After confirmation, the launcher stops the current server, starts the previous payload with the same health check and probation period, and swaps the current/previous pointers. Both payloads remain available so the switch can be reversed. The action only switches application files and does not delete `data/`; backing up data is still recommended.
+
 Portable installations keep at most two application payloads. The root-level `app/` and `python/` directories from the original archive count as the first payload and remain as the rollback copy after the first update. After the second and later successful updates, only the current and previous payloads under `versions/` are kept, and the legacy root-level `app/` and `python/` directories are removed. `data/`, `logs/`, and the root launcher are not version payloads and are never removed by this cleanup. User-installed plugin source code lives under `data/plugin-packages/` and is preserved with `data/` across versions; `app/plugins/` holds only built-in and example plugins and is cleared with old version payloads. If the current payload is unavailable, the launcher uses the version pointer to try the previous payload.
 
 DiceFrame keeps console output while also writing persistent runtime logs. Windows portable installations use the root-level `logs/` directory, managed Docker uses persistent `data/logs/`, and source runs default to the project-root `logs/` directory. Logs rotate daily and retain the latest 30 days. They can also be removed from **Management → Settings → Advanced → Runtime logs**. Runtime logs are independent from game history, chat history, and saves.
@@ -39,6 +41,8 @@ If you use a Git checkout, continue updating it with `git pull`.
 ## Docker and NAS
 
 Docker users must manually pull one baseline image that supports managed updates. Its stable launcher manages the current and previous application payloads under `data/_updater/docker-versions/`. After that migration, ordinary DiceFrame application releases can be downloaded and applied from the Version Update section under **Management → Settings → About**. The container ID stays unchanged, and a candidate is committed only after its health check and probation period succeed; otherwise the launcher returns to the previous version.
+
+Managed Docker also exposes **Restore previous version** in the Version Update section. The stable launcher performs the health check and probation period, then swaps the `current.json` pointers while keeping both application payloads. This is available only for payloads that pass the existing `data_rollback_safe: true` contract.
 
 Every Docker Update manifest must explicitly declare `data_rollback_safe: true`, meaning data written by that release remains readable by the previous application version. Managed update rejects packages without that declaration and releases with irreversible data migrations. Those releases require a base-image upgrade with an explicit backup or migration procedure instead of pretending to be an automatically reversible ordinary update.
 
@@ -73,3 +77,5 @@ The temporary anonymous request quota for the mirrors and GitHub may be exhauste
 ### An update fails
 
 Do not delete `data/`. Portable and managed-Docker installations attempt to return to the previous version automatically, while source installations attempt to restore the previous application files. If DiceFrame still cannot start, download the appropriate package again from GitHub Releases and keep the logs for diagnosis.
+
+Source releases and Git checkouts do not have launcher-managed dual payloads, so the Settings page does not offer automatic rollback; restore the previous application files manually or use the matching GitHub Release after preserving the data backup.
