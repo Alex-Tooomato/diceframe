@@ -5,17 +5,23 @@ import { de } from './messages/de'
 import { ru } from './messages/ru'
 import { zhCN } from './messages/zh-CN'
 
-export type Locale = 'zh-CN' | 'en' | 'ja' | 'de' | 'ru'
-export type MessageKey = keyof typeof zhCN
+import sourceReview from './source-review.json'
+import { catalogForLocale, effectiveUiLocale, KNOWN_LOCALES, LOCALE_POLICY, UI_LOCALES, type Locale, type MessageTree } from './policy'
+
+export type { Locale } from './policy'
+export type MessageKey = keyof typeof en
 
 export const LOCALE_STORAGE_KEY = 'diceframe_locale'
+
+const communityCatalog = (code: 'ja' | 'de' | 'ru', translated: MessageTree) =>
+  catalogForLocale(code, en, translated, { ...sourceReview.baseline, ...sourceReview.reviews[code] })
 
 export const messages = {
   'zh-CN': zhCN,
   en,
-  ja,
-  de,
-  ru,
+  ja: communityCatalog('ja', ja),
+  de: communityCatalog('de', de),
+  ru: communityCatalog('ru', ru),
 } as const
 
 export function normalizeLocale(value: unknown): Locale {
@@ -29,20 +35,19 @@ export function normalizeLocale(value: unknown): Locale {
 /** Every locale the app ships, in picker order. Render language menus from this
  * list rather than hardcoding options: de and ja were previously missing from
  * most pickers because each one carried its own copy. */
-export const SUPPORTED_LOCALES = Object.keys(messages) as Locale[]
+export const SUPPORTED_LOCALES = KNOWN_LOCALES
+export { UI_LOCALES }
 
 /** A locale's own name. Used by UI-language switchers, where a reader looks for
  * their language written the way they write it. */
-const LOCALE_ENDONYMS: Record<Locale, string> = {
-  'zh-CN': '简体中文',
-  en: 'English',
-  ja: '日本語',
-  de: 'Deutsch',
-  ru: 'Русский',
+export function localeEndonym(locale: Locale): string {
+  return LOCALE_POLICY[locale].endonym
 }
 
-export function localeEndonym(locale: Locale): string {
-  return LOCALE_ENDONYMS[locale] || locale
+export function uiLocaleLabel(locale: Locale): string {
+  const name = localeEndonym(locale)
+  if (LOCALE_POLICY[locale].tier === 'core') return name
+  return `${name} (${i18n.global.t('communityTranslation')})`
 }
 
 /**
@@ -85,7 +90,7 @@ function initialLocale(): Locale {
 
 export const i18n = createI18n({
   legacy: false,
-  locale: initialLocale(),
+  locale: effectiveUiLocale(initialLocale()),
   // 缺失语言（如 ja/de 尚未翻译的文案）回退英文，而非中文。
   fallbackLocale: 'en',
   messages,

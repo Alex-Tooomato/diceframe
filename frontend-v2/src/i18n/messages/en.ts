@@ -1,7 +1,8 @@
 export const en = {
+  communityTranslation: 'Community',
   contentLangRu: 'Русский',
   scriptImportTitle: 'Import script / external adventure',
-  scriptImportHint: 'Upload UTF-8 Markdown or TXT (up to 512 KB). Review chapters, scenes, branches and visibility before publishing.',
+  scriptImportHint: 'Import Markdown/TXT, a text-layer PDF, Foundry Adventure JSON or unencrypted Fantasy Grounds XML/MOD. Review scenes, references and visibility before publishing. Scanned PDFs need OCR first.',
   scriptFile: 'Script file',
   scriptPreview: 'Parse and preview',
   scriptDefaultGm: 'Imported scenes are GM-only by default. Review each scene before making it public.',

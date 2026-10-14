@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import ast
 import json
 import os
 import shutil
@@ -21,6 +22,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from src.docker_launcher.contracts import (  # noqa: E402
+    DATA_SCHEMA_BASELINE,
     LAUNCHER_SCHEMA,
     PLATFORM,
     PYTHON_ABI,
@@ -53,7 +55,51 @@ def install_runtime(target: Path) -> None:
         compiled.unlink(missing_ok=True)
 
 
+def current_data_schemas() -> dict[str, int]:
+    # Docker's build stage has only stdlib Python. Read the owners' literal
+    # declarations without importing the application or executing migrations.
+    def declaration(filename: str, name: str) -> ast.expr:
+        tree = ast.parse((ROOT / "src" / "migrations" / filename).read_text(encoding="utf-8"))
+        for node in tree.body:
+            if isinstance(node, ast.Assign):
+                if any(isinstance(target, ast.Name) and target.id == name for target in node.targets):
+                    return node.value
+            elif isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name):
+                if node.target.id == name and node.value is not None:
+                    return node.value
+        raise ValueError(f"cannot read Docker data schema declaration: {filename}:{name}")
+
+    def integer(node: ast.expr) -> int:
+        if isinstance(node, ast.Constant) and type(node.value) is int and node.value > 0:
+            return node.value
+        raise ValueError("Docker data schema must be a positive literal integer")
+
+    instance = integer(declaration("instance.py", "CURRENT_INSTANCE_SCHEMA_VERSION"))
+    steps = declaration("lorebook.py", "MIGRATIONS")
+    if not isinstance(steps, ast.Tuple) or not steps.elts:
+        raise ValueError("cannot read Lorebook data schema migration sequence")
+    versions = []
+    for step in steps.elts:
+        if not isinstance(step, ast.Tuple) or len(step.elts) != 2:
+            raise ValueError("cannot read Lorebook data schema migration step")
+        versions.append(integer(step.elts[0]))
+    if versions != sorted(set(versions)):
+        raise ValueError("Lorebook data schema migration sequence is not ordered")
+    return {"instance": instance, "lorebook": versions[-1]}
+
+
+def require_rollback_baseline() -> dict[str, int]:
+    schemas = current_data_schemas()
+    if schemas != DATA_SCHEMA_BASELINE:
+        raise ValueError(
+            "Docker data schema changed: review rollback compatibility and "
+            "establish a new base runtime before building managed updates"
+        )
+    return schemas
+
+
 def write_manifest(package_dir: Path, version: str, commit: str) -> None:
+    schemas = require_rollback_baseline()
     payload = {
         "schema": 1,
         "version": version,
@@ -61,6 +107,7 @@ def write_manifest(package_dir: Path, version: str, commit: str) -> None:
         "python_abi": PYTHON_ABI,
         "launcher_schema_min": LAUNCHER_SCHEMA,
         "runtime_api": RUNTIME_API,
+        "data_schemas": schemas,
         "data_rollback_safe": True,
         "entrypoint": "app/web_server.py",
         "site_packages": "runtime/site-packages",
@@ -80,6 +127,7 @@ def build_package(
     *,
     build_frontend_assets: bool = True,
 ) -> Path:
+    require_rollback_baseline()
     version = version.strip().lstrip("vV")
     package_name = f"DiceFrame-v{version}-docker-update-linux-amd64"
     package_dir = BUILD_ROOT / package_name

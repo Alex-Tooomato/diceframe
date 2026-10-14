@@ -21,7 +21,10 @@ from typing import Any
 
 SCHEMA_VERSION = 1
 LAUNCHER_SCHEMA = 1
-RUNTIME_API = 1
+# Runtime 1 applications cannot read instance 44 / Lorebook 12. A new image is
+# required at this boundary; ordinary updates and rollback stay within runtime 2.
+RUNTIME_API = 2
+DATA_SCHEMA_BASELINE = {"instance": 44, "lorebook": 12}
 PLATFORM = "linux-amd64"
 PYTHON_ABI = "cp311"
 MAX_ARCHIVE_MEMBERS = 20_000
@@ -171,6 +174,8 @@ def validate_manifest(
         raise ValueError("Docker update requires a newer base image launcher")
     if int(payload.get("runtime_api", 0) or 0) != runtime_api:
         raise ValueError("Docker update requires a different Docker base runtime")
+    if runtime_api == RUNTIME_API and payload.get("data_schemas") != DATA_SCHEMA_BASELINE:
+        raise ValueError("Docker update data schema does not match the base runtime")
     if payload.get("data_rollback_safe") is not True:
         raise ValueError(
             "Docker update cannot be auto-applied because its data migrations "

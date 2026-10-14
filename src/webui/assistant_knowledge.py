@@ -4,7 +4,8 @@
 不联网、不解析 markdown，秒检索。预建索引不存在时（开发环境）回退到运行时
 解析本地 docs。便携版 / 源码发布包通过预建索引获得文档，无需打包原始 docs。
 
-diceframe-content 仓库是用户文档的唯一来源：运行时后台从其 GitHub raw 拉取
+diceframe-content 仓库提供通用用户手册和部署文档；本仓库维护 README、
+更新、当前功能流程与翻译政策，作为版本相关的内置补充。运行时后台从其 GitHub raw 拉取
 docs/{lang}/*.md（TTL 缓存，失败静默回退内置索引），文档推送后无需发版，
 各实例的助手在 TTL 内自动跟进。README 属于主程序仓库，只走内置索引。
 """
@@ -30,12 +31,16 @@ PROJECT_ROOT = Path(__file__).resolve().parents[2]
 INDEX_FILE = Path(__file__).parent / "assistant_knowledge_index.json"
 _DOCUMENTS = {
     "zh": (
-        "README.md",
+        "README_zh-CN.md",
         "docs/zh/updates.md",
+        "docs/zh/content-and-play.md",
+        "docs/zh/translations.md",
     ),
     "en": (
-        "README_EN.md",
+        "README.md",
         "docs/en/updates.md",
+        "docs/en/content-and-play.md",
+        "docs/en/translations.md",
     ),
 }
 

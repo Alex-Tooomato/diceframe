@@ -16,11 +16,23 @@ This page explains how to update DiceFrame itself. Plugins are updated separatel
 
 Updating the application does not delete saves or settings. Backing up the complete `data/` folder before an upgrade is still recommended.
 
+## This integration's data-format boundary
+
+Before upgrading, stop the server and copy the complete `data/` directory to an independent backup. Keep the matching old application/image version if you may need to downgrade. Do not copy a live SQLite database as if it were a consistent backup.
+
+Supported game saves migrate automatically to schema 44, and the Lorebook database migrates transactionally to schema 12. Known unreleased local save/database variants are recognized at the migration boundary; unknown, ambiguous and future variants are rejected. Existing characters, game progress and book bindings are retained. Keep the required rules and pinned adventure versions installed.
+
+The previous main reader cannot read these new formats. **Restoring application files does not restore data.** For a downgrade, stop the server, restore the old program/image together with its matching complete pre-upgrade data backup, then start it. Changes made after that backup will not be present. Do not point an old program at the migrated database or hand-edit schema numbers.
+
+Docker runtime API 2 establishes this new data baseline. Runtime API 1 images reject these update packages and must be upgraded by pulling/recreating the base image after backup. The new launcher rejects runtime API 1 payloads as startup/rollback targets; if the new image fails to start, it does not automatically launch the incompatible old application. Compatible updates and rollback within API 2 retain the existing health-check/probation flow. The package builder refuses an unreviewed change to the instance/Lorebook schema baseline instead of automatically declaring it rollback-safe.
+
+AI settings use only the provider catalog, secret provider keys and capability references. Legacy inline connection settings are not automatically converted: add the provider and assign roles in Settings. Missing references leave the capability unconfigured. A legacy player link containing only a bare player ID needs a new seat invitation from the GM.
+
 ## Windows Portable
 
 Open **Management → Settings → About**, then use the Version Update section to download and apply the update. DiceFrame restarts automatically and refreshes the page when the update finishes.
 
-If the new version cannot start correctly, DiceFrame automatically returns to the previous version. Downloaded packages and older unused versions are removed after a successful update.
+If the new version cannot start correctly, the launcher attempts to return to the previous program. That cannot undo migrated data; use the matching backup at a data-format boundary as described above. Downloaded packages and older unused versions are removed after a successful update.
 
 When a previous payload is available, the Version Update section also shows **Restore previous version**. After confirmation, the launcher stops the current server, starts the previous payload with the same health check and probation period, and swaps the current/previous pointers. Both payloads remain available so the switch can be reversed. The action only switches application files and does not delete `data/`; backing up data is still recommended.
 
@@ -44,7 +56,7 @@ Docker users must manually pull one baseline image that supports managed updates
 
 Managed Docker also exposes **Restore previous version** in the Version Update section. The stable launcher performs the health check and probation period, then swaps the `current.json` pointers while keeping both application payloads. This is available only for payloads that pass the existing `data_rollback_safe: true` contract.
 
-Every Docker Update manifest must explicitly declare `data_rollback_safe: true`, meaning data written by that release remains readable by the previous application version. Managed update rejects packages without that declaration and releases with irreversible data migrations. Those releases require a base-image upgrade with an explicit backup or migration procedure instead of pretending to be an automatically reversible ordinary update.
+Every Docker Update manifest must explicitly declare `data_rollback_safe: true`, meaning data written by that release remains readable by the previous compatible application in the same base-runtime generation. The runtime API must match, and API 2 packages declare the reviewed `data_schemas` baseline (instance 44, Lorebook 12). Managed update rejects packages outside these contracts. An incompatible migration requires a new base-runtime generation and an explicit image-upgrade/backup procedure.
 
 Python ABI, system library, CA, font, or launcher protocol changes remain base-runtime updates and still require pulling a new image. DiceFrame never mounts the Docker socket and does not control the Docker daemon from inside the container.
 

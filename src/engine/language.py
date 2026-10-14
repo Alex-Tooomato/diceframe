@@ -3,15 +3,12 @@
 from __future__ import annotations
 
 
+from src.localization.policy import display_language
+
+
 DEFAULT_LANGUAGE = "zh-CN"
-# 四语支持：zh-CN / en / ja / de。ja 已全链路实现（localized_text n-way 分叉 +
-# *_ja 规则模板/词表/prompt + 前端 ja 消息，见 P3-A）。de（German）按同一模式
-# 追加：核心 UI/GM 输出与规则附录已支持，内置世界模板/SRD 等大体量内容仍随
-# localized_text 的回退链落回英文，尚未逐条翻译（与 ja 现状一致）。
-# ru (Russian) follows the same pattern as de: the language is registered here
-# so it can be selected, the GM output instruction and the front-end messages
-# are translated, and everything else rides the localized_text fallback chain
-# down to English until it is translated entry by entry.
+# Keep saved/game locale identities stable, independently of display catalog
+# maintenance. Core/community status lives in src.localization.registry.json.
 SUPPORTED_LANGUAGES = {"zh-CN", "en", "ja", "de", "ru"}
 
 # 本地化字段后缀登记：中文（zh-*）无后缀（直接用原字段）；
@@ -46,7 +43,7 @@ def localized_text(language: object, texts: dict[str, str], fallback: str = "") 
     当前语言时回退 en，再回退 zh-CN，最后回退 fallback。逐步替代
     `if english: A else B` 的二元分叉。第三/四语言（ja/de）缺失时优先回退英文。
     """
-    lang = normalize_language(language)
+    lang = display_language(normalize_language(language))
     return texts.get(lang) or texts.get("en") or texts.get("zh-CN") or fallback
 
 
@@ -65,6 +62,8 @@ def content_locale_candidates(locale: object) -> list[str]:
     requested = str(locale or "").strip().replace("_", "-")
     if not requested:
         return []
+    if display_language(normalize_language(requested)) != normalize_language(requested):
+        return ["en"]
     candidates: list[str] = []
     for value in (requested, requested.split("-", 1)[0]):
         if value and value not in candidates:
@@ -88,7 +87,7 @@ def lang_suffix(language: object) -> str:
 def localized_field(template: dict, key: str, language: object = DEFAULT_LANGUAGE):
     """按语言取本地化字段：优先 {key}_{suffix}，第三/四语言（ja/de）缺失时回退
     {key}_en，再无则回退 {key}（zh 原文）。字段可选，不强制维护。"""
-    suffix = lang_suffix(language)
+    suffix = lang_suffix(display_language(normalize_language(language)))
     if suffix:
         v = template.get(f"{key}_{suffix}")
         if v is not None:

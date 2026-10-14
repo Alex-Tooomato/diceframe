@@ -1,7 +1,8 @@
 export const zhCN = {
+  communityTranslation: '社区翻译',
   contentLangRu: 'Русский',
   scriptImportTitle: '导入剧本 / 外部模组',
-  scriptImportHint: '上传 UTF-8 的 Markdown 或 TXT（最多 512 KB）。先检查章节、场景、分支和公开范围，再发布为冒险。',
+  scriptImportHint: '支持 Markdown/TXT、有文字层的 PDF、Foundry Adventure JSON 和未加密 Fantasy Grounds XML/MOD。发布前检查场景、引用和可见范围；扫描 PDF 需先 OCR。',
   scriptFile: '剧本文件',
   scriptPreview: '解析并预览',
   scriptDefaultGm: '导入的场景默认仅 GM 可见；请逐场确认要公开的内容。',

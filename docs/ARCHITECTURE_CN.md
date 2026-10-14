@@ -6159,3 +6159,18 @@ GameInstance schema 44 保留 main 的 1→43 迁移链，新增 AI 席位与检
 Lorebook SQLite 12 在 main 的外部身份和来源跟踪结构之后增加私有恢复记录。`src/migrations/lorebook_branches.py` 显式识别本地 v10 的恢复日志结构，在正常 SQLite 事务内补齐 main v10 身份列，再运行 v11/v12。原书、条目、绑定和恢复记录保持不变；失败回滚整个迁移。
 
 AI 席位和检定授权的离席/重开清理由所属模块注册生命周期 hooks。冒险节点与选择命令由 `adventure_commands.py` 在权威写入、当前 run 与模块预检之后执行；保存失败的补偿调用模块 owner。游玩资料册调整同样通过 content_binding owner 回滚，预览读取回合时不物化缺失槽。故事分镜输入由 imagegen 的游戏投影模块捕获，核心回合编排不增加对叙事状态模块的耦合。
+
+
+## 翻译维护与显示回退
+
+`src/localization/registry.json` 负责维护层级和状态：英语、简体中文为核心，日语、德语和俄语为社区目录。暂停后持久化语言 ID 仍用于游戏与内容；界面选择器排除暂停目录，已有界面偏好显示英文。对局叙事语言、canonical identity 和机制不变。
+
+`frontend-v2/src/i18n/policy.ts` 按审核过的英文来源指纹筛选社区译文，递归覆盖 API 错误；缺失、新增和过时键通过 Vue I18n 回退英文。英文改动不重新生成接受基线，志愿者通过 `locales:review` 逐键登记审核。`locales:check` 阻止核心键不齐，社区缺口仅报告，不阻塞功能发布。共享后端文案/字段 helper 与 typed content overlay 遵守暂停状态；集中目录外的功能内及后端文本不自动检测来源过时。见[翻译维护](zh/translations.md)。
+
+## 托管 Docker 的数据兼容代际
+
+Runtime API 2 建立存档 44 / 资料册 12 基线。API 1 更新器拒绝 API 2 包；API 2 启动器在启动、观察、提交和回退前拒绝 API 1 程序，因此新镜像不会保留不兼容旧程序作为自动恢复目标。
+
+标准库 launcher 契约中的 `DATA_SCHEMA_BASELINE` 定义已审核代际。API 2 清单声明 `data_schemas`，验证器同时要求基线匹配及 `data_rollback_safe=true`。打包器在删除临时构建树或写清单前检查真实迁移版本；未经审核的 schema 变化明确失败，必须审核回退兼容性，需要时建立新代际。程序版本文件独立于运行时契约。
+
+同一兼容代际内继续支持健康检查更新和回退。跨此边界需要升级基础镜像，并先停服备份完整数据。回退程序不降级存储格式，旧程序需要匹配的升级前备份。见[应用更新](zh/updates.md)。

@@ -6137,3 +6137,18 @@ Unreleased local schemas 36-38 used the same numbers for different changes. `src
 Lorebook SQLite 12 adds owner-private recovery records after main's external identity and source tracking. `src/migrations/lorebook_branches.py` recognizes the local v10 journal, establishes main's identity columns in the normal SQLite transaction, then applies v11/v12. Existing books, entries, bindings and journals remain intact; failures roll back all steps.
 
 AI seats and check grants register their cleanup/reset lifecycle hooks in their own modules. `adventure_commands.py` owns node/choice transactions, authoritative admission, current-run fences, module preflight and owner-mediated compensation. Game Lorebook selection also restores through its content-binding owner; preview round reads do not materialize missing slots. The imagegen game projection captures storyboard inputs so core round orchestration does not increase narrative-module coupling.
+
+
+## Translation maintenance and display fallback
+
+`src/localization/registry.json` owns maintenance tier/status metadata. English and Simplified Chinese are core; Japanese/German/Russian are community catalogs. Stable locale IDs remain available to saved games and content even when a catalog is paused. The frontend UI picker excludes paused catalogs, while saved UI preferences render English. Game narration language, canonical identities and mechanics are unchanged.
+
+`frontend-v2/src/i18n/policy.ts` filters community messages by the reviewed English source fingerprints, recursively including API errors. Missing/new/stale keys use Vue I18n's English fallback. The accepted baseline is not regenerated on source changes; volunteers record individual reviewed keys through `locales:review`. `locales:check` gates core key parity and reports community gaps without blocking feature releases. Backend shared text/field helpers and typed content overlays honor paused status. Feature-local/backend text outside the central catalog has no automatic source fingerprinting. See [translation maintenance](en/translations.md).
+
+## Managed Docker data compatibility generation
+
+Runtime API 2 establishes the instance 44 / Lorebook 12 baseline. The runtime-1 updater rejects runtime-2 packages; the runtime-2 launcher rejects runtime-1 payloads before startup, probation, commit or rollback. Thus pulling a new image cannot keep an incompatible old payload as its automatic fallback.
+
+`DATA_SCHEMA_BASELINE` in the standard-library launcher contract defines the reviewed generation. API-2 manifests declare `data_schemas`; validators require that baseline as well as `data_rollback_safe=true`. The builder compares the actual migration versions with the baseline before deleting its temporary build tree or writing a manifest. An unreviewed schema change fails closed; reviewers must assess rollback compatibility and establish a new generation if necessary. Program version files are independent of this runtime contract.
+
+Health-checked ordinary updates and rollback remain available within a compatible generation. Crossing this boundary requires a base-image upgrade and a stopped-server, complete data backup. Program rollback cannot downgrade stored schemas; an old program requires its matching pre-upgrade backup. See [application updates](en/updates.md).
