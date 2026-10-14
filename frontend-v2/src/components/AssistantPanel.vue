@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, useId, watch } from 'vue'
 import { NButton, NIcon, NInput } from 'naive-ui'
 import {
   CloseOutline, ContractOutline, DocumentTextOutline, ExpandOutline, RefreshOutline, SendOutline,
@@ -7,9 +7,11 @@ import {
 } from '@vicons/ionicons5'
 import { useLocale } from '@/composables/useLocale'
 import { useAssistant } from '@/composables/useAssistant'
+import { useAssistantWorkspace } from '@/composables/useAssistantWorkspace'
 import { renderSafeMarkdown } from '@/utils/markdown'
 import AgentTaskCard from '@/components/assistant/AgentTaskCard.vue'
 import { assistantCopy, assistantToolLabel } from '@/features/assistant/copy'
+import { assistantWorkspaceCopy } from '@/features/assistant/workspaceCopy'
 import { generatedImageUrl } from '@/api/generatedImages'
 
 const props = withDefaults(defineProps<{ expanded?: boolean }>(), { expanded: false })
@@ -19,13 +21,22 @@ const { messages, streaming, send, stop, retryLast, clear, pendingApproval, draf
 const draftList = computed(() => Object.values(drafts.value))
 const eventList = computed(() => messages.value.flatMap(message => message.events || []))
 const agentCopy = computed(() => assistantCopy(locale.value))
+const workspaceCopy = computed(() => assistantWorkspaceCopy(locale.value))
+const { collapsed: workspaceCollapsed, toggle: toggleWorkspace } = useAssistantWorkspace()
+const workspaceId = useId()
 const imageUrls = ref<Record<string, string>>({})
 const imageLoads = new Set<string>()
 const draft = ref('')
-const listEl = ref<HTMLElement | null>(null)
 const transcriptEl = ref<HTMLElement | null>(null)
 const tasksEl = ref<HTMLElement | null>(null)
 const hasTasks = computed(() => draftList.value.length > 0 || pendingApproval.value || actionError.value || navigation.value || eventList.value.some(event => event.event === 'tool_result'))
+const workspaceVisible = computed(() => hasTasks.value || streaming.value || props.expanded || messages.value.length > 0)
+const workspaceStatus = computed(() => {
+  if (actionError.value || pendingApproval.value?.expired || pendingApproval.value?.recovery_required) return workspaceCopy.value.attention
+  if (pendingApproval.value) return agentCopy.value.statusApproval
+  if (streaming.value || actionBusy.value) return workspaceCopy.value.working
+  return draftList.value.length ? workspaceCopy.value.drafts(draftList.value.length) : agentCopy.value.statusIdle
+})
 onMounted(() => { if (!streaming.value && !actionBusy.value) void restoreSession() })
 
 const quickQuestions = () => [
@@ -40,15 +51,23 @@ const quickQuestions = () => [
 
 function scrollToBottom() {
   void nextTick(() => {
-    for (const element of [listEl.value, transcriptEl.value, tasksEl.value]) {
-      if (element && element.clientHeight > 0) element.scrollTop = element.scrollHeight
-    }
+    const element = transcriptEl.value
+    if (element && element.clientHeight > 0) element.scrollTop = element.scrollHeight
+  })
+}
+
+function scrollTasksToBottom() {
+  void nextTick(() => {
+    const element = tasksEl.value
+    const editing = element?.contains(document.activeElement) && document.activeElement?.matches('input, textarea, select, [contenteditable="true"]')
+    if (element && element.clientHeight > 0 && !editing) element.scrollTop = element.scrollHeight
   })
 }
 
 watch(messages, scrollToBottom, { deep: true })
-watch([pendingApproval, status, streaming], scrollToBottom)
-watch(() => props.expanded, scrollToBottom)
+watch([pendingApproval, status, streaming], scrollTasksToBottom)
+watch(() => props.expanded, () => { scrollToBottom(); scrollTasksToBottom() })
+watch(workspaceCollapsed, value => { if (!value) scrollTasksToBottom() })
 
 function renderMd(text: string): string {
   return renderSafeMarkdown(text)
@@ -144,7 +163,7 @@ function followNavigation() {
       </NButton>
     </header>
 
-    <div ref="listEl" class="assistant-messages" aria-live="polite">
+    <div class="assistant-messages" aria-live="polite">
       <div ref="transcriptEl" class="assistant-transcript">
         <div v-if="!messages.length" class="assistant-empty">
           <span class="assistant-empty-icon"><NIcon :component="SparklesOutline" size="28" /></span>
@@ -209,43 +228,49 @@ function followNavigation() {
         </article>
       </div>
 
-      <div ref="tasksEl" class="assistant-tasks">
-        <h3 v-if="props.expanded" class="assistant-tasks-title">{{ agentCopy.workspaceTitle }}</h3>
-        <p v-if="props.expanded && !hasTasks" class="assistant-tasks-empty">{{ agentCopy.workspaceHint }}</p>
-        <div v-if="pendingApproval || (streaming && status)" class="assistant-status" role="status">{{ agentCopy.status }}: {{ pendingApproval ? agentCopy.statusApproval : statusText(status) }}</div>
+      <section v-if="workspaceVisible" class="assistant-tasks" :class="{ 'assistant-workspace-collapsed': workspaceCollapsed }">
+        <button type="button" class="assistant-workspace-toggle" data-testid="assistant-workspace-toggle" :aria-expanded="!workspaceCollapsed" :aria-controls="workspaceId" :aria-label="workspaceCollapsed ? workspaceCopy.expand : workspaceCopy.collapse" @click="toggleWorkspace">
+          <strong>{{ agentCopy.workspaceTitle }}</strong>
+          <span class="assistant-workspace-state" :class="{ pending: pendingApproval || actionError }">{{ workspaceStatus }}</span>
+          <span aria-hidden="true">{{ workspaceCollapsed ? '⌃' : '⌄' }}</span>
+        </button>
+        <div :id="workspaceId" ref="tasksEl" v-show="!workspaceCollapsed" class="assistant-workspace-body">
+          <p v-if="!hasTasks" class="assistant-tasks-empty">{{ agentCopy.workspaceHint }}</p>
+          <div v-if="pendingApproval || (streaming && status)" class="assistant-status" role="status">{{ agentCopy.status }}: {{ pendingApproval ? agentCopy.statusApproval : statusText(status) }}</div>
 
-        <AgentTaskCard v-for="task in draftList" :key="task.draft_id" :draft="task" :busy="actionBusy" :streaming="streaming" @edit="invalidateApproval" @review="reviewDraft($event.draft_id, $event.draft)" @save="saveDraftLocalized" />
+          <AgentTaskCard v-for="task in draftList" :key="task.draft_id" :draft="task" :busy="actionBusy" :streaming="streaming" @edit="invalidateApproval" @review="reviewDraft($event.draft_id, $event.draft)" @save="saveDraftLocalized" />
 
-        <div v-if="actionError" class="assistant-inline-state" role="alert">{{ actionError }}</div>
+          <div v-if="actionError" class="assistant-inline-state" role="alert">{{ actionError }}</div>
 
-        <details v-if="eventList.some(event => event.event === 'tool_result')" class="assistant-tool-results">
-          <summary>{{ agentCopy.tool }}</summary>
-          <div v-for="(event, index) in eventList.filter(item => item.event === 'tool_result')" :key="index" class="assistant-tool-result">
-            <strong :class="event.payload.ok === false ? 'assistant-result-failure' : 'assistant-result-success'">{{ event.payload.ok === false ? agentCopy.failure : event.payload.partial ? agentCopy.partial : agentCopy.success }}</strong>
-            <span>{{ toolLabel(event.payload.tool) }} · {{ eventResult(event.payload.result) }}</span>
-            <img v-if="resultAssetId(event.payload.result) && imageUrls[resultAssetId(event.payload.result)]" :src="imageUrls[resultAssetId(event.payload.result)]" alt="Generated result" class="assistant-result-image">
-            <details><summary>{{ agentCopy.details }}</summary><pre>{{ eventResult(event.payload.result, true) }}</pre></details>
-          </div>
-        </details>
-
-        <button v-if="navigation" type="button" class="assistant-navigation" @click="followNavigation">{{ navigationLabel(navigation.route) }}</button>
-        <button v-if="messages.length && !streaming && !pendingApproval" type="button" class="assistant-continue" @click="ask(agentCopy.continuePrevious)">{{ agentCopy.continuePrevious }}</button>
-
-        <article v-if="pendingApproval" class="assistant-approval" data-agent-approval>
-          <strong>{{ agentCopy.pending }}</strong>
-          <span>{{ toolLabel(pendingApproval.tool) }}</span>
-          <strong v-if="approvalTarget">{{ agentCopy.target }}: {{ approvalTarget }}</strong>
-          <span v-if="pendingApproval.expired || pendingApproval.recovery_required" class="assistant-approval-invalid">{{ agentCopy.approvalInvalid }}</span>
-          <details v-if="pendingApproval.preview || pendingApproval.arguments">
-            <summary>{{ agentCopy.details }}</summary>
-            <pre>{{ eventResult(pendingApproval.preview || pendingApproval.arguments, true) }}</pre>
+          <details v-if="eventList.some(event => event.event === 'tool_result')" class="assistant-tool-results">
+            <summary>{{ agentCopy.tool }}</summary>
+            <div v-for="(event, index) in eventList.filter(item => item.event === 'tool_result')" :key="index" class="assistant-tool-result">
+              <strong :class="event.payload.ok === false ? 'assistant-result-failure' : 'assistant-result-success'">{{ event.payload.ok === false ? agentCopy.failure : event.payload.partial ? agentCopy.partial : agentCopy.success }}</strong>
+              <span>{{ toolLabel(event.payload.tool) }} · {{ eventResult(event.payload.result) }}</span>
+              <img v-if="resultAssetId(event.payload.result) && imageUrls[resultAssetId(event.payload.result)]" :src="imageUrls[resultAssetId(event.payload.result)]" alt="Generated result" class="assistant-result-image">
+              <details><summary>{{ agentCopy.details }}</summary><pre>{{ eventResult(event.payload.result, true) }}</pre></details>
+            </div>
           </details>
-          <div class="assistant-approval-actions">
-            <NButton size="small" type="primary" :loading="actionBusy" :disabled="actionBusy || pendingApproval.expired || pendingApproval.recovery_required" @click="confirmApproval(true)">{{ agentCopy.approve }}</NButton>
-            <NButton size="small" quaternary :loading="actionBusy" :disabled="actionBusy" @click="cancelApproval">{{ agentCopy.cancel }}</NButton>
-          </div>
-        </article>
-      </div>
+
+          <button v-if="navigation" type="button" class="assistant-navigation" @click="followNavigation">{{ navigationLabel(navigation.route) }}</button>
+          <button v-if="messages.length && !streaming && !pendingApproval" type="button" class="assistant-continue" @click="ask(agentCopy.continuePrevious)">{{ agentCopy.continuePrevious }}</button>
+
+          <article v-if="pendingApproval" class="assistant-approval" data-agent-approval>
+            <strong>{{ agentCopy.pending }}</strong>
+            <span>{{ toolLabel(pendingApproval.tool) }}</span>
+            <strong v-if="approvalTarget">{{ agentCopy.target }}: {{ approvalTarget }}</strong>
+            <span v-if="pendingApproval.expired || pendingApproval.recovery_required" class="assistant-approval-invalid">{{ agentCopy.approvalInvalid }}</span>
+            <details v-if="pendingApproval.preview || pendingApproval.arguments">
+              <summary>{{ agentCopy.details }}</summary>
+              <pre>{{ eventResult(pendingApproval.preview || pendingApproval.arguments, true) }}</pre>
+            </details>
+            <div class="assistant-approval-actions">
+              <NButton size="small" type="primary" :loading="actionBusy" :disabled="actionBusy || pendingApproval.expired || pendingApproval.recovery_required" @click="confirmApproval(true)">{{ agentCopy.approve }}</NButton>
+              <NButton size="small" quaternary :loading="actionBusy" :disabled="actionBusy" @click="cancelApproval">{{ agentCopy.cancel }}</NButton>
+            </div>
+          </article>
+        </div>
+      </section>
     </div>
 
     <footer class="assistant-composer">
@@ -331,29 +356,41 @@ function followNavigation() {
   flex: 1;
   display: flex;
   min-height: 0;
-  overflow-y: auto;
+  overflow: hidden;
+  flex-direction: column;
+  gap: 0;
+}
+
+.assistant-transcript {
+  display: flex;
+  flex: 1 1 0;
   flex-direction: column;
   gap: 14px;
+  min-height: 0;
+  min-width: 0;
+  overflow-y: auto;
   padding: 18px 15px;
   scroll-behavior: smooth;
 }
 
-.assistant-transcript,
 .assistant-tasks {
-  display: contents;
+  display: flex;
+  flex: 0 1 auto;
+  flex-direction: column;
+  min-height: 0;
+  max-height: 45%;
+  overflow: hidden;
+  border-top: 1px solid var(--df-border-soft);
+  background: var(--df-surface-1);
 }
 
-.assistant-tasks-title {
-  position: sticky;
-  top: -18px;
-  z-index: 1;
-  margin: -18px -15px 0;
-  padding: 16px 15px 12px;
-  border-bottom: 1px solid var(--df-border-soft);
-  color: var(--df-accent-strong);
-  background: var(--df-surface-1);
-  font-size: 14px;
-}
+.assistant-workspace-collapsed { flex: 0 0 auto; }
+.assistant-workspace-toggle { display: flex; flex: 0 0 auto; align-items: center; gap: 8px; width: 100%; min-height: 44px; padding: 9px 15px; border: 0; border-radius: 0; background: var(--df-surface-2); color: var(--df-accent-strong); text-align: start; }
+.assistant-workspace-toggle:hover { transform: none; }
+.assistant-workspace-toggle strong { margin-right: auto; font-size: 13px; }
+.assistant-workspace-state { color: var(--df-text-muted); font-size: 11px; }
+.assistant-workspace-state.pending { color: var(--df-accent-strong); }
+.assistant-workspace-body { display: flex; flex-direction: column; gap: 14px; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 12px 15px; }
 
 .assistant-tasks-empty {
   margin: 0;
@@ -372,22 +409,13 @@ function followNavigation() {
     padding: 0;
   }
 
-  .assistant-panel-expanded .assistant-transcript,
   .assistant-panel-expanded .assistant-tasks {
-    display: flex;
-    min-width: 0;
-    min-height: 0;
-    flex-direction: column;
-    gap: 14px;
-    overflow-y: auto;
-    padding: 18px 15px;
-    scroll-behavior: smooth;
-  }
-
-  .assistant-panel-expanded .assistant-tasks {
+    max-height: none;
+    border-top: 0;
     border-left: 1px solid var(--df-border-soft);
     background: color-mix(in srgb, var(--df-surface-2) 45%, var(--df-surface-1));
   }
+  .assistant-panel-expanded .assistant-workspace-body { flex: 1 1 0; }
 }
 
 .assistant-empty {

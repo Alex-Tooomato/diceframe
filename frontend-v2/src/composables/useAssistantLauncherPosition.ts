@@ -1,6 +1,12 @@
 import { computed, onBeforeUnmount, onMounted, ref, type Ref } from 'vue'
 
 export const ASSISTANT_LAUNCHER_POSITION_STORAGE_KEY = 'diceframe_assistant_launcher_position'
+const RESET_EVENT = 'diceframe-assistant-launcher-reset'
+
+export function resetAssistantLauncherPosition(): void {
+  try { localStorage.removeItem(ASSISTANT_LAUNCHER_POSITION_STORAGE_KEY) } catch { /* Storage is optional. */ }
+  window.dispatchEvent(new Event(RESET_EVENT))
+}
 
 type LauncherPosition = { x: number; y: number }
 
@@ -53,7 +59,19 @@ export function useAssistantLauncherPosition() {
     top: `${position.value.y}px`,
     right: 'auto',
     bottom: 'auto',
-  } : {})
+  } : { left: 'auto', top: 'auto', right: '', bottom: '' })
+
+  function resetPosition(): void {
+    const captured = pointerId
+    pointerId = null
+    dragging.value = false
+    suppressClick = false
+    position.value = null
+    const element = launcherRef.value && '$el' in launcherRef.value ? launcherRef.value.$el : launcherRef.value
+    if (captured !== null && (element as HTMLElement | null)?.hasPointerCapture?.(captured)) {
+      (element as HTMLElement).releasePointerCapture(captured)
+    }
+  }
 
   function syncToViewport(): void {
     if (!position.value) return
@@ -122,9 +140,11 @@ export function useAssistantLauncherPosition() {
   onMounted(() => {
     syncToViewport()
     window.addEventListener('resize', syncToViewport)
+    window.addEventListener(RESET_EVENT, resetPosition)
   })
   onBeforeUnmount(() => {
     window.removeEventListener('resize', syncToViewport)
+    window.removeEventListener(RESET_EVENT, resetPosition)
   })
 
   return {

@@ -1,6 +1,11 @@
 import { expect, test } from './fixtures'
 import { prepareAuthenticatedPage } from './support'
 
+async function openWorkspace(page: import('@playwright/test').Page) {
+  const toggle = page.getByTestId('assistant-workspace-toggle')
+  if (await toggle.getAttribute('aria-expanded') === 'false') await toggle.click()
+}
+
 test('DF Agent keeps an existing-book confirmation visible at the end of a long conversation', async ({ page, request }, testInfo) => {
   await prepareAuthenticatedPage(page, request)
   await page.addInitScript(() => {
@@ -31,6 +36,7 @@ test('DF Agent keeps an existing-book confirmation visible at the end of a long 
   await page.locator('.assistant-composer textarea').press('Enter')
   const approval = page.locator('[data-agent-approval]')
   await expect(approval).toContainText('克苏鲁恐怖·阿卡姆疑云')
+  await openWorkspace(page)
   await expect(approval.getByRole('button', { name: '确认执行' })).toBeInViewport()
   await expect(page.locator('.assistant-message-assistant').last()).toContainText('等待确认')
   await expect(page.locator('.assistant-composer-hint')).toContainText('等待确认')
@@ -75,6 +81,7 @@ test('DF Agent carries a reviewed draft through approval and across routes', asy
   await page.getByTestId('assistant-shell-fab').click()
   await page.getByRole('button', { name: '创作内容' }).click()
   const card = page.locator('[data-agent-draft="abcdef0123456789abcdef0123456789"]')
+  await openWorkspace(page)
   await expect(card).toBeVisible()
   await page.screenshot({ path: testInfo.outputPath('agent-panel.png') })
 

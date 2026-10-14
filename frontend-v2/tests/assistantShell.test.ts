@@ -3,6 +3,7 @@ import { defineComponent, nextTick, ref } from 'vue'
 import { beforeEach, describe, expect, it } from 'vitest'
 import AssistantShell from '../src/components/assistant/AssistantShell.vue'
 import { useAssistantPreferences } from '../src/composables/useAssistantPreferences'
+import { resetAssistantLauncherPosition } from '../src/composables/useAssistantLauncherPosition'
 import { i18n } from '../src/i18n'
 
 describe('DF Agent global shell', () => {
@@ -198,6 +199,22 @@ describe('DF Agent global shell', () => {
     fab.element.dispatchEvent(new MouseEvent('click', { detail: 1, bubbles: true }))
     await nextTick()
     expect(wrapper.find('[data-testid="assistant-panel"]').exists()).toBe(true)
+    wrapper.unmount()
+  })
+
+  it('recovers the mounted launcher and clears only its position preference', async () => {
+    localStorage.setItem('diceframe_assistant_launcher_position', '{"x":50,"y":50}')
+    localStorage.setItem('diceframe_assistant_messages', 'keep my conversation')
+    const wrapper = mount(AssistantShell, { global: { plugins: [i18n], stubs: { Drawer: true, AssistantPanel: true } } })
+    const fab = wrapper.get('[data-testid="assistant-shell-fab"]')
+    expect((fab.element as HTMLElement).style.left).toBe('50px')
+    resetAssistantLauncherPosition()
+    await nextTick()
+    expect((fab.element as HTMLElement).style.left).toBe('auto')
+    expect((fab.element as HTMLElement).style.top).toBe('auto')
+    expect(localStorage.getItem('diceframe_assistant_launcher_position')).toBeNull()
+    expect(localStorage.getItem('diceframe_assistant_messages')).toBe('keep my conversation')
+    expect(useAssistantPreferences().enabled.value).toBe(true)
     wrapper.unmount()
   })
 })

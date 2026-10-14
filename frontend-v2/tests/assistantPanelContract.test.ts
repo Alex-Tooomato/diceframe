@@ -1,6 +1,6 @@
 import { ref } from 'vue'
 import { mount } from '@vue/test-utils'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import AssistantPanel from '../src/components/AssistantPanel.vue'
 import type { AgentApproval } from '../src/api/assistant'
 import type { AssistantMessage } from '../src/composables/useAssistant'
@@ -8,6 +8,7 @@ import type { AssistantMessage } from '../src/composables/useAssistant'
 const send = vi.fn().mockResolvedValue(undefined)
 const messages = ref<AssistantMessage[]>([])
 const pendingApproval = ref<AgentApproval | null>(null)
+const confirmApproval = vi.fn()
 
 vi.mock('@/composables/useLocale', () => ({
   useLocale: () => ({
@@ -35,7 +36,7 @@ vi.mock('@/composables/useAssistant', () => ({
     retryLast: vi.fn(),
     clear: vi.fn(),
     restoreSession: vi.fn(),
-    confirmApproval: vi.fn(),
+    confirmApproval,
     cancelApproval: vi.fn(),
     reviewDraft: vi.fn(),
     saveDraft: vi.fn(),
@@ -44,10 +45,13 @@ vi.mock('@/composables/useAssistant', () => ({
 }))
 
 describe('DF Assistant runtime log entry', () => {
+  afterEach(() => vi.unstubAllGlobals())
   beforeEach(() => {
     send.mockClear()
     messages.value = []
     pendingApproval.value = null
+    localStorage.clear()
+    confirmApproval.mockClear()
   })
 
   it('submits the runtime-log diagnostic action through the normal assistant request flow', async () => {
@@ -89,5 +93,23 @@ describe('DF Assistant runtime log entry', () => {
     await wrapper.setProps({ expanded: true })
     expect(wrapper.get('[data-testid="assistant-toggle-expanded"]').attributes('title')).toBe('缩回侧栏')
     expect(wrapper.get('[data-testid="assistant-toggle-expanded"]').attributes('aria-label')).toBe('缩回侧栏')
+  })
+
+  it('defaults to a folded phone workspace while keeping pending approval discoverable', async () => {
+    vi.stubGlobal('matchMedia', () => ({ matches: true, addEventListener: vi.fn(), removeEventListener: vi.fn() }))
+    pendingApproval.value = { approval_id: 'a'.repeat(32), plan_digest: `sha256:${'b'.repeat(64)}`, tool: 'save_content', label: 'Save', arguments: {}, expires_at: 4102444800 }
+    const wrapper = mount(AssistantPanel, { attachTo: document.body })
+    const toggle = wrapper.get('[data-testid="assistant-workspace-toggle"]')
+    expect(toggle.attributes('aria-expanded')).toBe('false')
+    expect(toggle.text()).toContain('等待确认')
+    expect(wrapper.get('[data-agent-approval]').isVisible()).toBe(false)
+    await toggle.trigger('click')
+    expect(toggle.attributes('aria-expanded')).toBe('true')
+    expect(wrapper.get('[data-agent-approval]').isVisible()).toBe(true)
+    await toggle.trigger('click')
+    expect(wrapper.get('[data-agent-approval]').isVisible()).toBe(false)
+    expect(confirmApproval).not.toHaveBeenCalled()
+    expect(pendingApproval.value?.approval_id).toBe('a'.repeat(32))
+    wrapper.unmount()
   })
 })

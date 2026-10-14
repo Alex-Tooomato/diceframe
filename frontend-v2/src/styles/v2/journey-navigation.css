@@ -1,5 +1,9 @@
 /* Content and management use one section bar geometry. */
 .content-workspace { grid-template-rows: auto minmax(0, 1fr); align-content: start; }
+.content-workspace[data-workspace] .content-workspace-rail { position: sticky; top: var(--section-header-height, 68px); z-index: 32; }
+@media (max-width: 900px) {
+  .content-workspace-main .reference-settings-page .settings-nav { top: calc(var(--section-header-height, 68px) + var(--section-navigation-height, 56px) + 8px); }
+}
 .content-workspace[data-workspace] .content-workspace-nav > a > span { min-width: 0; display: block; }
 .content-workspace[data-workspace] .content-workspace-nav > a strong { white-space: nowrap; font-size: 12px; }
 .content-workspace[data-workspace] .content-workspace-nav > a { grid-template-rows: none; align-items: center; min-height: 40px; }

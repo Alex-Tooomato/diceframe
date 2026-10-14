@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import { RouterLink, useRoute } from 'vue-router'
 import { NIcon } from 'naive-ui'
 import { GameControllerOutline } from '@vicons/ionicons5'
@@ -9,8 +9,11 @@ import { useLocale } from '@/composables/useLocale'
 import { readCurrentGame } from '@/stores/gameContext'
 import { experienceCopy } from '@/navigation/experienceCopy'
 import { libraryCopy } from '@/features/library/copy'
+import { useSectionHeaderOffset } from './useSectionHeaderOffset'
 
 const route = useRoute()
+const navigationRail = ref<HTMLElement | null>(null)
+const headerOffset = useSectionHeaderOffset(navigationRail)
 const { locale, t } = useLocale()
 const copy = computed(() => experienceCopy(locale.value))
 function label(id: AppNavItemId) {
@@ -45,8 +48,8 @@ function hintKey(id: AppNavItemId): MessageKey {
 </script>
 
 <template>
-  <div class="content-workspace" :data-workspace="groupId">
-    <aside class="content-workspace-rail">
+  <div class="content-workspace" :data-workspace="groupId" :style="headerOffset">
+    <aside ref="navigationRail" class="content-workspace-rail">
       <nav class="content-workspace-nav" :aria-label="t(group.labelKey)">
         <RouterLink
           v-for="item in items"

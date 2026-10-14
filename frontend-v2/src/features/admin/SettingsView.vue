@@ -41,6 +41,8 @@ import { useTheme } from '@/composables/useTheme'
 import { useBackgroundImages, type BackgroundSlot } from '@/composables/useBackgroundImages'
 import { useProviderModelSettings } from '@/composables/useProviderModelSettings'
 import { useAssistantPreferences } from '@/composables/useAssistantPreferences'
+import { resetAssistantLauncherPosition } from '@/composables/useAssistantLauncherPosition'
+import { assistantWorkspaceCopy } from '@/features/assistant/workspaceCopy'
 import { currentBackendUrl, isStandaloneFrontend, normalizeBackendUrl, setBackendUrl } from '@/api/connection'
 import { isSettingsSectionAvailable, normalizeSettingsSection, type SettingsSectionId } from '@/utils/settingsSections'
 import ContentPageHeader from '@/components/content/ContentPageHeader.vue'
@@ -1616,10 +1618,14 @@ function redownloadUpdatePackage() {
               <div>
                 <h4>{{ t('assistantTitle') }}</h4>
                 <p>{{ t('assistantAppearanceHint') }}</p>
+                <p>{{ assistantWorkspaceCopy(locale).resetPositionHint }}</p>
               </div>
-              <div class="switch-inline">
-                <NSwitch :value="assistantEnabled" @update:value="setAssistantEnabled" />
-                <span>{{ assistantEnabled ? t('enabled') : t('disabled') }}</span>
+              <div class="appearance-agent-actions">
+                <div class="switch-inline">
+                  <NSwitch :value="assistantEnabled" @update:value="setAssistantEnabled" />
+                  <span>{{ assistantEnabled ? t('enabled') : t('disabled') }}</span>
+                </div>
+                <button type="button" data-testid="assistant-reset-position" @click="resetAssistantLauncherPosition">{{ assistantWorkspaceCopy(locale).resetPosition }}</button>
               </div>
             </section>
             <section class="appearance-mode-section">
