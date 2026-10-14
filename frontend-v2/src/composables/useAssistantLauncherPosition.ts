@@ -42,12 +42,11 @@ export function useAssistantLauncherPosition() {
   const launcherRef = ref<HTMLElement | { $el?: HTMLElement } | null>(null)
   const position = ref<LauncherPosition | null>(readPosition())
   const dragging = ref(false)
-  const suppressClick = ref(false)
+  let suppressClick = false
   let pointerId: number | null = null
   let startPointer = { x: 0, y: 0 }
   let startPosition = { x: 0, y: 0 }
   let moved = false
-  let releaseClickTimer: number | undefined
 
   const style = computed(() => position.value ? {
     left: `${position.value.x}px`,
@@ -68,13 +67,14 @@ export function useAssistantLauncherPosition() {
   }
 
   function onPointerDown(event: PointerEvent): void {
-    if (event.button !== 0 && event.pointerType === 'mouse') return
+    if (pointerId !== null || (event.button !== 0 && event.pointerType === 'mouse')) return
     const element = event.currentTarget as HTMLElement
     const rect = element.getBoundingClientRect()
     pointerId = event.pointerId
     startPointer = { x: event.clientX, y: event.clientY }
     startPosition = position.value ?? { x: rect.left, y: rect.top }
     moved = false
+    suppressClick = false
     dragging.value = false
     element.setPointerCapture?.(event.pointerId)
   }
@@ -96,35 +96,27 @@ export function useAssistantLauncherPosition() {
   function onPointerUp(event: PointerEvent): boolean {
     if (pointerId !== event.pointerId) return false
     const element = event.currentTarget as HTMLElement
-    element.releasePointerCapture?.(event.pointerId)
     pointerId = null
     dragging.value = false
-    const shouldOpen = !moved
-    if (moved) {
-      suppressClick.value = true
-      if (releaseClickTimer !== undefined) window.clearTimeout(releaseClickTimer)
-      releaseClickTimer = window.setTimeout(() => {
-        suppressClick.value = false
-        releaseClickTimer = undefined
-      }, 0)
-    }
-    return shouldOpen
+    suppressClick = true
+    if (element.hasPointerCapture?.(event.pointerId)) element.releasePointerCapture(event.pointerId)
+    return !moved
   }
 
   function onPointerCancel(event: PointerEvent): void {
     if (pointerId !== event.pointerId) return
     pointerId = null
     dragging.value = false
+    suppressClick = true
+    const element = event.currentTarget as HTMLElement
+    if (element.hasPointerCapture?.(event.pointerId)) element.releasePointerCapture(event.pointerId)
   }
 
-  function consumeClick(): boolean {
-    if (!suppressClick.value) return false
-    suppressClick.value = false
-    if (releaseClickTimer !== undefined) {
-      window.clearTimeout(releaseClickTimer)
-      releaseClickTimer = undefined
-    }
-    return true
+  function consumeClick(event: MouseEvent): boolean {
+    // Pointerup handles a deliberate tap. Its compatibility click (including
+    // a delayed click after dragging) must not activate again. Keyboard and
+    // assistive activation have no pointerdown and use a zero-detail click.
+    return event.detail !== 0 && suppressClick
   }
 
   onMounted(() => {
@@ -133,7 +125,6 @@ export function useAssistantLauncherPosition() {
   })
   onBeforeUnmount(() => {
     window.removeEventListener('resize', syncToViewport)
-    if (releaseClickTimer !== undefined) window.clearTimeout(releaseClickTimer)
   })
 
   return {

@@ -38,8 +38,8 @@ function openAssistant() {
   if (enabled.value) open.value = true
 }
 
-function onLauncherClick() {
-  if (consumeClick()) return
+function onLauncherClick(event: MouseEvent) {
+  if (consumeClick(event)) return
   openAssistant()
 }
 
@@ -81,6 +81,7 @@ watch(enabled, (isEnabled) => {
       @pointermove="onPointerMove"
       @pointerup="onLauncherPointerUp"
       @pointercancel="onPointerCancel"
+      @lostpointercapture="onPointerCancel"
       @click="onLauncherClick"
     >
       <template #icon><NIcon :component="SparklesOutline" size="20" /></template>

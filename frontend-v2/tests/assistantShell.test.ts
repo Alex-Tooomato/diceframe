@@ -131,7 +131,8 @@ describe('DF Agent global shell', () => {
     fab.element.dispatchEvent(new PointerEvent('pointerdown', { pointerId: 1, clientX: 260, clientY: 180, bubbles: true }))
     fab.element.dispatchEvent(new PointerEvent('pointermove', { pointerId: 1, clientX: 600, clientY: 600, bubbles: true }))
     fab.element.dispatchEvent(new PointerEvent('pointerup', { pointerId: 1, clientX: 600, clientY: 600, bubbles: true }))
-    await fab.trigger('click')
+    fab.element.dispatchEvent(new MouseEvent('click', { detail: 1, bubbles: true }))
+    await nextTick()
     expect(wrapper.find('[data-testid="assistant-panel"]').exists()).toBe(false)
     expect(localStorage.getItem('diceframe_assistant_launcher_position')).toBe('{"x":272,"y":192}')
     expect((fab.element as HTMLElement).style.left).toBe('272px')
@@ -165,6 +166,38 @@ describe('DF Agent global shell', () => {
     expect((fab.element as HTMLElement).style.left).toBe('272px')
     expect((fab.element as HTMLElement).style.top).toBe('192px')
     expect(localStorage.getItem('diceframe_assistant_launcher_position')).toBe('{"x":272,"y":192}')
+    wrapper.unmount()
+  })
+
+  it('ignores a delayed click from a touch drag and opens on the next deliberate tap', async () => {
+    const wrapper = mount(AssistantShell, {
+      global: {
+        plugins: [i18n],
+        stubs: {
+          Drawer: { props: { show: Boolean }, template: '<div v-if="show"><slot /></div>' },
+          DrawerContent: { template: '<div><slot /></div>' },
+          NIcon: { template: '<span />' },
+          AssistantPanel: { template: '<div data-testid="assistant-panel" />' },
+        },
+      },
+    })
+    const fab = wrapper.get('[data-testid="assistant-shell-fab"]')
+    const pointer = (type: string, x: number) => fab.element.dispatchEvent(new PointerEvent(type, {
+      pointerId: 3, pointerType: 'touch', clientX: x, clientY: 100, bubbles: true,
+    }))
+    pointer('pointerdown', 100)
+    pointer('pointermove', 150)
+    pointer('pointerup', 150)
+    // Touch browsers can deliver the synthetic click in a later event task.
+    await new Promise(resolve => setTimeout(resolve, 20))
+    fab.element.dispatchEvent(new MouseEvent('click', { detail: 1, bubbles: true }))
+    await nextTick()
+    expect(wrapper.find('[data-testid="assistant-panel"]').exists()).toBe(false)
+    pointer('pointerdown', 150)
+    pointer('pointerup', 150)
+    fab.element.dispatchEvent(new MouseEvent('click', { detail: 1, bubbles: true }))
+    await nextTick()
+    expect(wrapper.find('[data-testid="assistant-panel"]').exists()).toBe(true)
     wrapper.unmount()
   })
 })

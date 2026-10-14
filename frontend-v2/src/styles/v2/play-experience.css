@@ -64,9 +64,7 @@
 .play-page-immersive .character-detail-block summary::after { display: inline-flex; align-items: center; justify-content: center; width: 1.1em; height: 1.1em; margin-left: auto; content: '›'; color: var(--df-text-muted); line-height: 1; transform-origin: center; }
 .play-page-immersive .character-detail-block[open] summary::after { transform: rotate(90deg); }
 .play-page-immersive .game-sidebar .sidebar-disclosure { border: 0; border-bottom: 1px solid var(--df-border-soft); border-radius: 0; background: transparent; box-shadow: none; }
-.play-page-immersive .play-toolbar .play-utility-panel .play-secondary-action { display: flex; }
 .play-page-immersive .play-main > .play-quick-status { display: none; }
-.play-page-immersive .play-mobile-action { display: none; }
 @media(min-width: 801px) {
   .play-page-immersive .mobile-drawer-trigger { display: none; }
   /* The dock and control rail are actual desktop columns.  Keeping the rail
@@ -128,7 +126,6 @@
   .play-quick-status strong { max-width: 64px; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
   .play-quick-status span { white-space: nowrap; }
   .play-page-immersive .play-toolbar > .play-secondary-action { display: none; }
-  .play-page-immersive .play-mobile-action { display: flex; }
   .play-page-immersive .play-sidebar-drawer .game-sidebar { position: static; top: auto; bottom: auto; transform: none; background: color-mix(in srgb, var(--df-surface-1) 80%, transparent); -webkit-backdrop-filter: blur(16px) saturate(120%); backdrop-filter: blur(16px) saturate(120%); }
   .play-page-immersive .play-drawer-backdrop { background: rgb(0 0 0 / .14); backdrop-filter: blur(2px); }
   .play-page-immersive .play-toolbar .play-gm-toggle { display: flex; padding: 4px 7px; font-size: 11px; }

@@ -315,7 +315,7 @@
   padding-right: 2px;
 }
 
-.map-location-list-item {
+button.map-location-list-item {
   display: grid;
   grid-template-columns: 30px minmax(0, 1fr) auto;
   align-items: center;
@@ -590,7 +590,7 @@
     gap: 7px;
   }
 
-  .map-location-list-item {
+  button.map-location-list-item {
     grid-template-columns: minmax(0, 1fr) auto;
     min-height: 40px;
     padding: 5px 7px;
