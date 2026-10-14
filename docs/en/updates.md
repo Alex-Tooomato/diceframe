@@ -16,17 +16,19 @@ This page explains how to update DiceFrame itself. Plugins are updated separatel
 
 Updating the application does not delete saves or settings. Backing up the complete `data/` folder before an upgrade is still recommended.
 
-## This integration's data-format boundary
+## Direct Docker upgrades and retained data
 
-Before upgrading, stop the server and copy the complete `data/` directory to an independent backup. Keep the matching old application/image version if you may need to downgrade. Do not copy a live SQLite database as if it were a consistent backup.
+Existing runtime-1 managed Docker installations can apply this package from Settings without replacing their image, provided the Python ABI and system runtime are compatible. Ordinary application version numbers do not impose an image-upgrade barrier.
 
-Supported game saves migrate automatically to schema 44, and the Lorebook database migrates transactionally to schema 12. Known unreleased local save/database variants are recognized at the migration boundary; unknown, ambiguous and future variants are rejected. Existing characters, game progress and book bindings are retained. Keep the required rules and pinned adventure versions installed.
+After the launcher stops the old server, the candidate creates a private copy of game/content data, including consistent SQLite backups with committed WAL content. It migrates only that copy. The old program's original data stays readable. The old launcher still checks the actual candidate server's health and probation period; no maintenance stub pretends the application is healthy.
 
-The previous main reader cannot read these new formats. **Restoring application files does not restore data.** For a downgrade, stop the server, restore the old program/image together with its matching complete pre-upgrade data backup, then start it. Changes made after that backup will not be present. Do not point an old program at the migrated database or hand-edit schema numbers.
+The version/data binding is staged separately and promoted only after the launcher commits the program. Business writes, plugins and external outbox delivery wait until that commitment. The UI shows validation in progress. Copy failure, startup failure or an abrupt candidate exit leaves the previous dataset intact, allowing the existing launcher to restart the old program automatically.
 
-Docker runtime API 2 establishes this new data baseline. Runtime API 1 images reject these update packages and must be upgraded by pulling/recreating the base image after backup. The new launcher rejects runtime API 1 payloads as startup/rollback targets; if the new image fails to start, it does not automatically launch the incompatible old application. Compatible updates and rollback within API 2 retain the existing health-check/probation flow. The package builder refuses an unreviewed change to the instance/Lorebook schema baseline instead of automatically declaring it rollback-safe.
+Restarting a committed version reuses its data. A later upgrade copies the currently active dataset; a manual downgrade uses the retained dataset for that older program. The confirmation explains that progress/content changes since the upgrade are not carried back. Host settings, provider keys, passwords, sessions, device revocations and HTTPS certificates remain current. Manual data rollback clears game invitation credentials and closes player entrances; the GM must reopen/reinvite them. Automatic failure rollback does not revoke the original invitations.
 
-AI settings use only the provider catalog, secret provider keys and capability references. Legacy inline connection settings are not automatically converted: add the provider and assign roles in Settings. Missing references leave the capability unconfigured. A legacy player link containing only a bare player ID needs a new seat invitation from the GM.
+Back up the complete mounted `data/` directory. **Do not exclude `data/_updater/data-versions/`, `data-bindings/` or `data-pending/`: these contain business data and its recovery records.** The launcher retains current/previous program payloads; data cleanup retains their paired copies and any copies still referenced by local file paths in shared host settings, then removes verified retired copies. The initial legacy dataset stays intact. Copying needs additional disk space; if preparation cannot complete within the old launcher's startup window, the update fails safely and the old service resumes. Actual Python/system-runtime incompatibility still requires a new image.
+
+Supported game saves migrate to schema 44 and Lorebook databases to schema 12; known unreleased local variants are recognized, and ambiguous/future unsupported inputs are rejected. Source and Windows portable installations retain their existing update mechanisms and need a complete pre-upgrade backup for cross-format recovery. Legacy inline AI configuration is not guessed into providers; configure valid provider/role references when needed.
 
 ## Windows Portable
 
@@ -56,7 +58,7 @@ Docker users must manually pull one baseline image that supports managed updates
 
 Managed Docker also exposes **Restore previous version** in the Version Update section. The stable launcher performs the health check and probation period, then swaps the `current.json` pointers while keeping both application payloads. This is available only for payloads that pass the existing `data_rollback_safe: true` contract.
 
-Every Docker Update manifest must explicitly declare `data_rollback_safe: true`, meaning data written by that release remains readable by the previous compatible application in the same base-runtime generation. The runtime API must match, and API 2 packages declare the reviewed `data_schemas` baseline (instance 44, Lorebook 12). Managed update rejects packages outside these contracts. An incompatible migration requires a new base-runtime generation and an explicit image-upgrade/backup procedure.
+Docker Update manifests still require `data_rollback_safe: true` and a matching runtime API/Python ABI. Packages using `data_mode: versioned-copy-v1` preserve the previous program’s dataset instead of requiring it to read the candidate’s new format. The bootstrap and declared data schemas are validated. Legacy compatible packages retain their existing contract. Shared host settings/security must remain backward compatible; a change to that shared contract needs a separate transition.
 
 Python ABI, system library, CA, font, or launcher protocol changes remain base-runtime updates and still require pulling a new image. DiceFrame never mounts the Docker socket and does not control the Docker daemon from inside the container.
 
@@ -72,7 +74,7 @@ docker compose up -d
 
 NAS users can use the device's container manager to check for updates, pull the latest image, and recreate the container. Make sure `data/` is mounted from the host.
 
-Saves, settings, and user plugins remain under `data/`. `data/_updater/docker-versions/` contains reconstructable application payloads and may be excluded from backups; do not remove `_updater/current.json` by itself. Traditional image updates remain supported, and each image uses the byte-identical Docker application update asset from the corresponding GitHub Release as its seed.
+Saves, settings, and user plugins remain under `data/`. `data/_updater/docker-versions/` contains application payloads, while neighboring versioned data and binding records contain persistent business data. Include the entire updater directory in backups; do not remove its pointers or data records independently. Traditional image updates remain supported, and each image uses the byte-identical Docker application update asset from the corresponding GitHub Release as its seed.
 
 For an image built from a local source checkout, pull the new source and run:
 

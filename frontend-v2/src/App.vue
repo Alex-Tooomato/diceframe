@@ -20,6 +20,7 @@ import NaiveBridge from '@/components/common/NaiveBridge.vue'
 import StartupPrivacyChoice from '@/components/common/StartupPrivacyChoice.vue'
 import StartupUpdateCheck from '@/components/common/StartupUpdateCheck.vue'
 import AssistantShell from '@/components/assistant/AssistantShell.vue'
+import UpdateReadinessBanner from '@/features/admin/UpdateReadinessBanner.vue'
 import SectionWorkspaceShell from '@/components/navigation/SectionWorkspaceShell.vue'
 import { gameFromQuery, readCurrentGame } from '@/stores/gameContext'
 import { isPublicRoute } from '@/router'
@@ -161,6 +162,7 @@ watch(publicRoute, (isPublic) => {
       <NMessageProvider>
         <NDialogProvider>
           <NaiveBridge>
+            <UpdateReadinessBanner />
             <StartupPrivacyChoice v-if="!publicRoute" @settled="onStartupPrivacySettled" />
             <StartupUpdateCheck
               v-if="!publicRoute && startupPrivacySettled"

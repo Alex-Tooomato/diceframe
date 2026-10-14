@@ -1184,7 +1184,7 @@ async function rollbackProgram() {
   const targetVersion = updateStatus.value?.rollback?.target_version || ''
   const ok = await confirm({
     title: t('rollbackUpdateTitle'),
-    content: t('rollbackUpdateConfirm', { version: targetVersion }),
+    content: t(updateStatus.value?.rollback?.restores_data ? 'rollbackDataConfirm' : 'rollbackUpdateConfirm', { version: targetVersion }),
     positiveText: t('rollbackUpdateAction'),
     negativeText: t('cancel'),
     type: 'warning',

@@ -41,7 +41,7 @@ def _docker_archive(path: Path, version: str = "2.4.0") -> None:
     top = f"DiceFrame-v{version}-docker-update-linux-amd64"
     manifest = {
         "schema": 1, "version": version, "platform": "linux-amd64",
-        "python_abi": "cp311", "launcher_schema_min": 1, "runtime_api": 2, "data_schemas": {"instance": 44, "lorebook": 12},
+        "python_abi": "cp311", "launcher_schema_min": 1, "runtime_api": 1,
         "data_rollback_safe": True,
         "entrypoint": "app/web_server.py", "site_packages": "runtime/site-packages",
         "health_path": "/api/system/update/health", "probation_seconds": 0,

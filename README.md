@@ -124,7 +124,7 @@ http://localhost:9876
 
 Runtime data is stored in `data/`.
 
-This source line introduces Docker runtime API 2 for the new save/database formats. Existing runtime API 1 images must be upgraded once with a complete data backup; they reject this application package. After pulling the new baseline image, compatible ordinary application releases can be applied from the Version Update section under **Management → Settings → About**, with health-checked rollback within the same runtime generation. Older programs cannot read newly migrated data; restoring an old image requires its matching pre-upgrade data backup. Python or system-runtime changes still require pulling a new image. DiceFrame does not mount or control the Docker socket.
+Existing managed Docker images with a compatible Python/system runtime can apply this application update directly from Settings. The candidate migrates an independent game/content data copy; health-check failure lets the old launcher restart the previous program with its readable data. Runtime API remains 1. Actual Python or system-runtime changes still require a new image. See [application updates](docs/en/updates.md) for data retention and manual rollback semantics.
 
 The `latest` image always tracks stable releases. Preview images are published under their explicit version tags and never replace `latest`. To try one, copy the full preview version from GitHub Releases, for example:
 
@@ -193,7 +193,7 @@ To develop or publish a plugin, see the [plugin development guide](https://githu
 
 ## Upgrading existing data
 
-Supported saves and Lorebook databases migrate automatically on load/startup. This integration preserves the modular main contracts and recognizes the known unreleased local storage branches; unknown or future variants fail closed. Save schema 44 and Lorebook schema 12 are not readable by the previous main reader. Program rollback does not restore the database or saves: back up all of `data/` with the server stopped before upgrading.
+Supported saves and Lorebook databases migrate automatically on load/startup. This integration preserves the modular main contracts and recognizes the known unreleased local storage branches; unknown or future variants fail closed. Save schema 44 and Lorebook schema 12 are not readable by the previous main reader. Managed Docker keeps version/data pairs and can restore the older pair; source and portable program rollback alone cannot restore migrated data. Back up the complete `data/`, including updater data snapshots, with the server stopped before upgrading.
 
 Legacy inline AI configuration is not automatically converted. Configure providers and role references in Settings. Some old player links require a fresh seat invitation. See [application updates](docs/en/updates.md) for the complete upgrade and downgrade procedure.
 

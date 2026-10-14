@@ -6167,10 +6167,12 @@ AI 席位和检定授权的离席/重开清理由所属模块注册生命周期 
 
 `frontend-v2/src/i18n/policy.ts` 按审核过的英文来源指纹筛选社区译文，递归覆盖 API 错误；缺失、新增和过时键通过 Vue I18n 回退英文。英文改动不重新生成接受基线，志愿者通过 `locales:review` 逐键登记审核。`locales:check` 阻止核心键不齐，社区缺口仅报告，不阻塞功能发布。共享后端文案/字段 helper 与 typed content overlay 遵守暂停状态；集中目录外的功能内及后端文本不自动检测来源过时。见[翻译维护](zh/translations.md)。
 
-## 托管 Docker 的数据兼容代际
+## 托管 Docker 程序与数据事务
 
-Runtime API 2 建立存档 44 / 资料册 12 基线。API 1 更新器拒绝 API 2 包；API 2 启动器在启动、观察、提交和回退前拒绝 API 1 程序，因此新镜像不会保留不兼容旧程序作为自动恢复目标。
+标准库 owner `src/docker_launcher/data_versions.py` 由服务入口在导入应用前调用。runtime API 保持 1，Python/系统运行时兼容时，已部署启动器可以直接接收新包。`versioned-copy-v1` 保留旧程序自己的数据，启动失败自动恢复不需要不可逆的降级迁移。
 
-标准库 launcher 契约中的 `DATA_SCHEMA_BASELINE` 定义已审核代际。API 2 清单声明 `data_schemas`，验证器同时要求基线匹配及 `data_rollback_safe=true`。打包器在删除临时构建树或写清单前检查真实迁移版本；未经审核的 schema 变化明确失败，必须审核回退兼容性，需要时建立新代际。程序版本文件独立于运行时契约。
+候选程序复制静止的业务数据到私有 `data/_updater/data-versions/`；SQLite backup 包括已提交 WAL。房主设置、凭据、会话、设备撤销和 TLS 保持共享。游戏、规则和内容服务使用候选目录，不加入版本兼容分支。待定绑定在启动器提交程序指针后原子转正；失败候选不能覆盖已确认绑定。重启恢复校验目录标记与绑定，缺失或歧义记录明确拒绝。
 
-同一兼容代际内继续支持健康检查更新和回退。跨此边界需要升级基础镜像，并先停服备份完整数据。回退程序不降级存储格式，旧程序需要匹配的升级前备份。见[应用更新](zh/updates.md)。
+HTTP 业务写入和启动插件/外部 outbox 等待真实健康检查与观察期提交。`update_admission.py` 负责准入，bootstrap 委托激活 owner。旧入口继续使用原数据；再次向前升级复制当前时间线，手动降级选用保留的旧数据。`src/compat/program_rollback_access.py` 委托 room-access owner 清除历史凭据并关闭玩家入口，防止旧 token 重新生效；房主安全数据不回退。清理保留当前与上一配对，只移除验证过的退役副本。
+
+清单仍必须声明 `data_rollback_safe=true`；版本化包声明正整数存档/资料册版本并包含 bootstrap。该协议下共享配置、安全数据必须向后兼容；不兼容共享契约或系统运行时改动仍需单独审核的过渡。完整挂载数据（含副本、待定与已提交绑定）均须备份。见[应用更新](zh/updates.md)。

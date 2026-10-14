@@ -1,4 +1,6 @@
 export const en = {
+  updateDataValidating: 'The update is being validated. Game changes are paused temporarily; please wait.',
+  rollbackDataConfirm: 'DiceFrame will restart version {version} with its retained game/content data. Progress and content changes since that upgrade will not be carried back. Host passwords, sessions and HTTPS settings stay current; game invitations will be invalidated and player entrances closed until the GM reopens them. Restore this version and its data?',
   communityTranslation: 'Community',
   contentLangRu: 'Русский',
   scriptImportTitle: 'Import script / external adventure',

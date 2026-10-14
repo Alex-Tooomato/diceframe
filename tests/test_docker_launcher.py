@@ -45,7 +45,7 @@ def _package_tree(root: Path, version: str = "2.4.0", probation: int = 0) -> Pat
         "platform": "linux-amd64",
         "python_abi": "cp311",
         "launcher_schema_min": 1,
-        "runtime_api": 2, "data_schemas": {"instance": 44, "lorebook": 12},
+        "runtime_api": 1,
         "data_rollback_safe": True,
         "entrypoint": "app/web_server.py",
         "site_packages": "runtime/site-packages",

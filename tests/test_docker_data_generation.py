@@ -27,16 +27,16 @@ def test_build_guard_reads_the_actual_migration_owners():
     }
 
 
-def test_new_data_formats_require_a_new_base_runtime(tmp_path):
+def test_new_data_formats_keep_the_existing_base_runtime(tmp_path):
     build_docker_update.write_manifest(tmp_path, "9.0.0", "test")
     manifest = json.loads((tmp_path / "manifest.json").read_text(encoding="utf-8"))
-    assert manifest["runtime_api"] == 2
-    with pytest.raises(ValueError, match="different Docker base runtime"):
-        contracts.validate_manifest(manifest, runtime_api=1)
+    assert manifest["runtime_api"] == 1
+    assert manifest["data_mode"] == "versioned-copy-v1"
+    assert contracts.validate_manifest(manifest, runtime_api=1)["data_rollback_safe"] is True
 
 
-@pytest.mark.parametrize("schemas", [None, {"instance": 43, "lorebook": 11}, {"instance": 45, "lorebook": 12}])
-def test_manifest_cannot_claim_runtime_2_with_unreviewed_data_formats(tmp_path, schemas):
+@pytest.mark.parametrize("schemas", [None, {"instance": 0, "lorebook": 12}, {"instance": True, "lorebook": 12}])
+def test_manifest_requires_valid_data_format_metadata(tmp_path, schemas):
     build_docker_update.write_manifest(tmp_path, "9.0.0", "test")
     manifest = json.loads((tmp_path / "manifest.json").read_text(encoding="utf-8"))
     manifest["data_schemas"] = schemas
@@ -45,7 +45,7 @@ def test_manifest_cannot_claim_runtime_2_with_unreviewed_data_formats(tmp_path, 
 
 
 def test_unknown_data_format_cannot_be_marked_rollback_safe(tmp_path, monkeypatch):
-    monkeypatch.setattr(build_docker_update, "current_data_schemas", lambda: {"instance": 999, "lorebook": 12})
+    monkeypatch.setattr(build_docker_update, "current_data_schemas", lambda: {"instance": -1, "lorebook": 12})
     with pytest.raises(ValueError, match="data schema"):
         build_docker_update.write_manifest(tmp_path, "9.0.0", "test")
     assert not (tmp_path / "manifest.json").exists()
@@ -57,23 +57,23 @@ def test_unreviewed_data_format_is_rejected_before_build_tree_cleanup(tmp_path, 
     marker = build_root / "keep.txt"
     marker.write_text("existing build", encoding="utf-8")
     monkeypatch.setattr(build_docker_update, "BUILD_ROOT", build_root)
-    monkeypatch.setattr(build_docker_update, "current_data_schemas", lambda: {"instance": 45, "lorebook": 12})
+    monkeypatch.setattr(build_docker_update, "current_data_schemas", lambda: {"instance": "invalid", "lorebook": 12})
     with pytest.raises(ValueError, match="data schema"):
         build_docker_update.build_package("9.0.0", tmp_path / "output")
     assert marker.read_text(encoding="utf-8") == "existing build"
 
 
-def test_new_image_does_not_keep_old_runtime_as_startup_or_rollback_target(tmp_path):
+def test_incompatible_base_runtime_is_still_rejected(tmp_path):
     launcher = DockerLauncher(tmp_path / "runtime", tmp_path / "seed.zip", tmp_path / "seed.sha256")
     old = _package_tree(launcher.versions_dir, "8.0.0")
     path = old / "manifest.json"
     manifest = json.loads(path.read_text(encoding="utf-8"))
-    manifest["runtime_api"] = 1
+    manifest["runtime_api"] = 2
     path.write_text(json.dumps(manifest), encoding="utf-8")
     seed = _package_tree(launcher.versions_dir, "9.0.0")
     new_path = seed / "manifest.json"
     new_manifest = json.loads(new_path.read_text(encoding="utf-8"))
-    new_manifest["runtime_api"] = 2
+    new_manifest["runtime_api"] = 1
     new_path.write_text(json.dumps(new_manifest), encoding="utf-8")
     contracts.atomic_json(launcher.current_file, {
         "relative_dir": launcher._relative(old), "previous_relative_dir": launcher._relative(old),

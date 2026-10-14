@@ -1,4 +1,6 @@
 export const zhCN = {
+  updateDataValidating: '更新正在验证，游戏写入暂时暂停，请稍候。',
+  rollbackDataConfirm: 'DiceFrame 将重启 {version}，同时恢复它保留的游戏与内容数据。该次升级之后的进度和内容改动不会带回旧版；房主密码、会话和 HTTPS 设置保持当前状态。游戏邀请将失效，玩家入口关闭，需要 GM 重新开启并邀请。确认恢复程序和对应数据吗？',
   communityTranslation: '社区翻译',
   contentLangRu: 'Русский',
   scriptImportTitle: '导入剧本 / 外部模组',

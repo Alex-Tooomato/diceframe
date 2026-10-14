@@ -29,6 +29,7 @@ from src.docker_launcher.contracts import (
     safe_extract_package as safe_extract_docker_package,
     validate_package_tree as validate_docker_package_tree,
 )
+from src.docker_launcher.data_versions import data_for_payload, runtime_for_data
 from src.version import __version__
 
 logger = logging.getLogger("trpg")
@@ -320,7 +321,7 @@ class UpdaterService:
 
     def __init__(self, dependencies: UpdaterDependencies) -> None:
         self._data_dir = dependencies.data_dir.resolve()
-        self._dir = self._data_dir / _UPDATER_DIR_NAME
+        self._dir = runtime_for_data(self._data_dir, os.environ) or self._data_dir / _UPDATER_DIR_NAME
         self._dir.mkdir(parents=True, exist_ok=True)
         self._state_file = self._dir / _STATE_FILE_NAME
         self._restart_signal = self._dir / _RESTART_SIGNAL_NAME
@@ -456,6 +457,8 @@ class UpdaterService:
                     python_abi=DOCKER_PYTHON_ABI,
                     runtime_api=DOCKER_RUNTIME_API,
                 )
+                if os.getenv("TRPG_DOCKER_DATA_HOME"):
+                    data_for_payload(runtime_root, Path(os.environ["TRPG_DOCKER_DATA_HOME"]).resolve(), target)
             except (OSError, ValueError):
                 logger.warning("Docker 上一版本包无效", exc_info=True)
                 return None
@@ -485,6 +488,7 @@ class UpdaterService:
             "mode": target[0],
             "target_version": target[2],
             "reason": "",
+            "restores_data": target[0] == "docker" and bool(os.getenv("TRPG_DOCKER_DATA_HOME")),
         }
 
     async def rollback_update(self) -> dict[str, Any]:
@@ -495,6 +499,16 @@ class UpdaterService:
             return {"ok": False, "error": self.get_rollback_status()["reason"]}
 
         mode, target_dir, version = target
+        if mode == "docker" and os.getenv("TRPG_DOCKER_DATA_HOME"):
+            from src.compat.program_rollback_access import prepare_rollback_access
+
+            runtime = Path(os.environ["TRPG_DOCKER_RUNTIME_ROOT"]).resolve()
+            home = Path(os.environ["TRPG_DOCKER_DATA_HOME"]).resolve()
+            target_data = data_for_payload(runtime, home, target_dir)
+            try:
+                await asyncio.to_thread(prepare_rollback_access, target_data)
+            except (OSError, ValueError) as exc:
+                return {"ok": False, "error": f"无法安全准备回退数据：{exc}"}
         signal: dict[str, Any] = {
             "schema": 1,
             "operation": "rollback",
@@ -817,7 +831,7 @@ class UpdaterService:
             shutil.rmtree(installing, ignore_errors=True)
 
         legacy_plugins = Path(os.getenv("TRPG_LEGACY_PLUGIN_DIR", "/app/plugins"))
-        _migrate_user_plugin_packages(legacy_plugins, self._dir.parent / "plugin-packages")
+        _migrate_user_plugin_packages(legacy_plugins, self._data_dir / "plugin-packages")
         return {
             "schema": 1,
             "mode": "docker",

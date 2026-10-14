@@ -9,6 +9,7 @@ import signal
 from aiohttp import web
 
 from src.version import __version__
+from src.docker_launcher.data_versions import activation_pending
 from src.webui.routes._common import _require_confirmed_request
 
 
@@ -60,6 +61,7 @@ async def api_update_health(request: web.Request) -> web.Response:
             "version": __version__,
             "pid": os.getpid(),
             "boot_id": request.app["runtime_control"]["boot_id"],
+            "update_pending": activation_pending(os.environ),
         }
     )
 

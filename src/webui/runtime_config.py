@@ -78,12 +78,15 @@ class RuntimePaths:
         environ: Mapping[str, str],
     ) -> RuntimePaths:
         data_dir = Path(environ.get("TRPG_DATA_DIR") or root / "data")
+        host_dir = data_dir
+        if environ.get("TRPG_INSTALL_MODE") == "docker-managed":
+            host_dir = Path(environ.get("TRPG_DOCKER_DATA_HOME") or data_dir)
         return cls(
             root=root,
             data_dir=data_dir,
-            config_file=data_dir / "config.json",
-            secrets_file=data_dir / "secrets.json",
-            access_token_file=data_dir / "access_token.txt",
+            config_file=host_dir / "config.json",
+            secrets_file=host_dir / "secrets.json",
+            access_token_file=host_dir / "access_token.txt",
             prompts_dir=root / "prompts",
             builtin_rules_dir=root / "templates" / "rules",
             builtin_worlds_dir=root / "templates" / "worlds",
@@ -199,7 +202,7 @@ class ConfigStore:
         transport_config = parse_web_transport(saved.get("web_transport"), env)
         transport = build_server_transport(
             transport_config,
-            self.paths.data_dir,
+            self.paths.config_file.parent,
             port,
             internal_loopback_host(hosts),
         )

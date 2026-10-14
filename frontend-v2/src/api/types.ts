@@ -2347,6 +2347,7 @@ export interface UpdateStatusResponse {
     mode?:'portable' | 'docker' | 'source' | 'development' | ''
     target_version?:string
     reason?:string
+    restores_data?: boolean
   }
   current_version:string
   self_update:UpdateSelfUpdateInfo
