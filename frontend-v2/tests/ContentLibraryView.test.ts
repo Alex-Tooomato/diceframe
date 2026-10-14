@@ -42,6 +42,27 @@ beforeEach(() => {
 afterEach(() => { mounted.splice(0).forEach(wrapper => wrapper.unmount()); document.body.innerHTML = '' })
 
 describe('player content library', () => {
+  it('distinguishes a world primary book from its world and preserves custom book titles and identity', async () => {
+    mocks.api.mockImplementation(async (path: string) => {
+      if (path === '/worlds') return { worlds: [{ id: 'port', name: '港湾世界', language: 'zh-CN' }] }
+      if (path === '/lorebooks?scope=all') return { books: [
+        { id: 'primary:port', name: '港湾世界', primary: true, language: 'zh-CN', bindings: [{ scope_kind: 'world', scope_id: 'port', role: 'primary' }] },
+        { id: 'book:people', name: '港湾人物志', language: 'zh-CN', bindings: [{ scope_kind: 'world', scope_id: 'port' }] },
+        { id: 'independent', name: '通用装备手册', language: 'zh-CN', bindings: [] },
+      ] }
+      return { ok: true }
+    })
+    const { wrapper, router } = await render()
+    const cards = wrapper.findAll('[data-testid="library-lorebook"]')
+    expect(cards[0]!.get('h3').text()).toBe('港湾世界 · 主资料册')
+    expect(cards[0]!.text()).toContain('所属世界：港湾世界')
+    expect(cards[1]!.get('h3').text()).toBe('港湾人物志')
+    expect(cards[2]!.text()).toContain('独立资料册')
+    await cards[1]!.get('a').trigger('click'); await flushPromises()
+    expect(router.currentRoute.value.query).toEqual({ world: 'port', book: 'book:people' })
+    expect(mocks.api.mock.calls.every(([, options]) => !options?.method || options.method === 'GET')).toBe(true)
+  })
+
   it('keeps same-id adventures from separate sources and hands the exact package to creation', async () => {
     const { wrapper, router } = await render()
     const cards = wrapper.findAll('[data-testid="library-adventure"]')
@@ -183,13 +204,15 @@ describe('player content library', () => {
       if (path === '/worlds') return { worlds: [] }
       if (path.startsWith('/world-templates')) return { templates: [] }
       if (path === '/lorebooks?scope=all') return {
-        books: [{ id: 'world:missing-world', name: '孤立资料册', entry_count: 2, ref: { kind: 'lorebook', source_kind: 'world', source_id: 'missing-world' } }],
+        books: [{ id: 'world:missing-world', name: '孤立资料册', entry_count: 2, bindings: [{ scope_kind: 'world', scope_id: 'missing-world', role: 'primary' }], ref: { kind: 'lorebook', source_kind: 'world', source_id: 'missing-world' } }],
       }
       if (path === '/modules') return { ok: true, modules: [] }
       return { ok: true, adventures: [] }
     })
     const { wrapper, router } = await render()
     const link = wrapper.get('[data-testid="library-lorebook"] a[data-book-id="world:missing-world"]')
+    expect(wrapper.get('[data-testid="library-lorebook"]').text()).not.toContain('missing-world')
+    expect(wrapper.get('[data-testid="library-lorebook"]').text()).toContain('所属世界：未列入世界库')
     expect(new URL(link.attributes('href') || '', 'http://localhost').searchParams.get('book')).toBe('world:missing-world')
     expect(link.attributes('href')).not.toContain('world=missing-world')
     await link.trigger('click')

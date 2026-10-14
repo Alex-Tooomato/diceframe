@@ -10,6 +10,35 @@ from src.llm.client import LLMToolResponse
 pytest_plugins = ["tests.webapi_harness"]
 
 
+@pytest.mark.asyncio
+async def test_web_api_uses_agent_budget_without_changing_text_generation_budget(web_api, monkeypatch):
+    from src.webui.api import WebAPI
+
+    original, store, registry, llm, worlds_dir = web_api
+    requests = []
+
+    async def call_tools(*args, **kwargs):
+        requests.append(kwargs)
+        return native_response({"tool": "respond", "answer": "Hello."})
+
+    monkeypatch.setattr(llm, "call_tools", call_tools, raising=False)
+    api = WebAPI(
+        registry=registry, lorebook=store, memory=None,
+        rules_dir=original._rules_dir, llm_client=llm, worlds_dir=worlds_dir,
+        text_gen_max_tokens=2048, assistant_agent_max_tokens=8192,
+    )
+    events = []
+
+    async def emit(event, data):
+        events.append((event, data))
+
+    await api.assistant_agent_run("owner", [{"role": "user", "content": "Write a short greeting."}], "en", {}, "", emit)
+    assert len(requests) == 1
+    assert requests[0]["max_tokens"] == 8192
+    assert api.text_gen_max_tokens == 2048
+    assert ("delta", {"delta": "Hello."}) in events
+
+
 def native_response(step):
     """Translate the conceptual test step into the registered native contract."""
     if step.get("tool") == "respond":

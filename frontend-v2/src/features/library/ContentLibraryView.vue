@@ -13,6 +13,7 @@ import Modal from '@/components/ui/Modal.vue'
 import { adventureKey } from '@/features/create/adventureSelection'
 import { adventureLaunchTarget, matchingAdventureRules } from './catalogue'
 import { contentHubCopy } from './hubCopy'
+import { lorebookCard, type LibraryLorebook } from './lorebookCards'
 
 type ContentFilter = 'all' | 'adventure' | 'world' | 'lorebook' | 'source'
 type ContentLanguageFilter = 'all' | Locale
@@ -21,7 +22,7 @@ const { locale, t } = useLocale()
 const copy = computed(() => contentHubCopy(locale.value))
 const adventures = ref<AdventureSummary[]>([])
 const worlds = ref<WorldSummary[]>([])
-const lorebooks = ref<Array<{ id: string; name?: string; description?: string; entry_count?: number; scope?: string; language?: string; bindings?: Array<{ scope_kind?: string; scope_id?: string }>; ref?: { id?: string; source_id?: string; source_kind?: string; kind?: string } }>>([])
+const lorebooks = ref<LibraryLorebook[]>([])
 const modules = ref<ModuleSummary[]>([])
 const rules = ref<RuleSummary[]>([])
 const loading = ref(false)
@@ -147,7 +148,8 @@ const filteredAdventures = computed(() => adventures.value.filter(item => {
     && matches([item.name, item.summary, item.source_id || '', ruleLabel(item)].join(' '))
 }))
 const filteredWorlds = computed(() => worlds.value.filter(item => languageMatches(item) && matches([worldName(item), item.description || ''].join(' '))))
-const filteredLorebooks = computed(() => lorebooks.value.filter(item => languageMatches(item) && matches([item.name || item.id, item.description || '', item.id].join(' '))))
+const filteredLorebooks = computed(() => lorebooks.value.filter(item => languageMatches(item) && matches([item.name || item.id, item.description || '', item.id, ...lorebookCard(item, worlds.value, copy.value).worldNames].join(' '))))
+const lorebookCards = computed(() => visibleLorebooks.value.slice(0, 6).map(book => ({ book, ...lorebookCard(book, worlds.value, copy.value) })))
 const filteredModules = computed(() => modules.value.filter(item => matches([item.name, item.id, item.content_profile].join(' '))))
 const runtimeOptions = computed(() => [...new Map(adventures.value.filter(item => item.required_runtime?.id)
   .map(item => [item.required_runtime!.id, ruleLabel(item)])).entries()])
@@ -210,7 +212,7 @@ function moduleCount(item: ModuleSummary): number {
       <section v-if="visibleLorebooks.length || contentFilter === 'lorebook'" class="hub-section" data-testid="library-lorebooks">
         <header class="hub-section-heading"><div><h2>{{ copy.lorebooksSection }}</h2><p>{{ copy.lorebooksHint }}</p></div><RouterLink class="content-button" :to="{ name: 'lorebook' }">{{ copy.open }}</RouterLink></header>
         <div v-if="!visibleLorebooks.length" class="hub-empty">{{ copy.noLorebooks }}</div>
-        <div v-else class="hub-card-grid"><article v-for="book in visibleLorebooks.slice(0, 6)" :key="book.id" class="hub-card lorebook-card" data-testid="library-lorebook"><span class="hub-card-icon"><NIcon :component="BookOutline" /></span><div><h3>{{ book.name || book.id }}</h3><p>{{ book.description || copy.lorebooksHint }}</p><small>{{ book.entry_count || 0 }} {{ locale.startsWith('zh') ? '条资料' : 'entries' }}</small></div><div class="hub-card-actions"><RouterLink class="content-button content-button-primary" :to="lorebookOpenTarget(book)" :data-book-id="book.id">{{ copy.open }}</RouterLink></div></article></div>
+        <div v-else class="hub-card-grid"><article v-for="card in lorebookCards" :key="card.book.id" class="hub-card lorebook-card" data-testid="library-lorebook"><span class="hub-card-icon"><NIcon :component="BookOutline" /></span><div><span class="library-book-kind">{{ card.kind }}</span><h3>{{ card.title }}</h3><small v-if="card.worldNames.length" class="library-book-worlds">{{ copy.boundWorlds }}{{ card.worldNames.join(' · ') }}</small><p>{{ card.book.description || copy.lorebooksHint }}</p><small>{{ card.book.entry_count || 0 }} {{ locale.startsWith('zh') ? '条资料' : 'entries' }}</small></div><div class="hub-card-actions"><RouterLink class="content-button content-button-primary" :to="lorebookOpenTarget(card.book)" :data-book-id="card.book.id">{{ copy.open }}</RouterLink></div></article></div>
       </section>
 
       <section v-if="visibleAdventures.length || contentFilter === 'adventure'" class="hub-section" data-testid="library-adventures">

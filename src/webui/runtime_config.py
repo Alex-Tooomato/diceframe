@@ -329,6 +329,10 @@ class ConfigStore:
                 env.get("TRPG_TEXT_GEN_MAX_TOKENS")
                 or saved.get("text_gen_max_tokens", 4096)
             ),
+            "assistant_agent_max_tokens": int(
+                env.get("TRPG_ASSISTANT_AGENT_MAX_TOKENS")
+                or saved.get("assistant_agent_max_tokens", 4096)
+            ),
             "access_token": access_token,
             "bot_token": env.get("TRPG_BOT_TOKEN")
             or secret_values.get("bot_token")

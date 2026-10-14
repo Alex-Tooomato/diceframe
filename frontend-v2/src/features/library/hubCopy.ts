@@ -12,6 +12,12 @@ export type ContentHubCopy = {
   worldsHint: string
   lorebooksSection: string
   lorebooksHint: string
+  primaryLorebook: string
+  independentLorebook: string
+  globalLorebook: string
+  unnamedLorebook: string
+  boundWorlds: string
+  unlistedWorld: string
   adventuresSection: string
   adventuresHint: string
   sourcesSection: string
@@ -67,6 +73,7 @@ export type ContentHubCopy = {
 }
 
 const zh: ContentHubCopy = {
+  primaryLorebook: '主资料册', independentLorebook: '独立资料册', globalLorebook: '全局资料册', unnamedLorebook: '未命名资料册', boundWorlds: '所属世界：', unlistedWorld: '未列入世界库',
   kicker: 'CONTENT LIBRARY', title: '内容库', intro: '浏览世界、资料册、冒险和内容来源。选择内容后，再进入对应的编辑或开局流程。',
   startFree: '开始自由游戏', openStudio: '打开创作工坊', adventureWorkbench: '冒险工作台', importScript: '导入剧本',
   worldsSection: '世界', worldsHint: '世界定义故事背景，并可提供默认规则与资料来源；资料册提供人物、地点和背景知识，开局时可按需选择。', lorebooksSection: '资料册', lorebooksHint: '资料册保存人物、地点和背景知识，可在创建游戏时逐册选择。',
@@ -80,6 +87,7 @@ const zh: ContentHubCopy = {
 }
 
 const en: ContentHubCopy = {
+  primaryLorebook: 'Primary lorebook', independentLorebook: 'Independent lorebook', globalLorebook: 'Global lorebook', unnamedLorebook: 'Untitled lorebook', boundWorlds: 'World: ', unlistedWorld: 'Not listed in the world library',
   kicker: 'CONTENT LIBRARY', title: 'Content library', intro: 'Browse worlds, lorebooks, adventures, and content sources. Open the matching workspace when you are ready to edit or play.',
   startFree: 'Start free play', openStudio: 'Open creator studio', adventureWorkbench: 'Adventure workbench', importScript: 'Import script',
   worldsSection: 'Worlds', worldsHint: 'Worlds define the setting and may provide default rules and sources; lorebooks add selectable characters, places, and background knowledge.', lorebooksSection: 'Lorebooks', lorebooksHint: 'Lorebooks hold characters, places, and background knowledge and can be selected per game.',

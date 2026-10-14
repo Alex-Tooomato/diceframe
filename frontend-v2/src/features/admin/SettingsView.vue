@@ -46,6 +46,7 @@ import { assistantWorkspaceCopy } from '@/features/assistant/workspaceCopy'
 import { currentBackendUrl, isStandaloneFrontend, normalizeBackendUrl, setBackendUrl } from '@/api/connection'
 import { isSettingsSectionAvailable, normalizeSettingsSection, type SettingsSectionId } from '@/utils/settingsSections'
 import ContentPageHeader from '@/components/content/ContentPageHeader.vue'
+import LanguagePreferences from '@/features/admin/settings/LanguagePreferences.vue'
 
 type StatusTone = 'default' | 'success' | 'warning' | 'error' | 'info'
 type UpdatePackageKind = 'source' | 'portable' | 'docker'
@@ -1006,6 +1007,7 @@ const tokenFields: { key: keyof AppConfig; labelKey: MessageKey; hintKey: Messag
   { key: 'brief_max_tokens', labelKey: 'briefTokens', hintKey: 'briefTokensHint' },
   { key: 'analysis_max_tokens', labelKey: 'analysisTokens', hintKey: 'analysisTokensHint' },
   { key: 'text_gen_max_tokens', labelKey: 'textGenTokens', hintKey: 'textGenTokensHint' },
+  { key: 'assistant_agent_max_tokens', labelKey: 'assistantAgentTokens', hintKey: 'assistantAgentTokensHint' },
 ]
 
 async function save(keys: string[], secretKeys: SecretKey[] = []) {
@@ -1614,6 +1616,7 @@ function redownloadUpdatePackage() {
                 <p class="muted">{{ t('appearanceSubtitle') }}</p>
               </div>
             </div>
+            <LanguagePreferences />
             <section class="appearance-agent-section">
               <div>
                 <h4>{{ t('assistantTitle') }}</h4>
@@ -1995,7 +1998,7 @@ function redownloadUpdatePackage() {
                 </div>
               </div>
               <footer class="advanced-save-row">
-                <NButton type="primary" @click="save(['model_request_timeout_seconds', 'narrative_max_tokens', 'character_gen_max_tokens', 'summary_max_tokens', 'brief_max_tokens', 'analysis_max_tokens', 'text_gen_max_tokens'])">{{ t('saveAction') }}</NButton>
+                <NButton type="primary" @click="save(['model_request_timeout_seconds', 'narrative_max_tokens', 'character_gen_max_tokens', 'summary_max_tokens', 'brief_max_tokens', 'analysis_max_tokens', 'text_gen_max_tokens', 'assistant_agent_max_tokens'])">{{ t('saveAction') }}</NButton>
               </footer>
             </section>
             <section class="advanced-section runtime-logs-section">

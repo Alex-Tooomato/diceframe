@@ -2159,6 +2159,7 @@ export interface AppConfig {
   brief_max_tokens?: number
   analysis_max_tokens?: number
   text_gen_max_tokens?: number
+  assistant_agent_max_tokens?: number
   proxy_enabled?: boolean
   proxy_url?: string
   proxy_source?: string

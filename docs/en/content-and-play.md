@@ -18,6 +18,10 @@ A short world description is a setting summary, not its complete knowledge base.
 
 Use **Content library** to browse worlds, adventures and lorebooks. World cards offer starting a game and managing its lorebooks. The world gallery also offers preview and **Clone world**; cloning creates an editable personal world.
 
+Lorebook cards keep the book's own title and identify its associated worlds. A primary book initialized with its world's title displays “Primary lorebook” to distinguish it from the world; this is a display label, not a rename of saved data. Independent books are marked separately.
+
+**Settings → Appearance → Interface language** shares the header's language selection and stores it on this device. **Settings → Advanced → Generation parameters → DF Agent Tokens** independently sets the maximum output tokens per Agent model request (default 4096). The Agent uses the main model; generation tools keep their own budgets. This setting is not a total task token or spending limit.
+
 During game creation, choose a template, custom world or AI-generated draft. The compact view keeps the common choices visible; expandable settings retain language, seed, additional background and game-specific lorebook selection. Choosing books for this game changes only its bindings. Editing a shared source book can affect other games that reference it; use a personal copy when you need independent content.
 
 Standard free play uses normal GM narration. Adventure mode follows the selected adventure and its supported rules. Compatibility is checked by the server; a D&D 2014 module is not silently converted to D&D 2024.

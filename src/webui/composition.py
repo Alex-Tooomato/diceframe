@@ -224,6 +224,7 @@ class RuntimeComposition:
                 runtime_config.get("character_gen_max_tokens", 4096)
             ),
             text_gen_max_tokens=int(runtime_config.get("text_gen_max_tokens", 1024)),
+            assistant_agent_max_tokens=int(runtime_config.get("assistant_agent_max_tokens", 4096)),
             plugin_host=plugin_host,
             hub_client=hub_client,
             speech_service=speech_service,

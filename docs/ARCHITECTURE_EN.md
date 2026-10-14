@@ -2,9 +2,9 @@
 
 > **Document type: Current Architecture / System Architecture**
 >
-> This document describes the DiceFrame system architecture that is already merged into the current `main` branch and can be verified from source code. It is not a roadmap, requirements list, PR digest, or a design proposal for “how things should work in the future.”
+> This document describes the verifiable architecture of the checked-out source, including the upstream `main` baseline below and local integration implementations. It is not a roadmap, requirements list, PR digest, or future design proposal. A local implementation does not imply an upstream merge or release.
 >
-> **Verification baseline**
+> **Upstream verification baseline**
 >
 > - Repository: `diceframe/diceframe`
 > - Branch: `main`
@@ -23,9 +23,9 @@
 >
 > **Explicitly excluded from the current architecture**
 >
-> - Unmerged PRs / unmerged feature branches;
+> - PRs / feature branches absent from the checked-out source;
 > - Local working-tree drafts;
-> - Capabilities that exist only in design notes but are not implemented on the current `main` branch.
+> - Capabilities that exist only in design notes but are not implemented in the checked-out source.
 >
 > These items may inform future architecture, but they must not be described in this document as current behavior.
 
@@ -6118,6 +6118,8 @@ ADR/*                       reasons behind long-term design decisions
 Until then, this single document can be used directly as the complete onboarding entry point for new developers.
 
 ## DF Agent application orchestration
+
+Each Agent model output uses independent `assistant_agent_max_tokens` (default 4096), persisted and hot-reloaded through ConfigStore and the configuration update boundary. Business generation tools keep their own budgets. The header and Appearance settings share one device-local interface language preference; existing game languages do not change. The library displays canonical Book titles separately from bound worlds; a same-named primary book gets a display label without changing its saved name or identity.
 
 The owner application shell mounts a shared `AssistantShell` across business routes; Appearance settings can hide it. Public/player routes do not mount the owner agent. A single `AssistantPanel` switches between a side drawer and a centered larger window, with desktop chat/task columns and a narrow-screen single column. Switching layouts preserves the component, unsent input and local draft edits. The read-only `/api/assistant/chat` contract remains; `/api/assistant/agent/*` adds owner-only execution, review, confirmation and recovery.
 

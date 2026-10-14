@@ -28,7 +28,7 @@ export async function prepareAuthenticatedPage(
   const hash = await announcementHash(request)
   await page.addInitScript(({ token, hash, light }) => {
     localStorage.setItem('trpg_access_token', token)
-    localStorage.setItem('diceframe_locale', 'zh-CN')
+    if (!localStorage.getItem('diceframe_locale')) localStorage.setItem('diceframe_locale', 'zh-CN')
     if (hash) localStorage.setItem('diceframe_announcement_read_hash:zh', hash)
     if (light) {
       localStorage.setItem('diceframe_mode_v2', 'light')
@@ -45,7 +45,7 @@ export async function prepareAuthenticatedContext(
   const hash = await announcementHash(request)
   await context.addInitScript(({ token, hash }) => {
     localStorage.setItem('trpg_access_token', token)
-    localStorage.setItem('diceframe_locale', 'zh-CN')
+    if (!localStorage.getItem('diceframe_locale')) localStorage.setItem('diceframe_locale', 'zh-CN')
     if (hash) localStorage.setItem('diceframe_announcement_read_hash:zh', hash)
   }, { token: accessToken(), hash })
 }

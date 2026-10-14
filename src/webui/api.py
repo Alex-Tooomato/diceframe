@@ -146,7 +146,8 @@ class WebAPI:
                  ruleset_registry: RulesetRuntimeRegistry | None = None,
                  content_cache_dir: Path | None = None,
                  config_state: dict | None = None,
-                 save_config: Callable[[], None] | None = None):
+                 save_config: Callable[[], None] | None = None,
+                 assistant_agent_max_tokens: int = 4096):
         self._reg = registry
         self._lore = lorebook
         self._mem = memory
@@ -929,7 +930,7 @@ class WebAPI:
             llm_client=lambda: self._llm_client, configuration_error=self._llm_configuration_error,
             tools=agent_tools, storage_dir=self._reg.save_dir.parent / "assistant_agent",
             answer=assistant.offline_answer, knowledge=assistant.agent_knowledge,
-            review_content=agent_content.review, max_tokens=self.text_gen_max_tokens,
+            review_content=agent_content.review, max_tokens=assistant_agent_max_tokens,
         ))
 
 

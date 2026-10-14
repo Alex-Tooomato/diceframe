@@ -48,7 +48,7 @@ CONFIG_KEYS = (
     "fallback1_enabled", "fallback1_model",
     "fallback2_enabled", "fallback2_model",
     "narrative_max_tokens", "character_gen_max_tokens", "summary_max_tokens", "brief_max_tokens",
-    "analysis_max_tokens", "text_gen_max_tokens", "proxy_enabled", "proxy_url", "public_base_url", "access_token",
+    "analysis_max_tokens", "text_gen_max_tokens", "assistant_agent_max_tokens", "proxy_enabled", "proxy_url", "public_base_url", "access_token",
     "qq_bot_enabled", "napcat_host", "napcat_port", "napcat_token", "napcat_heartbeat_sec",
     "napcat_reconnect_delay_sec", "napcat_action_timeout_sec", "napcat_reply_delay_min_sec",
     "napcat_reply_delay_max_sec", "napcat_command_dedup_window_sec", "napcat_connection_id",
@@ -77,7 +77,7 @@ MODEL_RUNTIME_CONFIG_KEYS = frozenset({
     "embedding_provider_ref",
 })
 API_RUNTIME_CONFIG_KEYS = frozenset({
-    "character_gen_max_tokens", "text_gen_max_tokens",
+    "character_gen_max_tokens", "text_gen_max_tokens", "assistant_agent_max_tokens",
     "tts_provider", "tts_model", "tts_audio_format",
     "tts_default_voice", "tts_gm_voice", "tts_player_voice", "tts_timeout_seconds", "tts_cache_mb",
     "asr_provider", "asr_model", "asr_timeout_seconds",

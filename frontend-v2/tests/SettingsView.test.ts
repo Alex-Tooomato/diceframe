@@ -47,6 +47,22 @@ describe('SettingsView management navigation', () => {
     mocks.api.mockClear()
   })
 
+  it('lists an independent Agent token budget and includes it in the save request', async () => {
+    const wrapper = shallowMount(SettingsView, { global: { stubs: { Spin: { template: '<div><slot /></div>' }, Button: { template: '<button @click="$emit(\'click\')"><slot /></button>', emits: ['click'] }, RouterLink: true } } })
+    await flushPromises()
+    expect(wrapper.findAll('.token-row strong').map(row => row.text())).toContain('assistantAgentTokens')
+    const saveButton = wrapper.get('.generation-section .advanced-save-row > *')
+    await saveButton.trigger('click')
+    expect(mocks.store.saveSection).toHaveBeenCalledWith(expect.arrayContaining(['assistant_agent_max_tokens']), [])
+    wrapper.unmount()
+  })
+
+  it('exposes the shared system language preference in appearance settings', async () => {
+    const wrapper = shallowMount(SettingsView, { global: { stubs: { Spin: { template: '<div><slot /></div>' }, RouterLink: true } } })
+    expect(wrapper.find('language-preferences-stub').exists()).toBe(true)
+    wrapper.unmount()
+  })
+
   it('selects a deep-linked section and keeps grouped navigation reachable', async () => {
     const wrapper = shallowMount(SettingsView, { global: { stubs: { ContentPageHeader: true, HelpButton: true, ProviderLibrary: true, ProviderCatalogModal: true, ModelRoutingPane: true, ProviderModelRow: true, ProviderTestSection: true, TestResultCard: true, TtsVoiceProfiles: true, BrandLogo: true } } })
     await flushPromises()

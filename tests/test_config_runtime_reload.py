@@ -151,7 +151,8 @@ async def test_model_request_timeout_reload_rebuilds_model_runtime(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_api_token_limit_reload_rebuilds_api_without_replacing_subsystems(monkeypatch):
+@pytest.mark.parametrize("token_key", ["text_gen_max_tokens", "assistant_agent_max_tokens"])
+async def test_api_token_limit_reload_rebuilds_api_without_replacing_subsystems(monkeypatch, token_key):
     runtime = _runtime()
     app = {"subsystems": runtime, "api": object(), "plugin_host": None}
     new_api = object()
@@ -166,7 +167,7 @@ async def test_api_token_limit_reload_rebuilds_api_without_replacing_subsystems(
     monkeypatch.setitem(web_server.STATE, "proxy_url", "")
 
     response = await web_server.api_config_post(
-        _ConfigRequest({"text_gen_max_tokens": 2048}, app)
+        _ConfigRequest({token_key: 2048}, app)
     )
 
     assert response.status == 200
