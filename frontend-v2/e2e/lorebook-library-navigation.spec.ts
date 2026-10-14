@@ -74,7 +74,11 @@ test('content library opens a canonical non-primary book, entry, and preserves m
     await bookMenu.locator('summary').click()
     await bookMenu.getByRole('button', { name: '删除资料册', exact: true }).click()
     await page.getByRole('button', { name: '删除资料册', exact: true }).click()
-    await expect(page.locator('.lore-context-row--book select')).toHaveValue(`world:${WORLD_ID}`)
+    // With one scoped book left, the primary uses a static title instead of
+    // a redundant dropdown. Its protection must still be enforced in the UI.
+    await expect(page.locator('.lore-context-row--book .lore-book-meta')).toContainText('主资料册')
+    await bookMenu.locator('summary').click()
+    await expect(bookMenu.getByRole('button', { name: '删除资料册', exact: true })).toHaveCount(0)
     bookDeleted = true
   } finally {
     if (bookCreated && !bookDeleted) {

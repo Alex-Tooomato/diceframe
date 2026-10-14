@@ -96,6 +96,88 @@ function previewFor(path: string) {
 }
 
 describe('LorebookView perspective inspector', () => {
+  const scopedBooks = [
+    { id: 'world:w1', name: '第一世界主册', scope: 'world', language: 'zh-CN', primary: true },
+    { id: 'side:w1', name: '第一世界人物志', scope: 'world', language: 'zh-CN' },
+    { id: 'world:w2', name: '第二世界主册', scope: 'world', language: 'zh-CN', primary: true },
+    { id: 'world:w1-en', name: 'English primary book', scope: 'world', language: 'en', primary: true },
+    { id: 'side:w1-en', name: 'English characters', scope: 'world', language: 'en' },
+    { id: 'global:zh', name: '中文通用资料', scope: 'global', language: 'zh-CN' },
+    { id: 'global:en', name: 'English reference', scope: 'global', language: 'en' },
+  ]
+  function scopeFixtures() {
+    mocks.router.replace.mockImplementation(({ query }: { query: Record<string, unknown> }) => { mocks.route.query = query })
+    mocks.api.mockImplementation(async (path: string) => {
+      if (path === '/worlds') return { worlds: [
+        { id: 'w1', name: '第一世界', language: 'zh-CN' },
+        { id: 'w2', name: '第二世界', language: 'zh-CN' },
+        { id: 'w1-en', name: 'English World', language: 'en' },
+      ] }
+      if (path === '/games') return { games: [] }
+      if (path.includes('/characters')) return { players: [] }
+      if (path.startsWith('/lorebooks?')) {
+        const query = new URLSearchParams(path.split('?')[1])
+        const world = query.get('world_id') || ''
+        return { books: query.get('scope') === 'all' ? scopedBooks
+          : scopedBooks.filter(book => book.scope === 'global' || book.id === `world:${world}` || book.id === `side:${world}`) }
+      }
+      if (path.endsWith('/entries')) return { entries: [] }
+      return { ok: true }
+    })
+  }
+
+  it('keeps a library book link scoped to its world and content language', async () => {
+    mocks.route.query = { world: 'w1', book: 'side:w1' }
+    scopeFixtures()
+    const wrapper = mountView(true, false)
+    await flushPromises(); await flushPromises()
+    expect(wrapper.findAll('.lore-context-row--book option').map(option => option.attributes('value'))).toEqual(['world:w1', 'side:w1', 'global:zh'])
+    expect(wrapper.get('.lore-context-row--book select').element).toHaveProperty('value', 'side:w1')
+    wrapper.unmount()
+  })
+
+  it('looks up only the linked out-of-scope book without exposing the rest of the catalogue', async () => {
+    mocks.route.query = { world: 'w1', book: 'orphan' }
+    scopeFixtures()
+    const scopedApi = mocks.api.getMockImplementation()!
+    mocks.api.mockImplementation((path: string) => path === '/lorebooks?scope=all'
+      ? Promise.resolve({ books: [...scopedBooks, { id: 'orphan', name: '独立目标资料册', scope: 'world', language: 'zh-CN' }] })
+      : scopedApi(path))
+    const wrapper = mountView(true, false)
+    await flushPromises(); await flushPromises()
+    expect(wrapper.get('.lore-context-row--book select').element).toHaveProperty('value', 'orphan')
+    expect(wrapper.findAll('.lore-context-row--book option').map(option => option.attributes('value'))).toEqual(['world:w1', 'side:w1', 'global:zh', 'orphan'])
+    expect(mocks.api.mock.calls.some(([path]) => path === '/lorebooks?scope=all')).toBe(true)
+    wrapper.unmount()
+  })
+
+  it('discards the previous book and entry target when manually changing the browsing world', async () => {
+    mocks.route.query = { world: 'w1', book: 'side:w1', entry: 'old-entry', extra: 'keep' }
+    scopeFixtures()
+    const wrapper = mountView(true, false)
+    await flushPromises(); await flushPromises()
+    await wrapper.get('.lore-context-row--world select').setValue('w2')
+    await flushPromises(); await flushPromises()
+    expect(mocks.route.query).toEqual({ world: 'w2', extra: 'keep' })
+    expect(wrapper.get('.lore-context-row--book select').element).toHaveProperty('value', 'world:w2')
+    expect(wrapper.findAll('.lore-context-row--book option').map(option => option.attributes('value'))).toEqual(['world:w2', 'global:zh'])
+    wrapper.unmount()
+  })
+
+  it('selects translated-world books when changing content language from a linked book', async () => {
+    mocks.route.query = { world: 'w1', book: 'side:w1', entry: 'old-entry' }
+    scopeFixtures()
+    const wrapper = mountView(true, false)
+    await flushPromises(); await flushPromises()
+    await wrapper.get('.lore-language-filter select').setValue('en')
+    await flushPromises(); await flushPromises()
+    expect(mocks.route.query).toEqual({ world: 'w1-en' })
+    expect(wrapper.get('.lore-context-row--book select').element).toHaveProperty('value', 'world:w1-en')
+    expect(wrapper.findAll('.lore-context-row--book option').map(option => option.attributes('value'))).toEqual(['world:w1-en', 'side:w1-en', 'global:en'])
+    expect(localStorage.getItem('currentGame')).toBe('g1')
+    wrapper.unmount()
+  })
+
   it('does not delete an entry in a newly selected book when a prior confirmation finishes late', async () => {
     const decision = deferred<boolean>()
     mocks.confirm.mockReturnValueOnce(decision.promise)

@@ -54,7 +54,12 @@ export function useWorldSelectionRoute() {
     const canonical = String(worldId || '').trim()
     if (!canonical || !router?.replace || !route) return
     if (String(route.query?.world || '') === canonical) return
-    router.replace({ query: { ...(route.query || {}), world: canonical } })
+    const query: Record<string, unknown> = { ...(route.query || {}), world: canonical }
+    // A deliberate world/language choice starts a new browsing context.
+    // The previous Book and Entry are not targets in that new world.
+    delete query.book
+    delete query.entry
+    router.replace({ query })
   }
 
   return { requestedWorldId, requestedBookId, requestedEntryId, hasRequestedWorld, resolveWorldId, syncWorldId }

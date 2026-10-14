@@ -20,6 +20,8 @@ Use **Content library** to browse worlds, adventures and lorebooks. World cards 
 
 Lorebook cards keep the book's own title and identify its associated worlds. A primary book initialized with its world's title displays “Primary lorebook” to distinguish it from the world; this is a display label, not a rename of saved data. Independent books are marked separately.
 
+In **World materials**, lorebook choices follow the current world/game scope and selected content language. A direct link can add its exact independent book, without adding the whole catalogue. Choosing another world, including through the language filter, clears the previous book and entry targets without changing the active game's saved state.
+
 **Settings → Appearance → Interface language** shares the header's language selection and stores it on this device. **Settings → Advanced → Generation parameters → DF Agent Tokens** independently sets the maximum output tokens per Agent model request (default 4096). The Agent uses the main model; generation tools keep their own budgets. This setting is not a total task token or spending limit.
 
 During game creation, choose a template, custom world or AI-generated draft. The compact view keeps the common choices visible; expandable settings retain language, seed, additional background and game-specific lorebook selection. Choosing books for this game changes only its bindings. Editing a shared source book can affect other games that reference it; use a personal copy when you need independent content.

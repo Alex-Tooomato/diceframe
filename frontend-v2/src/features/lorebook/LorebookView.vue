@@ -27,6 +27,7 @@ import { lorebookCopy } from './copy'
 import { loreWorkspaceCopy } from './workspaceCopy'
 import { usageCopy } from './usageCopy'
 import { useWorldSelectionRoute } from './useWorldSelectionRoute'
+import { lorebookChoices } from './bookChoices'
 import { useLorePerspective } from './useLorePerspective'
 import {
   DEFAULT_LORE_ENTRY_FILTERS, LORE_TYPE_ORDER, applyLoreProductActivation, filterLoreEntries,
@@ -87,7 +88,7 @@ interface LorebookListResponse {
 }
 
 /** Book 选择器 / 管理菜单共用的 canonical Book 视图（原 Sidebar 的 LorebookCard）。 */
-interface LorebookCard { id: string; name: string; scope?: string; primary?: boolean; enabled?: boolean; entry_count?: number; bindings?: LoreBinding[]; ref?: { kind?: string; source_kind?: string; source_id?: string } }
+interface LorebookCard { id: string; name: string; language?: string; scope?: string; primary?: boolean; enabled?: boolean; entry_count?: number; bindings?: LoreBinding[]; ref?: { kind?: string; source_kind?: string; source_id?: string } }
 
 const toast = useToast()
 const { confirm } = useConfirm()
@@ -974,16 +975,28 @@ async function importLore(e: Event) {
 async function loadLorebooks(worldId = currentWorldId.value) {
   const requestEpoch = ++lorebookListRequestEpoch
   if (!worldId && !requestedBookId.value) { lorebookBooks.value = []; usageRefreshToken.value += 1; return }
+  const linkedBookId = requestedBookId.value
+  const language = worldLanguage.value
+  const retainLinkedBook = !!linkedBookId && (!routeBookSelectionConsumed.value || activeBookId.value === linkedBookId)
   const isCurrentRequest = () => currentWorldId.value === worldId && requestEpoch === lorebookListRequestEpoch
+    && requestedBookId.value === linkedBookId && worldLanguage.value === language
   try {
     const query = new URLSearchParams({ world_id: worldId })
     if (game.value) query.set('game_key', game.value)
-    // A library card may target an unbound or non-primary book. Ask the
-    // canonical catalogue for that exact id so a scope filter cannot hide it.
-    if (requestedBookId.value || !worldId) query.set('scope', 'all')
+    if (!worldId) query.set('scope', 'all')
     const result = await api<LorebookListResponse>(`/lorebooks?${query.toString()}`)
     if (!isCurrentRequest()) return
-    lorebookBooks.value = (result.books || []).map(book => ({ ...book, primary: book.primary || book.id === `world:${worldId}` }))
+    const books = [...(result.books || [])]
+    // An explicit library link can open an independent/orphaned book, but
+    // only that exact book may supplement the world-scoped response.
+    if (worldId && retainLinkedBook && !books.some(book => book.id === linkedBookId)) {
+      const catalogue = await api<LorebookListResponse>('/lorebooks?scope=all')
+      if (!isCurrentRequest()) return
+      const linked = (catalogue.books || []).find(book => book.id === linkedBookId)
+      if (linked) books.push(linked)
+    }
+    lorebookBooks.value = lorebookChoices(books, language, retainLinkedBook ? linkedBookId : '')
+      .map(book => ({ ...book, primary: book.primary || book.id === `world:${worldId}` }))
     if (requestedBookId.value && !routeBookSelectionConsumed.value) {
       if (lorebookBooks.value.some(book => book.id === requestedBookId.value)) {
         activeBookId.value = requestedBookId.value
@@ -994,7 +1007,8 @@ async function loadLorebooks(worldId = currentWorldId.value) {
       }
       routeBookSelectionConsumed.value = true
     } else if (!activeBookId.value || !lorebookBooks.value.some(book => book.id === activeBookId.value)) {
-      activeBookId.value = `world:${worldId}`
+      activeBookId.value = lorebookBooks.value.find(book => book.id === `world:${worldId}`)?.id
+        || lorebookBooks.value[0]?.id || (worldId ? `world:${worldId}` : '')
       routeBookError.value = ''
     }
   } catch {
