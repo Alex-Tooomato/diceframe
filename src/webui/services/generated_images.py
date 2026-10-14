@@ -9,11 +9,10 @@ import logging
 from pathlib import Path
 from typing import Any, Awaitable, Callable, Protocol
 
-from src.engine import progression
+from src.engine import module_hooks, progression
 from src.engine.language import normalize_language
 from src.engine.module_state import ModuleStateError
 from src.engine.modules import narrative_notes
-from src.engine.modules.media import replace_scene_image, scene_image
 from src.imagegen import (
     ImageGenerationError,
     ImageGenerationRequest,
@@ -49,14 +48,14 @@ def _scene_image_value(instance: Any) -> Any:
     """Read the canonical media slot while tolerating legacy test objects."""
 
     try:
-        return deepcopy(scene_image(instance))
+        return deepcopy(module_hooks.read_value(instance, module_hooks.SCENE_IMAGE))
     except ModuleStateError:
         return deepcopy(getattr(instance, "scene_image", None))
 
 
 def _restore_scene_image(instance: Any, value: Any) -> None:
     try:
-        replace_scene_image(instance, value)
+        module_hooks.record(instance, module_hooks.SCENE_IMAGE, value)
     except ModuleStateError:
         setter = getattr(instance, "set_scene_image", None)
         if callable(setter):

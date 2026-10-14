@@ -66,9 +66,8 @@ from src.engine.economy import filter_unconfirmed_purchase_grants, has_pending_i
 from src.engine import combat_narrative, module_hooks, progression
 from src.engine.game_instance import GameInstance, GameState, _snapshot_players
 from src.engine.module_state import ModuleStateError
-from src.engine.modules.media import replace_scene_image
 from src.engine.modules import (
-    adventure_runtime_state, checks, media, narrative_notes, progression_state, round_safety,
+    adventure_runtime_state, checks, narrative_notes, progression_state, round_safety,
     ruleset_runtime, session_stats, table_settings,
 )
 from src.engine.language import localized_text
@@ -1190,7 +1189,7 @@ class RoundProcessor:
                 return  # 公开剧情已变化，旧任务不得覆盖新版本
             reference = {"kind": "generated", "asset_id": result.asset_id}
             old_scene_image = deepcopy(entry.get("scene_image"))
-            old_top_scene_image = deepcopy(media.scene_image(current))
+            old_top_scene_image = deepcopy(module_hooks.read_value(current, module_hooks.SCENE_IMAGE) or {})
             current.set_scene_image(reference)
             entry["scene_image"] = {
                 "reference": reference,
@@ -1220,7 +1219,7 @@ class RoundProcessor:
                     entry.pop("scene_image", None)
                 else:
                     entry["scene_image"] = old_scene_image
-                replace_scene_image(current, old_top_scene_image)
+                current.set_scene_image(old_top_scene_image)
                 raise
             logger.info("场景图已生成 (round=%d, asset=%s)", round_number, result.asset_id)
         except ImageGenerationError as exc:

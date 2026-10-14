@@ -639,20 +639,14 @@ def test_private_channel_guard_rejects_module_api_writes(source) -> None:
 
 MEDIA_SETTERS = {"replace_scene_image", "replace_map_background"}
 MEDIA_GETTERS = {"scene_image", "map_background"}
-# Existing generated-image save failures restore the previous top-level scene
-# image through the module API; they never set a new one.
-MEDIA_ROLLBACK_WRITERS = {
-    SRC / "commands" / "round_processor.py",
-    SRC / "webui" / "services" / "generated_images.py",
-}
+# Scene-image / map-background writes go through module_hooks (SCENE_IMAGE /
+# MAP_BACKGROUND); no file outside the module calls its write API (#515).
+MEDIA_ROLLBACK_WRITERS: set = set()
 
 
 def test_only_media_owners_assign_compatibility_properties() -> None:
-    # Aggregate setters own updates; lifecycle retains its existing reset policy.
     owners = {
         MODULES / "media.py",
-        SRC / "engine" / "game_instance.py",
-        SRC / "engine" / "instance_lifecycle.py",
         SRC / "migrations" / "instance.py",
     }
     violations: list[str] = []

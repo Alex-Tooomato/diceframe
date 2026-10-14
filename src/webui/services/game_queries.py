@@ -11,7 +11,7 @@ from src.engine.health import health_payload
 from src.engine.language import DEFAULT_LANGUAGE, normalize_language
 from src.engine import module_hooks
 from src.engine.modules import (
-    adventure_runtime_state, checks, economy_state, media, narrative_notes,
+    adventure_runtime_state, checks, economy_state, narrative_notes,
     progression_state, room_access, ruleset_runtime, session_stats, table_settings,
 )
 from src.engine.player_control import away_control_policy
@@ -69,8 +69,8 @@ def list_games(dependencies: GameQueryDependencies) -> dict[str, Any]:
             "world_id": instance.world_id,
             "world_name": instance.world_name,
             "rule_id": projected_rule_id(dependencies, instance),
-            "scene_image": dict(media.scene_image(instance) or {}),
-            "map_background": dict(media.map_background(instance) or {}),
+            "scene_image": dict(module_hooks.read_value(instance, module_hooks.SCENE_IMAGE) or {}),
+            "map_background": dict(module_hooks.read_value(instance, module_hooks.MAP_BACKGROUND) or {}),
             "group_name": instance.group_name,
             "state": instance.state.value,
             "round_number": progression_state.round_value(instance),
@@ -190,8 +190,8 @@ def game_detail(
         "run_id": instance.run_id,
         "world_id": instance.world_id or "",
         "rule_id": projected_rule_id(dependencies, instance),
-        "scene_image": dict(media.scene_image(instance) or {}),
-        "map_background": dict(media.map_background(instance) or {}),
+        "scene_image": dict(module_hooks.read_value(instance, module_hooks.SCENE_IMAGE) or {}),
+        "map_background": dict(module_hooks.read_value(instance, module_hooks.MAP_BACKGROUND) or {}),
         "world_name": instance.world_name,
         "group_name": instance.group_name,
         "state": instance.state.value,
