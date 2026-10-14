@@ -91,6 +91,9 @@ TABLE_TALK = "table_talk"
 # Read-only combat turn view (combat_state / combat_active / initiative_order /
 # initiative_current); read with ``combat_view``.
 COMBAT_VIEW = "combat_view"  # dict | None
+# Portable adventure scene-image reference and the map-background selection.
+SCENE_IMAGE = "scene_image"  # dict | None
+MAP_BACKGROUND = "map_background"  # dict | None
 # Live generic combat-extension payload (scheduler + narration queue); callers
 # may mutate it.
 COMBAT_EXTENSION = "combat_extension"  # dict | None

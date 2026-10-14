@@ -8,7 +8,7 @@ from src.engine import module_hooks
 from src.engine.game_instance import GameInstance
 from src.engine.health import health_payload, mark_health_event, record_health_event
 from src.engine.modules import (
-    check_reveals, combat_extension_state, health, legacy_combat, lorebook_runtime, player_control_state, private_channels, round_presentation,
+    check_reveals, combat_extension_state, health, legacy_combat, media, lorebook_runtime, player_control_state, private_channels, round_presentation,
     seat_activity, world_reports,
 )
 from src.engine.player_control import away_control_policy, set_away_control_policy
@@ -339,3 +339,19 @@ def test_without_combat_extension_rounds_carry_no_combat_state() -> None:
         assert pending_events(instance) == []
     finally:
         _reattach(combat_extension_state, removed)
+
+
+def test_media_references_through_hooks_and_absent_module() -> None:
+    instance = GameInstance(game_key=("web", "hooks-media", "u"))
+    instance.set_scene_image({"kind": "generated", "asset_id": "a1"})
+    instance.set_map_background({"kind": "upload", "asset_id": "m1"})
+    assert media.scene_image(instance) == {"kind": "generated", "asset_id": "a1"}
+    assert module_hooks.read_value(instance, module_hooks.MAP_BACKGROUND) == {"kind": "upload", "asset_id": "m1"}
+
+    removed = _detached(media)
+    try:
+        instance.set_scene_image({"kind": "generated", "asset_id": "a2"})
+        assert module_hooks.read_value(instance, module_hooks.SCENE_IMAGE) is None
+        assert media.scene_image(instance) == {"kind": "generated", "asset_id": "a1"}
+    finally:
+        _reattach(media, removed)

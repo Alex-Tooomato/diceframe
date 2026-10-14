@@ -55,7 +55,7 @@ DESELECT = "not in_flight"
 KEEP_FUNCS = frozenset({
     "fresh", "ensure", "require_writable", "persisted_state",
     "ensure_economy_state", "fresh_economy_state", "normalize_timers",
-    "health_events", "normalize_decoded_play_mode",
+    "health_events", "normalize_decoded_play_mode", "payload_container",
 })
 
 ENV_MODULE = "DICEFRAME_AUDIT_DISABLE_MODULE"

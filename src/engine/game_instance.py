@@ -38,7 +38,6 @@ from src.engine.modules import (
     adventure_runtime_state,
     checks,
     economy_state,
-    media,
     narrative_notes,
     progression_state,
     room_access,
@@ -560,11 +559,11 @@ class GameInstance:
 
     def set_scene_image(self, reference: dict[str, str]) -> None:
         """Set the portable adventure scene-image reference."""
-        media.replace_scene_image(self, dict(reference or {}))
+        module_hooks.record(self, module_hooks.SCENE_IMAGE, dict(reference or {}))
 
     def set_map_background(self, selection: dict[str, str]) -> None:
         """Set this save's validated map-background selection."""
-        media.replace_map_background(self, dict(selection or {}))
+        module_hooks.record(self, module_hooks.MAP_BACKGROUND, dict(selection or {}))
 
     def replace_players(self, players: dict[str, PlayerData]) -> None:
         for player in players.values():
