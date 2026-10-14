@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import copy
 from typing import Any
 
 from src.engine.module_state import ModuleStateSpec, get_module_state, register_module_state
@@ -123,6 +124,21 @@ def dice_reveal_mode(instance: Any) -> str:
 
 def replace_dice_reveal_mode(instance: Any, value: str) -> None:
     get_module_state(instance, MODULE_NAME)["dice_reveal_mode"] = value
+
+
+# Table preferences a new run of the same game keeps.  They are copied
+# verbatim: the source slot already holds normalized values.
+NEW_RUN_PREFERENCES = (
+    "narrative_perspective", "gm_style_override", "luck_timeout_seconds", "dice_reveal_mode",
+)
+
+
+def carry_preferences_for_new_run(candidate: Any, source: Any) -> None:
+    """Copy the table preferences of ``source`` onto a new-run ``candidate``."""
+    source_slot = get_module_state(source, MODULE_NAME)
+    candidate_slot = get_module_state(candidate, MODULE_NAME)
+    for key in NEW_RUN_PREFERENCES:
+        candidate_slot[key] = copy.deepcopy(source_slot[key])
 
 
 SPEC = ModuleStateSpec(name=MODULE_NAME, schema_version=SCHEMA_VERSION, fresh=fresh, ensure=ensure)
