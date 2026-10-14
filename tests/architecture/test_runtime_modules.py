@@ -24,17 +24,12 @@ CONTROL_WRITERS = {
 # ``x.combat_extension_round_snapshots`` store outside these owners would be a
 # silent shadow attribute on the dataclass. Direct attribute writes only: this
 # does not police aliases, subscript mutation, clear/pop, or generic setattr.
+# Reset, rollback, abort, swipe and round commit reach the module through
+# module_hooks, so the core lifecycle files are no longer owners (#515).
 COMBAT_WRITERS = {
     SRC / "webui" / "services" / "combat_extension.py",
-    SRC / "engine" / "round_snapshots.py",
     MODULES / "combat_extension_state.py",
     SRC / "migrations" / "instance.py",
-    # Existing lifecycle owner replaces current and clears snapshots on reset.
-    SRC / "engine" / "instance_lifecycle.py",
-    # Existing rollback/abort owner clears current on invalid restoration.
-    SRC / "engine" / "round_recovery.py",
-    # Existing historical rewrite owner has the same fail-closed fallback.
-    SRC / "commands" / "swipe_generator.py",
 }
 
 

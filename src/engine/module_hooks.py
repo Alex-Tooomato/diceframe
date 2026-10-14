@@ -25,6 +25,28 @@ ROUND_PROCESSING_BEGIN = "round.processing.begin"
 INSTANCE_RESET_PREFLIGHT = "instance.reset.preflight"
 # In-place game reset: handler(instance) -> None.  Clear run-scoped state.
 INSTANCE_RESET = "instance.reset"
+# Before rollback_last_round / abort_round_processing change anything:
+# handler(instance) -> None.  Raise to refuse.
+ROUND_RECOVERY_PREFLIGHT = "round.recovery.preflight"
+# Judgment failed: handler(instance) -> bool.  Restore this round's state as of
+# judgment entry; answer whether anything was restored.  Runs after players are
+# restored and before the judgment-entry entity snapshot.
+ROUND_ABORT = "round.abort"
+# A rollback / swipe rewinds to ``target_round``, before economy reversal:
+# handler(instance, target_round) -> None.
+ROUND_REWIND_BEGIN = "round.rewind.begin"
+# After players were restored from ``entry`` (the log entry of
+# ``target_round``): handler(instance, entry, target_round, source) -> None,
+# ``source`` one of REWIND_SOURCE_*.  Restore module state the entry carries and
+# drop live state of the discarded branch.
+ROUND_REWIND_RESTORE = "round.rewind.restore"
+REWIND_SOURCE_ROLLBACK = "rollback"
+REWIND_SOURCE_SWIPE = "swipe"
+# finish_judgment built the round's log entry: handler(instance, entry,
+# pre_snapshot) -> None.  Add module fields / state_changes to ``entry`` and
+# retire live round state.  ``pre_snapshot`` is whatever round processing
+# captured as COMBAT_EXTENSION_SNAPSHOT before applying the state update.
+ROUND_COMMIT = "round.commit"
 # Before a write that may mark or forget a seat: handler(instance) -> None.
 # Raise to refuse; nothing has changed yet.
 SEAT_PREFLIGHT = "seat.preflight"
@@ -69,9 +91,16 @@ TABLE_TALK = "table_talk"
 # Read-only combat turn view (combat_state / combat_active / initiative_order /
 # initiative_current); read with ``combat_view``.
 COMBAT_VIEW = "combat_view"  # dict | None
+# Live generic combat-extension payload (scheduler + narration queue); callers
+# may mutate it.
+COMBAT_EXTENSION = "combat_extension"  # dict | None
+# Combat-extension state with this round's tracked entity fields, for a log
+# entry's pre-state; computed on read.
+COMBAT_EXTENSION_SNAPSHOT = "combat_extension_snapshot"  # dict | None
 
 HOOK_POINTS = frozenset({
     ROUND_RESET, ROUND_PROCESSING_BEGIN, INSTANCE_RESET_PREFLIGHT, INSTANCE_RESET,
+    ROUND_RECOVERY_PREFLIGHT, ROUND_ABORT, ROUND_REWIND_BEGIN, ROUND_REWIND_RESTORE, ROUND_COMMIT,
     SEAT_PREFLIGHT, SEAT_ACTED, SEAT_FORGOTTEN, SEAT_HAS_ACTED,
     STATE_RECORD, STATE_READ,
 })
@@ -115,6 +144,15 @@ def run(point: str, *args: Any) -> None:
     """Call every handler for ``point``."""
     for _, handler in tuple(_HANDLERS[point]):
         handler(*args)
+
+
+def run_any(point: str, *args: Any) -> bool:
+    """Call every handler for ``point``; True when any answered truthy."""
+    answered = False
+    for _, handler in tuple(_HANDLERS[point]):
+        if handler(*args):
+            answered = True
+    return answered
 
 
 def ask(point: str, *args: Any, default: Any) -> Any:

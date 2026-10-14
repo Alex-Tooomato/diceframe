@@ -37,7 +37,6 @@ from src.engine.module_state import ensure_module_states
 from src.engine.modules import (
     adventure_runtime_state,
     checks,
-    combat_extension_state,
     economy_state,
     media,
     narrative_notes,
@@ -783,25 +782,6 @@ class GameInstance:
         results = module_hooks.read(self, module_hooks.COMBAT_RESULTS)
         module_hooks.record(self, module_hooks.COMBAT_RESULTS, [*results, result])
 
-    def capture_combat_extension_snapshot(
-        self,
-        entity_fields: Mapping[str, tuple[str, ...]] | None = None,
-    ) -> None:
-        """Capture state and source fields before this round's combat writes."""
-        round_snapshots.capture_combat_extension_snapshot(self, entity_fields)
-
-    def current_combat_extension_snapshot(self) -> dict[str, Any]:
-        """Return the current combat state using this round's tracked fields."""
-        return round_snapshots.current_combat_extension_snapshot(self)
-
-    def restore_combat_extension_snapshot(self, snapshot: Any) -> bool:
-        """Restore a snapshot produced by the combat-extension snapshot API."""
-        return round_snapshots.restore_combat_extension_snapshot(self, snapshot)
-
-    def discard_combat_extension_snapshots_from(self, round_number: int) -> None:
-        """Drop live snapshots belonging to a discarded history branch."""
-        round_snapshots.discard_combat_extension_snapshots_from(self, round_number)
-
     def record_save_success(self) -> None:
         self._save_fail_count = 0
 
@@ -839,7 +819,7 @@ class GameInstance:
                 round_safety.require_writable(self)
                 adventure_runtime_state.require_writable(self)
                 economy_state.state(self)
-                combat_extension_state.current(self)
+                module_hooks.run(module_hooks.ROUND_RECOVERY_PREFLIGHT, self)
             return round_recovery.rollback_last_round_locked(self)
 
     async def abort_round_processing(self) -> bool:
@@ -866,7 +846,7 @@ class GameInstance:
                 adventure_runtime_state.require_writable(self)
                 ruleset_runtime.require_writable(self)
                 economy_state.state(self)
-                combat_extension_state.current(self)
+                module_hooks.run(module_hooks.ROUND_RECOVERY_PREFLIGHT, self)
             return round_recovery.abort_round_processing_locked(self)
 
     def _drop_stale_combat_caches(self, *, all_targets: bool = False) -> None:
@@ -1444,7 +1424,7 @@ class GameInstance:
             ruleset_runtime.require_writable(self)
             narrative_notes.require_writable(self)
             adventure_runtime_state.require_writable(self)
-            combat_extension_state.current(self)
+            module_hooks.run(module_hooks.INSTANCE_RESET_PREFLIGHT, self)
             module_hooks.run(module_hooks.INSTANCE_RESET_PREFLIGHT, self)
             from src.engine.modules import room_access
 

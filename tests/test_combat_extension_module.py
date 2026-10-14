@@ -327,7 +327,7 @@ async def test_unknown_combat_abort_outside_judgment_remains_a_noop(state):
 def test_unknown_combat_invalid_snapshot_restore_remains_a_noop(snapshot):
     instance = unsupported_lifecycle_instance(99)
     before = serialized_state(instance)
-    assert instance.restore_combat_extension_snapshot(snapshot) is False
+    assert combat.restore_combat_extension_snapshot(instance, snapshot) is False
     assert serialized_state(instance) == before
 
 
@@ -453,23 +453,23 @@ def test_snapshot_first_touch_late_fields_and_summary_copy_survive_module_storag
     populate(instance)
     instance.round_number = 7
     instance.players["p"] = {"character_sheet": {"hp": 20, "inventory": ["old"]}}
-    instance.capture_combat_extension_snapshot({"player:p": ("hp", "missing")})
+    combat.capture_combat_extension_snapshot(instance, {"player:p": ("hp", "missing")})
     first = combat.round_snapshots(instance)["7"]
     instance.get_character_sheet("p").update(hp=10, missing="added", qi=4)
-    instance.capture_combat_extension_snapshot({"player:p": ("hp", "missing", "qi", "inventory")})
+    combat.capture_combat_extension_snapshot(instance, {"player:p": ("hp", "missing", "qi", "inventory")})
     assert combat.round_snapshots(instance)["7"] is first
     tracked = first["entity_fields"]["player:p"]
     assert tracked == {"values": {"hp": 20, "qi": 4, "inventory": ["old"]}, "missing": ["missing"]}
     instance.get_character_sheet("p")["inventory"].append("new")
     combat.current(instance)["pending_summaries"] = ["queued"]
-    now = instance.current_combat_extension_snapshot()
+    now = combat.current_combat_extension_snapshot(instance)
     assert "pending_summaries" not in now["combat_extension"]
     assert combat.current(instance)["pending_summaries"] == ["queued"]
     now["combat_extension"]["opaque"]["values"].append(9)
     assert combat.current(instance)["opaque"]["values"] == [1]
-    assert instance.restore_combat_extension_snapshot(first)
+    assert combat.restore_combat_extension_snapshot(instance, first)
     assert instance.get_character_sheet("p") == {"hp": 20, "qi": 4, "inventory": ["old"]}
-    assert instance.restore_combat_extension_snapshot({"schema_version": 1, "opaque": [8]})
+    assert combat.restore_combat_extension_snapshot(instance, {"schema_version": 1, "opaque": [8]})
     assert combat.current(instance) == {"schema_version": 1, "opaque": [8]}
 
 
@@ -479,10 +479,10 @@ async def test_bounded_snapshots_and_finished_log_copies_remain_independent():
     populate(instance)
     for round_number in range(1, 103):
         instance.round_number = round_number
-        instance.capture_combat_extension_snapshot()
+        combat.capture_combat_extension_snapshot(instance)
     assert set(combat.round_snapshots(instance)) == {str(n) for n in range(3, 103)}
     first = combat.round_snapshots(instance)["102"]
-    current = instance.current_combat_extension_snapshot()
+    current = combat.current_combat_extension_snapshot(instance)
     await instance.finish_judgment("done", pre_combat_extension_snapshot=current)
     entry = instance.log[-1]
     assert entry["combat_extension_round_start"] == first
