@@ -1,16 +1,18 @@
 # DiceFrame Architecture vNext 合并母方案
 
+> 2026-10-15 已归档：本文是旧基线的施工讨论，不覆盖当前架构和 ADR；当前入口见[文档索引](../../README.md)。
+
 ## 运行时拆能力 × 内容架构重构
 
 > 基线：`diceframe/diceframe` `main` HEAD `5638c482`（Lorebook v2 #398 已合并）。
 >
 > 本文合并两份计划：
 >
-> 1. **运行时拆能力方案**：源自 [ADR-0005](adr/0005-composable-game-platform.md) 的方向讨论，目标是把 `GameInstance` 上的运行能力逐个拆成自持状态、迁移、投影与测试的模块，缩小每次改动的爆炸半径。
-> 2. **[内容架构 vNext 母方案](CONTENT_ARCHITECTURE_VNEXT_MASTER_PLAN.md)**（World / Lorebook / Adventure / Module / Content Pack 全盘重构）：目标是把内容对象的 authority、ownership、reference 与生命周期一次定死，兼容只留在适配边界。
-> 3. **[Native Module / Content Package 方向整理](NATIVE_MODULE_CONTENT_PACKAGE_DIRECTION.md)**：内容架构下的模组子方案，固定 Module 是分发容器而不是第四种 authority，给出 MODULE-1 到 MODULE-6 的施工顺序，并把 #400 置于 HOLD。
+> 1. **运行时拆能力方案**：源自 [ADR-0005](../../adr/0005-composable-game-platform.md) 的方向讨论，目标是把 `GameInstance` 上的运行能力逐个拆成自持状态、迁移、投影与测试的模块，缩小每次改动的爆炸半径。
+> 2. **内容架构 vNext 母方案**（World / Lorebook / Adventure / Module / Content Pack 全盘重构，历史引用文档已不在当前仓库）：目标是把内容对象的 authority、ownership、reference 与生命周期一次定死，兼容只留在适配边界。
+> 3. **Native Module / Content Package 方向整理**（历史引用文档已不在当前仓库）：内容架构下的模组子方案，固定 Module 是分发容器而不是第四种 authority，给出 MODULE-1 到 MODULE-6 的施工顺序，并把 #400 置于 HOLD。
 >
-> 三份计划的原文分别保留；本文只定义它们的关系、共同原则、交点决议、合并后的实施顺序和完成标准。发生冲突时以本文为准，本文与源码冲突时以源码和 [ENGINEERING_RULES](ENGINEERING_RULES.md) 为准。
+> 本文原本定义这些历史计划的关系、共同原则、交点决议、合并后的实施顺序和完成标准。归档后不作为冲突仲裁依据；以当前源码和 [ENGINEERING_RULES](../../ENGINEERING_RULES.md) 为准。
 
 ---
 
@@ -325,4 +327,4 @@ backend full pytest、frontend unit、vue-tsc、lint、production build、E2E �
 - ADR-0005 记录方向，本文记录路线；路线完成后回头更新 ADR-0005 状态。
 - 内容架构 vNext 母方案是轨道 C 的详细设计，本文 §4 的 PR A–I 与其 §39 一一对应；其 §3–§38 的具体定义继续有效，未在本文重复。
 - Native Module / Content Package 方向整理是轨道 M 的详细设计，本文 §4 的 M1–M6 与其 §28 一一对应；其 §29 的九条不变量是轨道 C 不变量的子集，不另行维护。
-- 本文本身不是 ADR，属于实施计划；当某一步改变了长期依赖方向或持久化模型时，仍按 [ADR 规则](adr/README.md) 单独记录。
+- 本文本身不是 ADR，属于实施计划；当某一步改变了长期依赖方向或持久化模型时，仍按 [ADR 规则](../../adr/README.md) 单独记录。

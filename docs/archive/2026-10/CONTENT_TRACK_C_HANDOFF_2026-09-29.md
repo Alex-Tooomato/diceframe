@@ -1,5 +1,7 @@
 # Content Track C handoff — 2026-09-29
 
+> Archived 2026-10-15. Historical branch notes; see the [current documentation map](../../README.md). The completion claims and continuation order below belong to the original handoff date.
+
 This branch is a continuation point for the Content Track C implementation. It is intentionally left reviewable and does not claim that the entire track is complete.
 
 ## Current state

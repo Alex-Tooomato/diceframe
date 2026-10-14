@@ -1,5 +1,7 @@
 # DiceFrame 平台方向落地施工计划
 
+> 2026-10-15 已归档：旧分支的施工顺序和验收计数，仅用于追溯，不是当前待办。当前入口见[文档索引](../../README.md)。
+
 > 这是一份实施计划，不是当前架构事实，也不是把讨论稿中的所有远景立即实现。
 > 当前架构事实仍以 `ARCHITECTURE_CN.md`、`ENGINEERING_RULES.md` 和已经合并到 `main` 的代码为准。
 
@@ -196,4 +198,4 @@ checks + moves + clocks + stress + harm + factions + downtime
 - Playwright：桌面/手机共 4 项通过；真实上传、修改、发布、预选创建、角色创建、游玩、节点推进，以及模组启用后的准确来源交接。
 - 类型检查、ESLint、Ruff、生产构建、diff whitespace 检查通过。
 
-用户操作及文本样例见 [冒险与创建游戏](user/adventures.md)。下一批仍为 AI Failure UX；外部 VTT adapter 和 Capability demo 继续按第 9 节依赖顺序推进。
+用户操作及文本样例见 [冒险与创建游戏](../../user/adventures.md)。下一批仍为 AI Failure UX；外部 VTT adapter 和 Capability demo 继续按第 9 节依赖顺序推进。
