@@ -66,6 +66,9 @@ AWAY_CONTROL_POLICY = "away_control_policy"  # str | None
 # Live private messages (uid -> list) and public table talk; callers may mutate.
 PRIVATE_LOG = "private_log"  # dict | None
 TABLE_TALK = "table_talk"
+# Read-only combat turn view (combat_state / combat_active / initiative_order /
+# initiative_current); read with ``combat_view``.
+COMBAT_VIEW = "combat_view"  # dict | None
 
 HOOK_POINTS = frozenset({
     ROUND_RESET, ROUND_PROCESSING_BEGIN, INSTANCE_RESET_PREFLIGHT, INSTANCE_RESET,
@@ -143,3 +146,19 @@ def read_value(instance: Any, kind: str) -> dict | None:
 def seat_has_acted(instance: Any, user_id: str) -> bool:
     """Has this seat acted in the current run; False when no module tracks seats."""
     return bool(ask(SEAT_HAS_ACTED, instance, user_id, default=False))
+
+
+def neutral_combat_view() -> dict[str, Any]:
+    """The combat view of a game nothing projects combat for."""
+    return {
+        "combat_state": "none",
+        "combat_active": False,
+        "initiative_order": [],
+        "initiative_current": 0,
+    }
+
+
+def combat_view(instance: Any) -> dict[str, Any]:
+    """A fresh combat turn view; neutral when no module projects one."""
+    view = read_value(instance, COMBAT_VIEW)
+    return {**neutral_combat_view(), **view} if view is not None else neutral_combat_view()

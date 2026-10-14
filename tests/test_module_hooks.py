@@ -8,7 +8,7 @@ from src.engine import module_hooks
 from src.engine.game_instance import GameInstance
 from src.engine.health import health_payload, mark_health_event, record_health_event
 from src.engine.modules import (
-    check_reveals, health, lorebook_runtime, player_control_state, private_channels, round_presentation,
+    check_reveals, health, legacy_combat, lorebook_runtime, player_control_state, private_channels, round_presentation,
     seat_activity, world_reports,
 )
 from src.engine.player_control import away_control_policy, set_away_control_policy
@@ -273,3 +273,24 @@ def test_without_seat_activity_no_seat_is_locked() -> None:
         assert seat_activity.has_acted(instance, "p1") is False
     finally:
         _reattach(seat_activity, removed)
+
+
+def test_combat_view_reads_through_hooks_and_is_neutral_without_module() -> None:
+    from tests.test_legacy_combat_module import bind_dnd_combat
+
+    instance = bind_dnd_combat(
+        GameInstance(game_key=("web", "hooks-combat-view", "u")),
+        {"status": "active", "initiative": ["player:p1", "npc:goblin"], "turn_index": 1},
+    )
+    view = module_hooks.combat_view(instance)
+    assert view == legacy_combat.view(instance)
+    assert view["combat_state"] == "active" and view["combat_active"] is True
+    view["initiative_order"].append("tampered")
+    assert "tampered" not in module_hooks.combat_view(instance)["initiative_order"]
+
+    removed = module_hooks.unregister_owner(legacy_combat.HOOK_OWNER)
+    try:
+        assert module_hooks.combat_view(instance) == module_hooks.neutral_combat_view()
+    finally:
+        for point, handler in removed.items():
+            module_hooks.register(point, legacy_combat.HOOK_OWNER, handler)

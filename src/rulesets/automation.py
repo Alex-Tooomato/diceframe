@@ -141,7 +141,8 @@ def apply_director_automation(
     initial_intents = initial if isinstance(initial, list) else [initial]
     if not initial_intents:
         return []
-    from src.engine.modules import legacy_combat, narrative_notes, ruleset_runtime
+    from src.engine import module_hooks
+    from src.engine.modules import narrative_notes, ruleset_runtime
 
     # The snapshot below includes the scene; reject an unsupported notes slot
     # before any batch runs so the rollback never has to touch it.
@@ -150,10 +151,10 @@ def apply_director_automation(
         "ruleset_state": deepcopy(ruleset_runtime.state(instance)),
         "event_ledger": deepcopy(ruleset_runtime.event_ledger(instance)),
         "players": deepcopy(instance.players),
-        "combat_state": legacy_combat.combat_state(instance),
-        "combat_active": legacy_combat.combat_active(instance),
-        "initiative_order": deepcopy(legacy_combat.initiative_order(instance)),
-        "initiative_current": legacy_combat.initiative_current(instance),
+        "combat_state": module_hooks.combat_view(instance)["combat_state"],
+        "combat_active": module_hooks.combat_view(instance)["combat_active"],
+        "initiative_order": deepcopy(module_hooks.combat_view(instance)["initiative_order"]),
+        "initiative_current": module_hooks.combat_view(instance)["initiative_current"],
         "scene": narrative_notes.scene(instance),
     }
     batches: list[dict[str, Any]] = []

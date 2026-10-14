@@ -12,7 +12,7 @@ from src.engine import module_hooks
 from src.engine.game_instance import GameInstance
 from src.engine.language import localized_text, normalize_language
 from src.engine.modules import (
-    checks, economy_state, legacy_combat, narrative_notes, progression_state,
+    checks, economy_state, narrative_notes, progression_state,
     table_settings,
 )
 from src.engine.visibility_rules import manual_roll_visible_to
@@ -985,7 +985,7 @@ def _player_safe_state(
         "language": instance.language,
         "questioning_character": actor_view,
         "public_party_roster": party,
-        "combat_state": legacy_combat.combat_state(instance),
+        "combat_state": module_hooks.combat_view(instance)["combat_state"],
     }
 
 

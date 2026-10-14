@@ -366,17 +366,18 @@ def capture_round_entity_snapshot(instance: GameInstance) -> None:
     与 ``round_start_snapshot``（玩家）和 ``combat_extension_round_snapshots``
     （D&D2024 权威战斗扩展）互补，三者合起来才是"本轮改过的东西"。
     """
-    from src.engine.modules import adventure_runtime_state, legacy_combat, round_safety, ruleset_runtime
+    from src.engine import module_hooks
+    from src.engine.modules import adventure_runtime_state, round_safety, ruleset_runtime
 
     round_safety.require_writable(instance)
     adventure_runtime_state.require_writable(instance)
     ruleset_runtime.require_writable(instance)
     round_safety.replace_entity_snapshot(instance, {
         "npcs": copy.deepcopy(instance.npcs),
-        "combat_state": str(legacy_combat.combat_state(instance) or "none"),
-        "combat_active": bool(legacy_combat.combat_active(instance)),
-        "initiative_order": copy.deepcopy(list(legacy_combat.initiative_order(instance) or [])),
-        "initiative_current": int(legacy_combat.initiative_current(instance) or 0),
+        "combat_state": str(module_hooks.combat_view(instance)["combat_state"] or "none"),
+        "combat_active": bool(module_hooks.combat_view(instance)["combat_active"]),
+        "initiative_order": copy.deepcopy(list(module_hooks.combat_view(instance)["initiative_order"] or [])),
+        "initiative_current": int(module_hooks.combat_view(instance)["initiative_current"] or 0),
         "world_state": copy.deepcopy(instance.world_state),
         # FIX-07 §10 步骤 23：Adventure 进度与世界真相由同一次权威事务写入
         # （FIX-04 §6.7），所以"本轮改过的东西"必须包含它——否则回滚会把世界
