@@ -12,7 +12,7 @@ from typing import Any
 from src.webui.ruleset_draft_validation import validate_draft_shape
 from src.adventures import binding_matches
 from src.engine import module_hooks, progression
-from src.engine.modules import adventure_runtime_state, economy_state, legacy_combat, progression_state, ruleset_runtime, session_stats
+from src.engine.modules import adventure_runtime_state, economy_state, progression_state, ruleset_runtime, session_stats
 from src.engine.action_gate import (
     GateRequest, ROUND_PROCESSING, SOURCE_INTENT, STRUCTURED_INTENT_POLICY,
     check_not_judging, check_seat_exists, evaluate,
@@ -515,10 +515,10 @@ async def submit_intent(
             "ruleset_state": deepcopy(ruleset_runtime.state(instance)),
             "event_ledger": deepcopy(ruleset_runtime.event_ledger(instance)),
             "players": deepcopy(instance.players),
-            "combat_state": legacy_combat.combat_state(instance),
-            "combat_active": legacy_combat.combat_active(instance),
-            "initiative_order": deepcopy(legacy_combat.initiative_order(instance)),
-            "initiative_current": legacy_combat.initiative_current(instance),
+            "combat_state": module_hooks.combat_view(instance)["combat_state"],
+            "combat_active": module_hooks.combat_view(instance)["combat_active"],
+            "initiative_order": deepcopy(module_hooks.combat_view(instance)["initiative_order"]),
+            "initiative_current": module_hooks.combat_view(instance)["initiative_current"],
             "last_activity": session_stats.last_activity(instance),
             "log": deepcopy(instance.log),
             "round_number": progression_state.round_value(instance),
@@ -656,10 +656,10 @@ async def resume_authoritative_combat(
             "ruleset_state": deepcopy(ruleset_runtime.state(instance)),
             "event_ledger": deepcopy(ruleset_runtime.event_ledger(instance)),
             "players": deepcopy(instance.players),
-            "combat_state": legacy_combat.combat_state(instance),
-            "combat_active": legacy_combat.combat_active(instance),
-            "initiative_order": deepcopy(legacy_combat.initiative_order(instance)),
-            "initiative_current": legacy_combat.initiative_current(instance),
+            "combat_state": module_hooks.combat_view(instance)["combat_state"],
+            "combat_active": module_hooks.combat_view(instance)["combat_active"],
+            "initiative_order": deepcopy(module_hooks.combat_view(instance)["initiative_order"]),
+            "initiative_current": module_hooks.combat_view(instance)["initiative_current"],
             "last_activity": session_stats.last_activity(instance),
             "log": deepcopy(instance.log),
             "round_number": progression_state.round_value(instance),

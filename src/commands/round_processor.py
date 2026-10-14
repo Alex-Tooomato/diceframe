@@ -68,7 +68,7 @@ from src.engine.game_instance import GameInstance, GameState, _snapshot_players
 from src.engine.module_state import ModuleStateError
 from src.engine.modules.media import replace_scene_image
 from src.engine.modules import (
-    adventure_runtime_state, checks, legacy_combat, media, narrative_notes, progression_state, round_safety,
+    adventure_runtime_state, checks, media, narrative_notes, progression_state, round_safety,
     ruleset_runtime, session_stats, table_settings,
 )
 from src.engine.language import localized_text
@@ -1301,7 +1301,7 @@ class RoundProcessor:
             if action.get("user_id") in instance.players
         )
         authoritative_combat = combat_model == "authoritative_event_batch"
-        if not authoritative_combat and (legacy_combat.combat_state(instance) != "none" or explicit_attack):
+        if not authoritative_combat and (module_hooks.combat_view(instance)["combat_state"] != "none" or explicit_attack):
             combat_text = self._combat.resolve_combat(instance, actions_text, combat_model, rule)
             if combat_text:
                 actions_text = combat_text + "\n" + actions_text
@@ -1441,7 +1441,7 @@ class RoundProcessor:
                     for action in instance.action_queue
                     if action.get("user_id") in instance.players
                 }
-                if str(legacy_combat.combat_state(instance) or "none") != "none":
+                if str(module_hooks.combat_view(instance)["combat_state"] or "none") != "none":
                     allowed_uids |= set(instance.alive_players)
             queued_proposals = self._state_applier.apply_state_update(
                 instance, response.state_update, allowed_player_uids=allowed_uids,
