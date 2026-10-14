@@ -8,7 +8,7 @@ from src.engine import module_hooks
 from src.engine.game_instance import GameInstance
 from src.engine.health import health_payload, mark_health_event, record_health_event
 from src.engine.modules import (
-    check_reveals, health, legacy_combat, lorebook_runtime, player_control_state, private_channels, round_presentation,
+    check_reveals, combat_extension_state, health, legacy_combat, lorebook_runtime, player_control_state, private_channels, round_presentation,
     seat_activity, world_reports,
 )
 from src.engine.player_control import away_control_policy, set_away_control_policy
@@ -294,3 +294,48 @@ def test_combat_view_reads_through_hooks_and_is_neutral_without_module() -> None
     finally:
         for point, handler in removed.items():
             module_hooks.register(point, legacy_combat.HOOK_OWNER, handler)
+
+
+def test_run_any_runs_every_handler(scratch_point) -> None:
+    calls: list[str] = []
+    module_hooks.register(scratch_point, "a", lambda *args: calls.append("a") or False)
+    module_hooks.register(scratch_point, "b", lambda *args: calls.append("b") or True)
+    module_hooks.register(scratch_point, "c", lambda *args: calls.append("c") or False)
+    assert module_hooks.run_any(scratch_point, None, "k") is True
+    assert calls == ["a", "b", "c"]
+
+
+def test_combat_extension_commit_and_abort_through_hooks() -> None:
+    from src.engine.combat_narrative import pending_events
+
+    instance = GameInstance(game_key=("web", "hooks-combat-ext", "u"))
+    combat_extension_state.replace_current(instance, {"schema_version": 1, "pending_summaries": ["hit"]})
+    combat_extension_state.capture_combat_extension_snapshot(instance)
+    entry: dict = {"state_changes": ["moved"]}
+    module_hooks.run(module_hooks.ROUND_COMMIT, instance, entry, None)
+    assert entry["state_changes"] == ["moved", "hit"]
+    assert {"combat_extension_round_start", "pre_combat_extension_snapshot"} <= set(entry)
+    assert combat_extension_state.round_snapshots(instance) == {}
+    assert pending_events(instance) == []
+
+    combat_extension_state.capture_combat_extension_snapshot(instance)
+    combat_extension_state.replace_current(instance, {"schema_version": 1, "changed": True})
+    assert module_hooks.run_any(module_hooks.ROUND_ABORT, instance) is True
+    assert "changed" not in combat_extension_state.current(instance)
+
+
+def test_without_combat_extension_rounds_carry_no_combat_state() -> None:
+    from src.engine.combat_narrative import pending_events
+
+    removed = _detached(combat_extension_state)
+    try:
+        instance = GameInstance(game_key=("web", "hooks-combat-ext-off", "u"))
+        combat_extension_state.replace_current(instance, {"schema_version": 1, "pending_summaries": ["hit"]})
+        entry: dict = {"state_changes": []}
+        module_hooks.run(module_hooks.ROUND_COMMIT, instance, entry, None)
+        assert entry == {"state_changes": []}
+        assert module_hooks.run_any(module_hooks.ROUND_ABORT, instance) is False
+        assert module_hooks.read_value(instance, module_hooks.COMBAT_EXTENSION_SNAPSHOT) is None
+        assert pending_events(instance) == []
+    finally:
+        _reattach(combat_extension_state, removed)

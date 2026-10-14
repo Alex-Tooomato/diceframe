@@ -26,7 +26,8 @@ import logging
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Any
 
-from src.engine import progression
+from src.engine import module_hooks, progression
+from src.engine.contracts import RoundLogEntry
 from src.engine.game_state import GameState
 from src.engine.modules import progression_state
 from src.engine.round_snapshots import restore_players, snapshot_players
@@ -51,7 +52,6 @@ def rollback_last_round_locked(instance: GameInstance) -> int | None:
     if not instance.log:
         return None
     from src.engine.modules import adventure_runtime_state, checks, round_safety, session_stats
-    from src.engine.modules import combat_extension_state
 
     session_stats.require_writable(instance)
     checks.require_writable(instance)
@@ -61,33 +61,17 @@ def rollback_last_round_locked(instance: GameInstance) -> int | None:
     from src.engine.economy import reconcile_rollback_snapshot, reverse_round_economy
 
     rolled_back_round = int(last.get("round", progression_state.round_value(instance)) or progression_state.round_value(instance))
-    current_combat_snapshot = combat_extension_state.round_snapshots(instance).get(
-        str(progression_state.round_value(instance)),
-    )
-    if (
-        progression_state.round_value(instance) >= rolled_back_round
-        and isinstance(current_combat_snapshot, dict)
-    ):
-        if not instance.restore_combat_extension_snapshot(current_combat_snapshot):
-            combat_extension_state.replace_current(instance, {})
+    module_hooks.run(module_hooks.ROUND_REWIND_BEGIN, instance, rolled_back_round)
     reverse_round_economy(instance, rolled_back_round)
-    missing = object()
-    combat_snapshot: Any = last.get("combat_extension_round_start", missing)
-    if combat_snapshot is missing:
-        combat_snapshot = combat_extension_state.round_snapshots(instance).get(
-            str(rolled_back_round), missing,
-        )
     snapshot = last.get("round_start_snapshot") or last.get("pre_state_snapshot", {})
     if isinstance(snapshot, dict) and snapshot:
         restore_players(instance, reconcile_rollback_snapshot(instance, snapshot, rolled_back_round))
-    # Combat actions run during ACTIVE_ACTION, before the ordinary
-    # round snapshot is captured at judgment entry. Restore their
-    # earlier source-field snapshot last so HP/inventory are not
-    # overwritten by the later round_start_snapshot.
-    if combat_snapshot is not missing:
-        if not instance.restore_combat_extension_snapshot(combat_snapshot):
-            combat_extension_state.replace_current(instance, {})
-    instance.discard_combat_extension_snapshots_from(rolled_back_round)
+    # Module state the entry carries (e.g. combat-extension source fields) is
+    # restored after the players so it is not overwritten by them.
+    module_hooks.run(
+        module_hooks.ROUND_REWIND_RESTORE, instance, last, rolled_back_round,
+        module_hooks.REWIND_SOURCE_ROLLBACK,
+    )
     # 世界真相同样是"这一轮结算出来的东西"：回滚到第 N 轮时，第 N 轮及
     # 之后写入的 world ops 必须一起撤销，否则世界会记住一个被丢弃的分支。
     if isinstance(last.get("pre_world_state"), dict) and last["pre_world_state"]:
@@ -127,7 +111,6 @@ def abort_round_processing_locked(instance: GameInstance) -> bool:
     from src.engine.modules import (
         adventure_runtime_state, checks, round_safety, ruleset_runtime, session_stats,
     )
-    from src.engine.modules import combat_extension_state
 
     session_stats.require_writable(instance)
     checks.require_writable(instance)
@@ -138,12 +121,7 @@ def abort_round_processing_locked(instance: GameInstance) -> bool:
     if round_safety.round_start_snapshot(instance):
         restore_players(instance, round_safety.round_start_snapshot(instance))
         restored = True
-    combat_snapshot = combat_extension_state.round_snapshots(instance).get(
-        str(progression_state.round_value(instance)),
-    )
-    if isinstance(combat_snapshot, dict):
-        if not instance.restore_combat_extension_snapshot(combat_snapshot):
-            combat_extension_state.replace_current(instance, {})
+    if module_hooks.run_any(module_hooks.ROUND_ABORT, instance):
         restored = True
     # 旧版战斗路径直接改写的实体（npcs/world_state/adventure 进度）。
     entities_restored = instance.restore_round_entity_snapshot()
@@ -175,56 +153,24 @@ def finish_judgment_locked(
     调用本函数和 ``start_round_locked``，使日志提交与下一轮开启不可交错。
     """
     from src.engine.modules import adventure_runtime_state, checks, round_safety, session_stats
-    from src.engine.modules import combat_extension_state
 
     session_stats.require_writable(instance)
     checks.require_writable(instance)
     round_safety.require_writable(instance)
     adventure_runtime_state.require_writable(instance)
-    pending_combat_summaries: list[str] = []
-    raw_schema = (
-        combat_extension_state.current(instance).get("schema_version")
-        if isinstance(combat_extension_state.current(instance), dict)
-        else None
-    )
-    if isinstance(combat_extension_state.current(instance), dict) and (
-        raw_schema is None
-        or (isinstance(raw_schema, int) and not isinstance(raw_schema, bool)
-            and raw_schema == 1)
-    ):
-        raw_pending = combat_extension_state.current(instance).pop("pending_summaries", [])
-        if isinstance(raw_pending, list):
-            pending_combat_summaries = [
-                str(item) for item in raw_pending if str(item).strip()
-            ][-50:]
-    combined_state_changes = list(state_changes or [])
-    for item in pending_combat_summaries:
-        if item not in combined_state_changes:
-            combined_state_changes.append(item)
-    instance.log.append({
+    entry: RoundLogEntry = {
         "round": progression_state.round_value(instance),
         "actions": list(instance.action_queue),
         "gm_response": gm_response,
-        "state_changes": combined_state_changes,
+        "state_changes": list(state_changes or []),
         "check_results": [dict(item) for item in checks.last_checks(instance)],
         "round_start_snapshot": (
             copy.deepcopy(round_safety.round_start_snapshot(instance))
             if round_safety.round_start_snapshot(instance) else snapshot_players(instance)
         ),
-        "combat_extension_round_start": copy.deepcopy(
-            combat_extension_state.round_snapshots(instance).get(
-                str(progression_state.round_value(instance)),
-                combat_extension_state.current(instance) if isinstance(combat_extension_state.current(instance), dict) else {},
-            )
-        ),
         "swipes": [],
         "current_swipe": 0,
         "pre_state_snapshot": pre_state_snapshot if pre_state_snapshot is not None else snapshot_players(instance),
-        "pre_combat_extension_snapshot": copy.deepcopy(
-            pre_combat_extension_snapshot
-            if pre_combat_extension_snapshot is not None
-            else instance.current_combat_extension_snapshot()
-        ),
         # 判定入口的世界真相：整轮回滚 / swipe 分支切换时一起撤销本轮
         # 写入的 world ops（与玩家、战斗扩展快照同一语义）。
         "pre_world_state": copy.deepcopy(
@@ -238,8 +184,11 @@ def finish_judgment_locked(
             )
         ),
         "timestamp": datetime.now(timezone.utc).isoformat(),
-    })
-    combat_extension_state.round_snapshots(instance).pop(str(progression_state.round_value(instance)), None)
+    }
+    # Module fields (e.g. combat-extension snapshots, pending combat summaries
+    # merged into state_changes) are added before the entry is committed.
+    module_hooks.run(module_hooks.ROUND_COMMIT, instance, entry, pre_combat_extension_snapshot)
+    instance.log.append(entry)
     session_stats.record_llm_usage(instance, 0, calls=1)
     session_stats.touch(instance)
 

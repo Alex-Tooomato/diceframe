@@ -1429,7 +1429,7 @@ class RoundProcessor:
 
         public_state_before = snapshot_public_player_state(instance)
         round_pre_snapshot = _snapshot_players(instance)
-        round_pre_combat_snapshot = instance.current_combat_extension_snapshot()
+        round_pre_combat_snapshot = module_hooks.read_value(instance, module_hooks.COMBAT_EXTENSION_SNAPSHOT)
 
         queued_proposals: list[dict[str, Any]] = []
         allowed_uids: set | None = None

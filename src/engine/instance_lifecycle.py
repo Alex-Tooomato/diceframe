@@ -73,7 +73,6 @@ def reset_locked(instance: GameInstance, *, keep_seed: bool = True) -> None:
         adventure_runtime_state, checks, narrative_notes, round_safety,
         ruleset_runtime, session_stats, table_settings,
     )
-    from src.engine.modules import combat_extension_state
 
     session_stats.require_writable(instance)
     checks.require_writable(instance)
@@ -115,8 +114,6 @@ def reset_locked(instance: GameInstance, *, keep_seed: bool = True) -> None:
     session_stats.reset(instance)
     instance.puzzle_manager = None
     instance.plot_tracker = None
-    combat_extension_state.replace_current(instance, {})
-    combat_extension_state.round_snapshots(instance).clear()
     narrative_notes.confirmed_items(instance).clear()
     checks.clear_round(instance)
     round_safety.clear_snapshots(instance)
