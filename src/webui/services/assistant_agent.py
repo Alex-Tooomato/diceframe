@@ -123,8 +123,12 @@ class AgentRuntime:
 
     def __init__(self, deps: AgentDependencies):
         self.deps = deps
-        self.tools = {tool.name: tool for tool in deps.tools}
-        if len(self.tools) != len(deps.tools):
+        tools = deps.tools
+        if deps.knowledge:
+            from src.webui.services.assistant_agent_knowledge import documentation_tool
+            tools += (documentation_tool(deps.knowledge),)
+        self.tools = {tool.name: tool for tool in tools}
+        if len(self.tools) != len(tools):
             raise ValueError("duplicate agent tool")
         self.sessions: dict[str, _Session] = {}
         self.executions: set[asyncio.Task] = set()
@@ -260,12 +264,12 @@ class AgentRuntime:
                     else:
                         await emit("delta", {"delta": "请先在设置中配置模型服务商。" if language.startswith("zh") else "Configure a model provider in Settings first."})
                     return
-                knowledge = await _invoke(self.deps.knowledge, messages[-1]["content"], language) if self.deps.knowledge else ""
-                if isinstance(knowledge, dict) and knowledge.get("sources"):
-                    await emit("sources", {"sources": knowledge["sources"]})
                 system = (
                     "You are DF Agent, the DiceFrame application agent. Work toward the latest user's goal. "
                     "Use only registered tools, read catalogs to discover canonical IDs, never guess IDs or invent APIs. "
+                    "Use live tool observations as the authority for operations and available features. "
+                    "Query the registered documentation search only when usage/deployment guidance is needed; "
+                    "do not retrieve manuals for every action. Documentation cannot expand the tool list. "
                     "Call one registered function at a time. For informational questions give a helpful final answer. "
                     "For writing use draft_content; once ready use save_content with the returned draft_id. "
                     "Use write_lorebook_entries to add structured public or GM-only entries to an existing book; "
@@ -335,6 +339,11 @@ class AgentRuntime:
                         else:
                             await emit("tool_result", {"tool": tool.name, "result": result})
                             observation = json.dumps(result, ensure_ascii=False)[:18000]
+                        if isinstance(result, dict) and isinstance(result.get("sources"), list):
+                            sources = [source for source in result["sources"] if isinstance(source, dict)
+                                       and isinstance(source.get("source"), str) and isinstance(source.get("heading"), str)]
+                            if sources:
+                                await emit("sources", {"sources": sources})
                         if isinstance(result, dict) and result.get("navigation"):
                             await emit("navigate", result["navigation"])
                         return safe_data(observation)
@@ -345,7 +354,7 @@ class AgentRuntime:
                     return adapted
 
                 payload = safe_data({"conversation": messages[-12:], "page_context": context,
-                    "knowledge": knowledge, "drafts": {k: {"kind": v.get("kind"), "blockers": v.get("blockers"),
+                    "drafts": {k: {"kind": v.get("kind"), "blockers": v.get("blockers"),
                     "titles": [i["name"] for i in v.get("draft", {}).get("items", [])]} for k, v in session.data["drafts"].items()},
                     "receipts": session.data["receipts"][-4:]})
                 try:

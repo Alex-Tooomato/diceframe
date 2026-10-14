@@ -793,11 +793,18 @@
 
   .overview-page .overview-featured-copy {
     width: 100%;
-    min-height: 280px;
-    justify-content: flex-end;
-    padding-top: 150px;
+    min-height: 350px;
+    justify-content: flex-start;
+    padding: 54px 18px 18px;
+    text-align: left;
     background: linear-gradient(180deg, transparent 8%, color-mix(in srgb, var(--df-surface-1) 24%, transparent) 35%, color-mix(in srgb, var(--df-surface-1) 98%, transparent) 72%);
   }
+
+  .overview-page .overview-featured-copy h2 { font-size: 23px; line-height: 1.35; }
+  .overview-page .overview-featured-details { flex: 1; width: 100%; align-self: stretch; }
+  .overview-page .overview-featured-facts { justify-content: flex-start; gap: 6px; }
+  .overview-page .overview-featured-facts span { padding: 5px 7px; border: 1px solid var(--df-border-soft); border-radius: var(--df-radius-sm); background: color-mix(in srgb, var(--df-control-bg) 72%, transparent); font-size: 11px; }
+  .overview-page .overview-featured-enter { margin-top: auto; }
 
   .adventure-library {
     margin-bottom: 120px;

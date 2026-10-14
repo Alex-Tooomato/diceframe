@@ -125,7 +125,7 @@ async def offline_answer(messages, language, emit):
 
 
 async def agent_knowledge(question, language):
-    result = await assistant_knowledge.search_knowledge(question, language)
+    result = await assistant_knowledge.search_knowledge(question, language, current_version_only=True)
     return {"context": result.context, "sources": list(result.sources)}
 
 

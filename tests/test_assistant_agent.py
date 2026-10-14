@@ -49,6 +49,30 @@ def mutation(handler):
         "value": {"type": "string", "maxLength": 50}}, "required": ["value"], "additionalProperties": False}, handler, mutation=True)
 
 
+@pytest.mark.asyncio
+async def test_agent_does_not_fetch_documentation_for_every_operation(tmp_path):
+    calls = []
+    async def knowledge(question, language):
+        calls.append(question)
+        return {"context": "old instructions", "sources": []}
+    agent = runtime(tmp_path, Planner({"tool": "respond", "answer": "ready"}), knowledge=knowledge)
+    await run(agent, "show available worlds")
+    assert calls == []
+
+
+@pytest.mark.asyncio
+async def test_agent_can_request_current_documentation_and_emit_its_sources(tmp_path):
+    calls = []
+    async def knowledge(question, language):
+        calls.append((question, language))
+        return {"context": "current provider references", "sources": [{"source": "README.md", "heading": "Setup"}]}
+    agent = runtime(tmp_path, Planner({"tool": "search_documentation", "arguments": {"question": "provider setup", "language": "en"}},
+        {"tool": "respond", "answer": "follow the current provider catalog"}), knowledge=knowledge)
+    events, _ = await run(agent, "How do I configure a provider?")
+    assert calls == [("provider setup", "en")]
+    assert any(event == "sources" and payload["sources"][0]["source"] == "README.md" for event, payload in events)
+
+
 def test_arguments_reject_unknown_fields_types_and_unbounded_values():
     schema = mutation(None).schema
     for value in [{"value": True}, {"value": "x", "admin": True}, {"value": "x" * 51}, {}]:

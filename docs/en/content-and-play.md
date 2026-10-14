@@ -71,4 +71,8 @@ The Lite rules and custom rules expose only the actions their runtime declares. 
 
 The owner's DF Agent can search documentation, inspect game/content state and prepare drafts. Model-directed writes require the application's review and confirmation flow and remain subject to the owning service's permissions. Ordinary player pages do not expose the owner agent. Read the proposed changes before confirming; AI operations use the configured provider and may consume tokens.
 
+Operations use the live tool catalog and current application state. Help is retrieved only when needed through `search_documentation`, using this installed version's bundled English or Simplified Chinese instructions. Development checkouts use their current local files. Moving remote manuals and older unversioned indexes do not describe the Agent's available actions or enter every conversation automatically.
+
+On phones, **Game tools** groups character information, scene maps and the party; the GM workspace retains its own top entry. The compact character status strip also opens the character drawer. These replace the duplicate floating navigation buttons.
+
 Lorebook operation history supports reviewing and recovering supported changes. Recovery is owner-private and validates its plan before applying it. It does not replace an upgrade backup: preserve the complete `data/` directory before changing program versions.

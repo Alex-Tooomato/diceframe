@@ -6147,6 +6147,8 @@ ADR/*                       长期设计决策原因
 
 `assistant_agent_framework.py` 直接使用 Pydantic AI 的 Agent 执行器、纠错重试、请求预算和延迟审批机制，通过明确适配器复用现有模型服务商传输；`assistant_agent.py` 拥有业务工具适配、会话与服务器确认计划。`assistant_agent_application.py` 和 `assistant_authoring.py` 以明确依赖接入已有内容、游戏、插件和图像服务。LLM 仅提出具名注册工具候选，参数经过 schema 验证，修改由框架延迟、经服务器保存的计划与确认后才执行；最终 authority 仍属各领域服务。
 
+`assistant_agent_knowledge.py` 注册只读 `search_documentation`，只在 Agent 请求使用说明时检索。`assistant_knowledge.py` 的当前版本模式使用现有本地文档或版本匹配的预建索引，只接受本仓库版本文档来源；不查询移动远程指南，不自动注入每条聊天。能力、canonical ID 与可执行操作仍由真实工具目录和服务观察决定。
+
 `assistant_content.py` 生成无副作用草稿，复用 ContentTextReview 的 review/commit 和 ContentDraft/CommitPlan。游戏创建沿用事务、规则和 canonical book bindings；行动采用当前服务端 actor 与服务器骰。执行记录保存在数据目录 `assistant_agent`，断线恢复与重复确认使用原结果；进程中断且结果未知的修改禁止盲目重放。完整协议与能力见 [DF_AGENT_IMPLEMENTATION.md](design/DF_AGENT_IMPLEMENTATION.md)。
 
 

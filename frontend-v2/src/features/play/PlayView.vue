@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onDeactivated, onMounted, ref, watch } from 'vue'
 import { NIcon } from 'naive-ui'
-import { BookOutline, ChatbubbleEllipsesOutline, ChevronBack, ChevronForward, MapOutline, PeopleOutline, PlayForwardOutline, ShareOutline, ShieldOutline, StatsChartOutline, TerminalOutline } from '@vicons/ionicons5'
+import { BookOutline, ChatbubbleEllipsesOutline, ChevronBack, ChevronForward, PlayForwardOutline, ShareOutline, ShieldOutline, TerminalOutline } from '@vicons/ionicons5'
 import { useRoute, useRouter } from 'vue-router'
 import { api, apiBlob, errorMessage as apiErrorMessage, hasAccessToken, isNotFoundError, retryOnRateLimit } from '@/api/client'
 import type { BotBindTokenResponse, CharacterCard, CharacterCardsResponse, CharacterListResponse, CharacterPortrait, CharacterSheet, CheckResult, CommandResponse, GameDetail, GmStyle, HealthResponse, JsonObject, LuckDecisionResponse, PendingPayment, Player, PlayerContextResponse, PublicAction, RuleMeta, RulesetDirectorProposal, RulesetGameplayView, WorldCandidate, WorldListResponse, WorldTemplatesResponse } from '@/api/types'
@@ -1342,6 +1342,9 @@ function onPlayKeydown(event: KeyboardEvent) {
         </button>
         <button class="play-secondary-action play-map-action" @click="openMap">{{ t('mapTitle') }}</button>
         <PlayUtilityMenu :key="game.currentGame.value" :label="gameToolsLabel(locale)">
+          <button class="play-mobile-action" @click="openSidebar">{{ t('characters') }}</button>
+          <button class="play-mobile-action" @click="openMap">{{ t('mapTitle') }}</button>
+          <button class="play-mobile-action" @click="toggleMobilePanel('party')">{{ workspaceCopy.party }}</button>
           <button class="play-secondary-action play-character-cards-action" @click="openCards">{{ t('sharedCharacterLibrary') }}</button>
           <button class="play-secondary-action" @click="showSceneGallery = true">{{ t('sceneGallery') }}</button>
           <button class="play-secondary-action" @click="help = true">{{ t('help') }}</button>
@@ -1881,36 +1884,6 @@ function onPlayKeydown(event: KeyboardEvent) {
       :auto-storyboard="!!settings.config.imagegen_auto_storyboard"
       @close="showCurrentRoundImage = false" @generate="generateCurrentRoundImageRequest"
     />
-    <button
-      class="mobile-drawer-trigger mobile-drawer-trigger-left"
-      :class="{ hidden: mobilePanel === 'sidebar' }"
-      :aria-label="t('mobileStatusLabel')"
-      :title="t('mobileStatusLabel')"
-      @click="toggleMobilePanel('sidebar')"
-    ><NIcon :component="StatsChartOutline" /></button>
-    <button
-      v-if="!showMap"
-      class="mobile-drawer-trigger mobile-drawer-trigger-left mobile-drawer-trigger-map"
-      :aria-label="t('mobileMapLabel')"
-      :title="t('mobileMapLabel')"
-      @click="openMap"
-    ><NIcon :component="MapOutline" /></button>
-    <button
-      class="mobile-drawer-trigger mobile-drawer-trigger-right mobile-drawer-trigger-party"
-      :class="{ hidden: mobilePanel === 'party' }"
-      :aria-expanded="mobilePanel === 'party'"
-      :aria-label="workspaceCopy.party"
-      :title="workspaceCopy.party"
-      @click="toggleMobilePanel('party')"
-    ><NIcon :component="PeopleOutline" /></button>
-    <button
-      v-if="game.isGm.value || game.detail.value?.solo_mode === false"
-      class="mobile-drawer-trigger mobile-drawer-trigger-right"
-      :class="{ hidden: mobilePanel === 'controls' }"
-      :aria-label="t('mobileConsoleLabel')"
-      :title="t('mobileConsoleLabel')"
-      @click="toggleMobilePanel('controls')"
-    ><NIcon :component="TerminalOutline" /></button>
     <PlayHelpCenter
       v-if="help"
       :meta="ruleMeta"

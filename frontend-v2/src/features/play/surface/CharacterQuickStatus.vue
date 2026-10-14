@@ -19,7 +19,7 @@ const resources = computed(() => {
 
 <template>
   <button v-if="player" type="button" class="play-quick-status" data-testid="play-quick-status" @click="emit('open')" :aria-label="t('characterStatus')">
-    <PortraitImage :portrait="player.character_sheet?.portrait" :rule-id="ruleMeta?.rule_id" :seed="player.user_id" :name="player.character_name" :size="30" />
+    <PortraitImage :portrait="player.character_sheet?.portrait" :rule-id="ruleMeta?.rule_id" :seed="player.user_id" :name="player.character_name" :size="22" />
     <strong>{{ player.character_name }}</strong>
     <span v-for="resource in resources" :key="resource.key">{{ resource.label }} <b>{{ resource.current }}<template v-if="resource.max"> / {{ resource.max }}</template></b></span>
   </button>
