@@ -150,15 +150,15 @@ class GameLifecycle:
             solo_mode=table_settings.solo_mode(source),
             entry_point=table_settings.entry_point(source),
             gm_uid=source.gm_uid,
-            luck_timeout_seconds=table_settings.luck_timeout_seconds(source),
-            narrative_perspective=table_settings.narrative_perspective(source),
             economy_reward_policy=dict(table_settings.economy_reward_policy(source) or {}),
         )
+        # Perspective, GM style, luck timeout and dice reveal mode; the old
+        # field-by-field copy dropped dice_reveal_mode.
+        table_settings.carry_preferences_for_new_run(candidate, source)
         from src.engine.modules import room_access
 
         room_access.replace_max_players(candidate, room_access.max_players(source))
         room_access.replace_player_access_open(candidate, room_access.player_access_open(source))
-        table_settings.replace_gm_style_override(candidate, copy.deepcopy(table_settings.gm_style_override(source)))
         room_access.replace_bot_bind_token(candidate, room_access.bot_bind_token(source))
         room_access.copy_room_password(candidate, source)
         ruleset_runtime.copy_binding_for_new_run(candidate, source)

@@ -74,6 +74,23 @@ async def test_new_run_keeps_identity_and_reinitializes_v2_progress(golden, tran
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("transition", ["restart_game", "reset_game"])
+async def test_new_run_keeps_table_preferences(golden, transition) -> None:
+    created = await _created_golden(golden)
+    game_key = created["game_key"]
+    before = golden.instance(game_key)
+    before.configure_session(dice_reveal_mode="auto", luck_timeout_seconds=0)
+    assert table_settings.dice_reveal_mode(before) == "auto"
+
+    await getattr(golden.api, transition)(game_key)
+    after = golden.instance(game_key)
+
+    assert after is not before
+    assert table_settings.dice_reveal_mode(after) == "auto"
+    assert table_settings.luck_timeout_seconds(after) == 0
+
+
+@pytest.mark.asyncio
 async def test_failed_v2_initialization_keeps_previous_run_current(golden, monkeypatch) -> None:
     created = await _created_golden(golden)
     game_key = created["game_key"]

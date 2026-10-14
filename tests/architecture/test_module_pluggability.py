@@ -72,7 +72,7 @@ CORE_FLOW_FILES = frozenset({
 CORE_COUPLING: dict[tuple[str, str], int] = {
     ("src/commands/game_lifecycle.py", "narrative_notes"): 4,
     ("src/commands/game_lifecycle.py", "room_access"): 8,
-    ("src/commands/game_lifecycle.py", "table_settings"): 9,
+    ("src/commands/game_lifecycle.py", "table_settings"): 6,
     ("src/commands/prompt_composer.py", "table_settings"): 2,
     ("src/commands/round_effects.py", "table_settings"): 1,
     ("src/commands/round_helpers.py", "narrative_notes"): 1,
