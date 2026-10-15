@@ -4,6 +4,23 @@ import { i18n } from '../src/i18n'
 import GameTimeline from '../src/components/GameTimeline.vue'
 
 describe('GameTimeline',()=>{
+  it('keeps streamed paragraphs separate and displays markup as plain text', () => {
+    const first = '你示意恩恩把提灯压低，沿着树根寻找通向旧码头的小径。'.repeat(5)
+    const second = '韦恩举着灯，朝身后的调查员招手，远处传来船只靠岸的声音。'.repeat(5)
+    const wrapper = mount(GameTimeline, {
+      global: { plugins: [i18n] },
+      props: { round: 12, players: [], log: [], live: [], processing: true,
+        liveNarration: `${first}\n${second}<img src=x onerror=alert(1)>` },
+    })
+    const paragraphs = wrapper.findAll('.live-narration')
+    expect(paragraphs).toHaveLength(2)
+    expect(paragraphs[0]!.text()).toContain('你示意恩恩')
+    expect(paragraphs[1]!.text()).toContain('韦恩举着灯')
+    expect(paragraphs[1]!.text()).toContain('<img src=x onerror=alert(1)>')
+    expect(wrapper.find('img').exists()).toBe(false)
+    wrapper.unmount()
+  })
+
   it('starts at the latest loaded round and preserves the reading position when new history arrives', async () => {
     i18n.global.locale.value = 'zh-CN'
     const wrapper = mount(GameTimeline, {

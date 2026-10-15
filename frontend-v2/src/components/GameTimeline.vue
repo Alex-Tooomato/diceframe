@@ -6,7 +6,7 @@ import type { CheckResult, LogEntry, ManualRollTimelineEntry, PublicAction, Play
 import type { DiceTag } from '@/utils/play'
 import { parseAction, playerColor } from '@/utils/play'
 import { api } from '@/api/client'
-import { parseGMText, type LoreKeywords } from '@/utils/renderer'
+import { parseGMText, splitNarrationParagraphs, type LoreKeywords } from '@/utils/renderer'
 import { useLocale } from '@/composables/useLocale'
 import PortraitImage from '@/components/PortraitImage.vue'
 import CheckRevealCard from '@/components/play/CheckRevealCard.vue'
@@ -128,6 +128,7 @@ const standaloneManualRolls = computed(() => {
   const roundsInLog = new Set(rounds.value.map(item => item.round))
   return (props.manualRolls || []).filter(item => !roundsInLog.has(Number(item.round_number || 0)))
 })
+const liveParagraphs = computed(() => splitNarrationParagraphs(props.liveNarration || ''))
 const recapSignature = computed(() => props.log.flatMap(entry => recaps(entry).map(recap => recap.id || recap.text)).join('|'))
 
 async function showEarlier() {
@@ -368,7 +369,7 @@ watch(() => rounds.value, async (latest) => {
         <span class="narrator-avatar" aria-hidden="true">GM</span>
         <div class="message-copy">
           <strong>{{ t('thinkingMessage') }}<span v-if="!liveNarration" class="thinking-dots"><i></i><i></i><i></i></span></strong>
-          <p v-if="liveNarration" class="chat-gm live-narration">{{ liveNarration }}</p>
+          <p v-for="(paragraph, index) in liveParagraphs" :key="index" class="chat-gm live-narration">{{ paragraph }}</p>
         </div>
       </div>
       <div v-if="!log.length && !live.length && !processing" class="timeline-empty"><strong>{{ t('adventureNotStarted') }}</strong><span>{{ t('firstActionHint') }}</span></div>
