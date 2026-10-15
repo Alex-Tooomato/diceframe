@@ -45,7 +45,7 @@ Verified against this checkout on 2026-10-15. These are current implementation f
 
 The content-market category **Adventures** can therefore be a filtered view of existing content packages. A package may contain several adventures plus worlds, books, characters and assets. Package details should list its adventures, and each adventure should have a start action. No separate installer or package extension is needed for this proposal.
 
-An `adventure-module` label alone is not proof of safe data-only content: the generic host can accept an entrypoint on a static plugin type, and [risk policy](../../src/plugin_host/policy.py) classifies any entrypoint as `unrestricted-process`. Proposed declarative-market admission must explicitly reject executable entrypoints rather than trusting the category name.
+Catalog mode now rejects an executable `entrypoint` through the shared profile validator, including adventure modules. Legacy static-type packages without catalog mode can still carry an entrypoint, and [risk policy](../../src/plugin_host/policy.py) classifies them as `unrestricted-process`. Marketplace presentation must use that actual risk rather than assuming every `content-pack` is pure data.
 
 ## Format conventions to adopt incrementally
 
