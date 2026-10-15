@@ -119,11 +119,16 @@ The app normalizes Hub/catalogue fields, but this checkout does not establish ho
 
 The checked external [plugin guide](https://github.com/diceframe/diceframe-content/blob/main/docs/en/plugin-development.md) still describes smaller archive budgets and a reserved Provider type; this checkout has larger [package limits](../../src/plugin_host/package_limits.py) and a supported Provider descriptor. This is a concrete documentation drift to resolve, not a reason to trust one moving page over a running version.
 
+The separate **plugin index repository** is also an implementation owner, not merely documentation. Its [registry validator at the inspected revision](https://github.com/diceframe/diceframe-plugins/blob/e1cc03aec1a1f55aa851991cade4908912a19d73/scripts/registry.cjs) still rejects Provider submissions and the core's `ai.providers` permission. A direct validation probe also accepts `adventure-module` with `legacy_autoimport`, a combination the core rejects. Existing manifest passthrough preserves adventure metadata, so the gap is not simply missing fields: intake needs matching semantic validation and artifact evidence. Its CI currently runs registry tests/validation, without the core's deep module validator.
+
+Align supported types, effective permission policy, module profiles and release verification against an explicit supported core revision. Preserve minimum application version requirements when enabling newer capabilities; do not make older clients appear compatible by just extending the index allowlist. Add shared positive/negative fixtures so intake and installation agree without executing untrusted plugin entrypoints. Keep source identity, approved permissions and changed-risk reapproval intact.
+
 Proposed ownership:
 
 | Owner | Owns | Must not become |
 | --- | --- | --- |
 | Core repository | Schemas, validators, runtime capabilities, installation and save contracts, versioned examples | A second manually copied market catalogue |
+| Plugin index repository | Submission validation, maintainer admission workflow, approved permission baselines, index schema and catalogue synchronization | An independently drifting copy of supported types, permissions or module semantics |
 | Content repository | Creator quickstart, original/licensed example packages, publication guidance and compatibility evidence | A separate reimplementation of core validation |
 | Hub | Publication authorization, catalogue lifecycle, version/artifact/review records, distribution decisions | The authority for game mechanics or user saves |
 | Author/maintainer | Content correctness, source rights, supported versions, extension behavior and translations they volunteer for | An implicit permanent obligation for the core maintainer |
@@ -145,9 +150,9 @@ These are dependency-ordered work packages, not release dates or a claim that al
 
 | Stage | Deliverable and owner | Completion evidence |
 | --- | --- | --- |
-| A. Establish the baseline | Core + content maintainers inventory formats and drift; select an original small adventure fixture; record current creator journey and compatibility failures | Same fixture validates, imports, starts, saves and reloads; negative fixtures reproduce known blockers; existing users' supported upgrade path is exercised |
+| A. Establish the baseline | Core + plugin index + content maintainers inventory formats and drift; select an original small adventure fixture; record current creator journey and compatibility failures | Same fixture validates, imports, starts, saves and reloads; negative fixtures reproduce known blockers; existing users' supported upgrade path is exercised |
 | B. Make the journey dependable | Feature owners fix import/review/publication, cancellation, actionable errors, model compatibility and concurrency before more preview modes | Desktop/phone journey completes without manual data-file repair; cancel preserves drafts; stale/duplicate writes and unauthorized operations are rejected; no private content leaks |
-| C. Make authors self-sufficient | Content + core owners publish version-matched English/Chinese quickstart, starter pack, shared validator output and migration notes | A contributor can create a package without editing core; malformed refs/runtime/path/private projections fail predictably; CI and install agree |
+| C. Make authors self-sufficient | Content + core + plugin index owners publish version-matched English/Chinese quickstart, starter pack, shared validator output and migration notes | A contributor can create a package without editing core; malformed refs/runtime/path/private projections fail predictably; intake, CI and install agree |
 | D. Connect adventure discovery | Core library/market features + Hub expose Adventures as a content-package view and implement reviewed release metadata | Install → clear result → select included adventure → start; permission expansion re-enters review; existing bound saves survive safe updates or explain the blocking conflict |
 | E. Grow the catalogue responsibly | Maintainers add CoC/D&D fixtures and one focused executable extension; Hub records maintenance/review scope | At least one external author completes the workflow without bespoke core patches; stale maintenance can pause without making the core maintainer the automatic owner |
 
