@@ -23,7 +23,7 @@ Start here when developing or using DiceFrame. The source in the checked-out rev
 
 ## Design and history
 
-`design/` contains scoped design notes and implementation contracts. Read each note's status before treating a planned feature as implemented. [DF Agent](design/DF_AGENT_IMPLEMENTATION.md) describes the current agent protocol; [product standards proposal](design/PRODUCT_STANDARDS_PROPOSAL.md) is a proposal for discussion, not an adopted new API or release commitment.
+`design/` contains scoped design notes and implementation contracts. Read each note's status before treating a planned feature as implemented. [DF Agent](design/DF_AGENT_IMPLEMENTATION.md) describes the current agent protocol; the product standards and execution proposal ([English](design/PRODUCT_STANDARDS_PROPOSAL.md) · [简体中文](design/PRODUCT_STANDARDS_PROPOSAL_CN.md)) inventories existing formats and proposes marketplace admission and staged delivery. It is not an adopted new API or release commitment.
 
 [Archived plans and handoffs](archive/README.md) preserve historical decisions and unfinished inventories. Their branch names, PR ordering and test counts are historical. Temporary review reports, local paths, approval drafts and execution logs belong outside the published documentation; report their outcomes in the working conversation.
 
