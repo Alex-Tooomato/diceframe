@@ -594,6 +594,8 @@
     0 2px 8px rgb(0 0 0 / .1);
 }
 
+.overview-page .library-heading { flex-wrap: wrap; }
+.overview-page .library-heading-actions { min-width: 0; max-width: 100%; }
 .overview-page .library-heading-actions:not(.is-selection-mode) {
   display: flex;
   flex-wrap: nowrap;

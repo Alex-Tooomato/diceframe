@@ -1,5 +1,5 @@
 /* Adventure journal: character first, continuous story, original rule tools. */
-.play-page-immersive { --play-paper: color-mix(in srgb, var(--df-accent) 4%, var(--df-surface-1)); }
+.play-page-immersive { --play-paper: color-mix(in srgb, var(--df-accent) 4%, var(--df-surface-1)); --play-edge-top: clamp(64px, calc(50dvh - 24px), calc(100dvh - 170px)); }
 .play-page-immersive .play-gm-toggle { display: inline-flex; align-items: center; gap: 7px; border-color: var(--df-interactive); color: var(--df-interactive-strong); }
 .play-page-immersive .play-hud { box-shadow: none; z-index: 67; }
 .play-page-immersive .play-titleblock h1 { font-size: 19px; letter-spacing: .04em; }
@@ -73,8 +73,8 @@
   .play-page-immersive .play-layout.no-console,
   .play-page-immersive .play-layout.rail-collapsed { grid-template-columns: minmax(232px, 252px) minmax(0, 1fr) minmax(224px, 276px); grid-template-areas: 'character story party'; }
   .play-page-immersive .play-sidebar-drawer.docked { position: static; grid-area: character; width: auto; height: 100%; min-height: 0; visibility: visible; pointer-events: auto; transform: none; z-index: auto; overflow: hidden; }
-  .play-page-immersive .play-sidebar-drawer.docked .game-sidebar { position: static; width: 100%; height: 100%; padding: 14px 12px; overflow-y: auto; box-shadow: none; }
-  .play-page-immersive .play-sidebar-drawer.docked .sidebar-toggle { display: none; }
+  .play-page-immersive .play-sidebar-drawer.docked .game-sidebar { position: relative; width: 100%; height: 100%; padding: 14px 12px; overflow-y: auto; box-shadow: none; }
+  .play-page-immersive .play-sidebar-drawer.docked .sidebar-toggle { display: inline-flex; }
   .play-page-immersive .play-main { grid-area: story; }
   .play-page-immersive .play-party-dock { grid-area: party; min-height: 0; }
   .play-page-immersive .play-control-rail { position: fixed; inset: 54px 0 0 auto; z-index: 72; width: min(410px, 100vw); height: calc(100dvh - 54px); transform: translateX(102%); visibility: hidden; pointer-events: none; overflow: auto; }
@@ -198,6 +198,23 @@ button.mobile-drawer-trigger:hover { transform: translateY(-50%); }
 .play-page-immersive .game-sidebar details[open] > summary::after { transform: rotate(90deg); }
 
 @media (max-width: 800px) {
+  .play-page-immersive .mobile-drawer-trigger,
+  .play-page-immersive .ruleset-context-tools button {
+    box-sizing: border-box;
+    width: 36px;
+    min-width: 36px;
+    height: 48px;
+    min-height: 48px;
+    padding: 0;
+    background: color-mix(in srgb, var(--df-surface-raised) 78%, transparent);
+    color: var(--df-interactive-strong);
+    opacity: 1;
+  }
+  .play-page-immersive .mobile-drawer-trigger { top: var(--play-edge-top); transform: none; }
+  .play-page-immersive .mobile-drawer-trigger:hover,
+  .play-page-immersive .ruleset-context-tools button:hover { transform: none; }
+  .play-page-immersive .mobile-drawer-trigger .n-icon,
+  .play-page-immersive .ruleset-context-tools .n-icon { font-size: 18px; }
   .play-page-immersive .party-rail__toolbar { display: none; }
   .play-page-immersive .play-party-dock.mobile-open .party-rail__toolbar { display: flex; justify-content: flex-end; }
   .play-page-immersive .play-party-dock.mobile-open .party-rail__toggle { margin-left: auto; }

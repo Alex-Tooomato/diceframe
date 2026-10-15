@@ -1382,6 +1382,7 @@ function onPlayKeydown(event: KeyboardEvent) {
           :map="game.map.value"
           :rule-meta="ruleMeta"
           :collapsed="characterDocked && characterSidebarCollapsed"
+          :docked="characterDocked"
           :portrait-editable="canEditOwnPortrait"
           :show-advanced-center="hasRulesAwareCharacters"
           @lore-click="onLoreClick"

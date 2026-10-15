@@ -84,7 +84,7 @@
   .ruleset-context-tools {
     position: fixed;
     z-index: 66;
-    top: calc(50% + 36px);
+    top: var(--play-edge-top, calc(50dvh - 24px));
     right: 0;
     flex-direction: column;
     gap: 6px;
