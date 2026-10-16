@@ -239,6 +239,18 @@ class GameLifecycle:
         publish: bool = True,
         persist: bool = True,
     ) -> str:
+        async with instance.authoritative_write() as entered:
+            if not entered:
+                raise ValueError('this run is read-only')
+            return await self._start_game(instance, publish=publish, persist=persist)
+
+    async def _start_game(
+        self,
+        instance: GameInstance,
+        *,
+        publish: bool = True,
+        persist: bool = True,
+    ) -> str:
         """激活游戏，生成开场叙事，进入第一轮。"""
         from src.engine.modules import checks, round_safety, session_stats
 
@@ -505,6 +517,12 @@ class GameLifecycle:
         return narration
 
     async def resume_game(self, instance: GameInstance) -> str:
+        async with instance.authoritative_write() as entered:
+            if not entered:
+                raise ValueError('this run is read-only')
+            return await self._resume_game(instance)
+
+    async def _resume_game(self, instance: GameInstance) -> str:
         """从 PAUSED 状态恢复游戏，生成「上回说到」续接叙事。"""
         progression.require_writable(instance)
         if instance.state != GameState.PAUSED:
@@ -595,7 +613,9 @@ class GameLifecycle:
         )
         async with transition_lock:
             current = self.registry.get(instance.game_key) or instance
-            async with current.authoritative_write():
+            async with current.authoritative_write() as entered:
+                if not entered:
+                    raise RunInitializationError('RUN_READ_ONLY', '本局正在结团或已结束；请创建独立新局以保留档案')
                 async with current._process_lock:
                     async with current._lock:
                         return await self._replace_run(current, preserve_players=False)
@@ -627,7 +647,9 @@ class GameLifecycle:
             current = self.registry.get(instance.game_key) or instance
             if not current.players:
                 raise ValueError("重开世界需要至少 1 名角色")
-            async with current.authoritative_write():
+            async with current.authoritative_write() as entered:
+                if not entered:
+                    raise RunInitializationError('RUN_READ_ONLY', '本局正在结团或已结束；请创建独立新局以保留档案')
                 async with current._process_lock:
                     # Freeze every old-run aggregate write through the atomic swap.
                     # A waiter holding a stale reference resumes afterwards and is

@@ -154,6 +154,9 @@ Combat, rest, saving and reloading read the same ruleset health state.
 
 ## DF Agent and recovery
 
+Story plans, deferred CoC development, whole-run finales and carrying settled
+characters are described in [Story plans, intermissions and finales](run-story-and-finale.md).
+
 The owner's DF Agent can search documentation, inspect game/content state and prepare drafts. Model-directed writes require the application's review and confirmation flow and remain subject to the owning service's permissions. Ordinary player pages do not expose the owner agent. Read the proposed changes before confirming; AI operations use the configured provider and may consume tokens.
 
 Operations use the live tool catalog and current application state. Help is retrieved only when needed through `search_documentation`, using this installed version's bundled English or Simplified Chinese instructions. Development checkouts use their current local files. Moving remote manuals and older unversioned indexes do not describe the Agent's available actions or enter every conversation automatically.

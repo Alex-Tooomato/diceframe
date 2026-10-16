@@ -337,6 +337,8 @@ export interface DetailViewer {
 }
 
 export interface GameDetail {
+  run_lifecycle?: { status: string; id?: string; revision?: number }
+  gm_workspace_revision?: string | null
   game_key: string
   viewer?: DetailViewer
   world_name?: string

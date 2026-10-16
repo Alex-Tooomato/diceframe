@@ -4,6 +4,21 @@ from pathlib import Path
 
 import pytest
 
+
+def test_v1_runtime_current_step_is_player_safe_and_read_only():
+    from tests.rulesets.test_dnd2024_campaign import _instance, _agreement, _submit
+    from src.adventures.scene_context import AdventureSceneContext
+    runtime, instance = _instance(adventure=True)
+    _agreement(runtime, instance)
+    _submit(runtime, instance, 'tutorial.start', adventure_id='lanterns_of_greymoor')
+    provider = AdventureSceneContext(lambda inst: runtime._adventure_loader.resolve_binding(inst.adventure_binding, inst.language),
+                                    legacy_projection=runtime.scene_objective_context)
+    before = deepcopy(instance.to_dict())
+    view = provider(instance, viewer_is_gm=False)
+    assert view['objectives'] and view['current_nodes']
+    assert 'next_step_id' not in str(view) and 'encounter_preset_id' not in str(view)
+    assert instance.to_dict() == before
+
 from src.adventures.scene_context import AdventureSceneContext, project_scene_objectives
 from src.adventures.graph_v2 import validate_graph_v2
 from src.adventures.progress import new_progress

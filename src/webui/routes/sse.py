@@ -225,13 +225,18 @@ async def sse_play(request: web.Request) -> web.StreamResponse:
     last_player_count = len(inst.players)
     try:
         if fresh_connection:
+            lifecycle = module_hooks.read_value(inst, module_hooks.RUN_LIFECYCLE_VIEW) or {}
+            workspace_changed = user_id == inst.gm_uid and bool(module_hooks.gm_workspace_revision(inst))
             await _write_play_event(
                 resp,
                 last_round,
                 last_private_count,
                 action_signature,
                 public_signature,
-                {"type": "baseline"},
+                # Preparation can start after the initial HTTP snapshot but
+                # before subscription. Refresh frozen/ended views once so a
+                # missed broadcast cannot leave an active composer onscreen.
+                {"type": "run_story_changed" if workspace_changed or lifecycle.get('status') in {'preparing', 'ended'} else "baseline"},
             )
         while True:
             current = api.get_game_instance(game_key)
@@ -309,6 +314,8 @@ def _play_public_signature(inst, user_id: str) -> str:
     payload = {
         "round_number": progression_state.round_value(inst),
         "state": inst.state.value,
+        "run_lifecycle": module_hooks.read_value(inst, module_hooks.RUN_LIFECYCLE_VIEW) or {'status': 'playing'},
+        "gm_workspace_revision": module_hooks.gm_workspace_revision(inst) if user_id == inst.gm_uid else None,
         "last_activity": session_stats.last_activity(inst),
         "log_count": len(inst.log),
         "scene": module_hooks.narrative_view(inst)["scene"],

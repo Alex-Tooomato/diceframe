@@ -70,5 +70,13 @@ def replace_entry_point(instance: Any, value: str) -> None:
     get_module_state(instance, MODULE_NAME)["entry_point"] = value
 
 
+def copy_for_carried_game(candidate: Any, source: Any) -> None:
+    """Copy table policy while giving the separate Web game a fresh seed."""
+    require_writable(source)
+    require_writable(candidate)
+    replace_difficulty(candidate, difficulty(source))
+    replace_solo_mode(candidate, solo_mode(source))
+
+
 SPEC = ModuleStateSpec(name=MODULE_NAME, schema_version=SCHEMA_VERSION, fresh=fresh, ensure=ensure)
 register_module_state(SPEC)

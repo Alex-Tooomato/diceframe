@@ -76,6 +76,27 @@ logger = logging.getLogger(__name__)
 
 
 class Dnd2024Runtime:
+    def scene_objective_context(self, instance: Any, *, viewer_is_gm: bool) -> dict[str, Any]:
+        from src.engine.staged_transaction import fork_domain_state
+        snapshot = fork_domain_state(instance)
+        campaign = self._campaign_engine(snapshot, snapshot.language).gameplay_view(
+            snapshot, '__public_scene__', viewer_is_gm,
+        )
+        step = (campaign.get('tutorial') or {}).get('current_step')
+        if not step:
+            return {}
+        return {'current_nodes': [{'name': str(step.get('title') or '')[:160],
+                                   'description': str(step.get('narration') or '')[:800]}],
+                'objectives': [{'name': str(step.get('objective') or '')[:240], 'status': 'active'}]}
+
+    def finale_preflight(self, instance: Any) -> list[str]:
+        from src.rulesets.dnd2024.finale import preflight
+        return preflight(instance)
+
+    def settle_finale(self, instance: Any, receipt_id: str) -> dict[str, Any]:
+        from src.rulesets.dnd2024.finale import settle
+        return settle(instance, receipt_id)
+
     runtime_id = "core:dnd2024"
     runtime_version = 1
     capabilities = RulesetCapabilities(

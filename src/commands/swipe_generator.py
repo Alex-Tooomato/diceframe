@@ -130,6 +130,8 @@ class SwipeGenerator:
                 break
         if not target_entry:
             return None, None
+        from src.engine.modules import skill_growth
+        skill_growth.rewind_preflight(instance, round_num)
 
         swipes = target_entry.get("swipes", [])
         if len(swipes) >= 5:

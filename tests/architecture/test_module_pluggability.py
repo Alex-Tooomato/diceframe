@@ -46,6 +46,10 @@ KERNEL_MODULES = frozenset({
     # The transaction ledger is required for settlement and round reversal.
     # Optional economy presentation is separate from this authoritative state.
     "economy_state",
+    # Settlement archives and preparation barriers remain authoritative even
+    # when their UI/projection hooks are detached.
+    "run_finale",
+    "skill_growth",  # settled receipts must forbid historical double claims
     "game_config",  # difficulty, turn model and run identity configuration
 })
 

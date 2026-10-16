@@ -17,6 +17,8 @@ import { gameLorebookCopy } from './gameLorebookCopy'
 import StoryPortraits from '@/features/play/story/StoryPortraits.vue'
 import GameSessionPreferences from '@/features/play/preferences/GameSessionPreferences.vue'
 import GameDefaultActions from '@/features/play/preferences/GameDefaultActions.vue'
+import RunStoryPanel from '@/features/play/run-story/RunStoryPanel.vue'
+import RunFinalePanel from '@/features/play/run-story/RunFinalePanel.vue'
 
 const props = defineProps<{ detail: GameDetail; players: Player[]; isGm: boolean; recapBusy?: boolean; manualImageEnabled?: boolean; manualImageBusy?: boolean; pendingCount?: number; needsAttention?: boolean; gameKey?: string; log?: LogEntry[]; ruleId?: string }>()
 // 强制推进 = 中止在飞生成并重新处理本回合；只有本轮真的在判定/生成时才有意义
@@ -177,6 +179,8 @@ function awardXp(userId: string) {
         <slot name="party" />
       </template>
       <template #scene>
+        <RunStoryPanel v-if="gameKey" :game-key="gameKey" :revision="`${detail.round_number || 0}:${detail.gm_workspace_revision || ''}:${detail.run_lifecycle?.status}`" @changed="emit('refresh')" />
+        <RunFinalePanel v-if="gameKey" :game-key="gameKey" :revision="`${detail.round_number || 0}:${detail.gm_workspace_revision || ''}:${detail.run_lifecycle?.status}`" :is-gm="isGm" @changed="emit('refresh')" />
         <div class="gm-group gm-scene-group">
           <button v-if="manualImageEnabled" :disabled="manualImageBusy" @click="emit('generate-current-round')"><NIcon :component="ImageOutline" size="14" /> {{ manualImageBusy ? t('generatingImage') : t('generateRoundImage') }}</button>
           <button @click="emit('scene-image')"><NIcon :component="ImageOutline" size="14" /> {{ t('sceneImageManage') }}</button>

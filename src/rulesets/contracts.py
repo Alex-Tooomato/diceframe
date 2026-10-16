@@ -5,6 +5,22 @@ from __future__ import annotations
 from dataclasses import asdict, dataclass
 from typing import Any, Literal, Protocol, runtime_checkable
 
+
+@runtime_checkable
+class RunFinaleRuntime(Protocol):
+    """Optional final settlement boundary; never creates implicit rewards."""
+
+    def finale_preflight(self, instance: Any) -> list[str]: ...
+
+    def settle_finale(self, instance: Any, receipt_id: str) -> dict[str, Any]: ...
+
+
+@runtime_checkable
+class CurrentSceneRuntime(Protocol):
+    """Read-only current story view for formats owned by the rule runtime."""
+
+    def scene_objective_context(self, instance: Any, *, viewer_is_gm: bool) -> dict[str, Any]: ...
+
 from src.engine.combat_scheduler import SCHEDULER_KINDS
 
 

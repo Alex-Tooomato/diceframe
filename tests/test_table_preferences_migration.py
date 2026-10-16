@@ -4,7 +4,7 @@ from copy import deepcopy
 
 import pytest
 
-from src.migrations.instance import migrate_game_state_payload
+from src.migrations.instance import CURRENT_INSTANCE_SCHEMA_VERSION, migrate_game_state_payload
 
 
 VALUES = {
@@ -36,7 +36,7 @@ def test_split_moves_values_once_without_reinterpreting_policy_or_ledger():
     source = legacy_payload()
     before = deepcopy(source)
     result = migrate_game_state_payload(source)
-    assert result["instance_schema_version"] == 45
+    assert result["instance_schema_version"] == CURRENT_INSTANCE_SCHEMA_VERSION
     assert source == before
     slots = result["modules"]
     assert slots["game_config"] == {"schema_version": 1, **{key: VALUES[key] for key in ("difficulty", "solo_mode", "seed_code", "entry_point")}}

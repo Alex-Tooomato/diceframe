@@ -42,6 +42,7 @@ from src.game_profiles.service import ProfileService, ProfileDependencies
 from src.webui.services.ai_seats import AISeatDependencies, AISeatRuntime, AISeatService
 from src.webui.services.check_decisions import CheckDecisionDependencies, CheckDecisionService
 from src.webui.services.game_preferences import GamePreferenceDependencies, GamePreferenceService
+from src.webui.services.run_story import RunStoryDependencies, RunStoryService
 from src.game_preferences import UNSET, validate_preferences
 from src.webui.services.check_modes import CheckModeDependencies, CheckModeService
 from src.commands.hosted_combat import HostedCombatScheduler
@@ -181,6 +182,14 @@ class WebAPI:
             get_instance=self.get_game_instance, save_instance=self._reg.save,
             load_rule=self._load_rule_for_game, get_runtime=self._load_runtime_for_game,
             get_defaults=lambda: validate_preferences((getattr(self, '_config_state', {}) or {}).get('game_defaults', {})),
+        ))
+        self.run_story = RunStoryService(RunStoryDependencies(
+            get_instance=self.get_game_instance, save_instance=self._reg.save,
+            load_rule=self._load_rule_for_game, get_runtime=self._load_runtime_for_game,
+            get_llm=lambda: self._llm_client,
+            register_instance=self._reg.register,
+            project_scene=lambda instance, **options: self.scene_context_provider(instance, **options),
+            bind_carried_game=lambda candidate: self._game_lorebooks.bind_carried_game(candidate),
         ))
         if callable(getattr(handler, 'set_game_defaults_provider', None)):
             handler.set_game_defaults_provider(lambda: validate_preferences((getattr(self, '_config_state', {}) or {}).get('game_defaults', {})))
@@ -522,12 +531,26 @@ class WebAPI:
             queue_reward_intents=self._queue_adventure_reward_intents,
             save_instance=self._reg.save,
         )
-        if self._handler is not None and hasattr(self._handler, "set_scene_context_provider"):
-            def resolve_scene_binding(instance):
-                self._sync_plugin_adventure_sources()
-                return self._adventure_runtime_dependencies.resolve_binding(instance)
+        def resolve_scene_binding(instance):
+            self._sync_plugin_adventure_sources()
+            return self._adventure_runtime_dependencies.resolve_binding(instance)
 
-            self._handler.set_scene_context_provider(AdventureSceneContext(resolve_scene_binding))
+        def legacy_scene_context(instance, *, viewer_is_gm):
+            from src.rulesets.contracts import CurrentSceneRuntime
+            runtime = self._load_runtime_for_game(instance)
+            return runtime.scene_objective_context(instance, viewer_is_gm=viewer_is_gm) if isinstance(runtime, CurrentSceneRuntime) else {}
+
+        adventure_scene_context = AdventureSceneContext(resolve_scene_binding, legacy_projection=legacy_scene_context)
+
+        def scene_context(instance, *, viewer_is_gm):
+            from src.engine.modules import run_story
+            if instance.adventure_binding:
+                return adventure_scene_context(instance, viewer_is_gm=viewer_is_gm)
+            return run_story.project(instance, viewer_is_gm=viewer_is_gm)
+
+        self.scene_context_provider = scene_context
+        if self._handler is not None and hasattr(self._handler, "set_scene_context_provider"):
+            self._handler.set_scene_context_provider(scene_context)
         if self._handler is not None and hasattr(self._handler, "set_adventure_world_advance"):
             self._handler.set_adventure_world_advance(
                 lambda instance: adventure_runtime.advance_adventure_world(
