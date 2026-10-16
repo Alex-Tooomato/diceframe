@@ -428,6 +428,18 @@
   text-shadow: 0 1px 12px color-mix(in srgb, var(--df-canvas) 58%, transparent);
 }
 
+/* Cover text sits over artwork, so keep its light palette and dark shadow
+   independent of the surrounding light-mode surfaces. */
+:root[data-mode="light"] .game-card-body h2 {
+  color: #f0d8a0;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, .9), 0 2px 18px rgba(0, 0, 0, .65);
+}
+
+:root[data-mode="light"] .game-card-body .scene-line {
+  color: #fff;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, .9), 0 1px 12px rgba(0, 0, 0, .65);
+}
+
 .game-card-body .meta {
   margin: 0;
   font-size: 12px;
