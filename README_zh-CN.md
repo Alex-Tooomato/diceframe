@@ -218,6 +218,8 @@ DiceFrame Hub 为插件商店提供审核信息、版本状态和详情。Hub �
 | 内容 | 中文 | English |
 |------|------|---------|
 | 内容与游玩 | [内容与游玩](docs/zh/content-and-play.md) | [Content and play](docs/en/content-and-play.md) |
+| AI 设置 | [AI 与界面设置](docs/zh/ai-settings.md) | [AI and interface settings](docs/en/ai-settings.md) |
+| 冒险作者示例 | [灯火港湾](plugins/examples/starter-adventure/README_zh-CN.md) | [Lantern Harbor](plugins/examples/starter-adventure/README.md) |
 | 翻译维护 | [翻译维护](docs/zh/translations.md) | [Translation policy](docs/en/translations.md) |
 | 用户手册 | [用户手册](https://github.com/diceframe/diceframe-content/blob/main/docs/zh/guide.md) | [User guide](https://github.com/diceframe/diceframe-content/blob/main/docs/en/guide.md) |
 | Docker 部署 | [Docker 部署](https://github.com/diceframe/diceframe-content/blob/main/docs/zh/deploy.md) | [Docker deployment](https://github.com/diceframe/diceframe-content/blob/main/docs/en/deploy.md) |

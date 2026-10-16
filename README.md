@@ -179,6 +179,8 @@ To develop or publish a plugin, see the [plugin development guide](https://githu
 | Topic | English | 中文 |
 |-------|---------|------|
 | Content and play | [Content and play](docs/en/content-and-play.md) | [内容与游玩](docs/zh/content-and-play.md) |
+| AI settings | [AI and interface settings](docs/en/ai-settings.md) | [AI 与界面设置](docs/zh/ai-settings.md) |
+| Adventure creator starter | [Lantern Harbor](plugins/examples/starter-adventure/README.md) | [灯火港湾](plugins/examples/starter-adventure/README_zh-CN.md) |
 | Translation policy | [Translation policy](docs/en/translations.md) | [翻译维护](docs/zh/translations.md) |
 | User guide | [User guide](https://github.com/diceframe/diceframe-content/blob/main/docs/en/guide.md) | [用户手册](https://github.com/diceframe/diceframe-content/blob/main/docs/zh/guide.md) |
 | Docker deployment | [Docker deployment](https://github.com/diceframe/diceframe-content/blob/main/docs/en/deploy.md) | [Docker 部署](https://github.com/diceframe/diceframe-content/blob/main/docs/zh/deploy.md) |

@@ -10,8 +10,9 @@
 > - Branch: `main`
 > - Commit: `d2246e0d0d32867e8e090c238b588441bad96a28`
 > - Release: `2.6.1`
-> - Current GameInstance persisted schema: `44`
-> - R9-b: `scene` authority lives in `modules.narrative_notes.scene`, upgrading that slot to v2; migration 39→40 removes the old top-level key and keeps the value verbatim. Reset still clears it. Transactions that write the scene (run opening, round processing, swipe, ruleset batches and Director automation, ruleset transaction restore, reset) preflight `narrative_notes.require_writable`. The `scene` in list, detail, lobby (including the password gate), SSE, recap and the LLM view is unchanged.
+> - Upstream GameInstance persisted schema: `44`; this local implementation writes `45` (table ownership split).
+> - Local state ownership: `game_config` is kernel configuration; `room_access` and the economy ledger are mandatory kernel dependencies. `narration_preferences` and `check_presentation` contribute optional projections and new-run preference carry through hooks. Migration 44→45 moves the old table fields and `economy.reward_policy` without rescaling or changing transaction state; opaque extras are retained and unknown/mixed shapes are refused. See [ADR-0007](adr/0007-runtime-state-ownership.md).
+> - R9-b: `scene` authority lives in `modules.narrative_notes.scene`, upgrading that slot to v2; migration 39→40 removes the old top-level key and keeps the value verbatim. Reset still clears it. Transactions that write the scene (run opening, round processing, swipe, ruleset batches and Director automation, ruleset transaction restore, reset) preflight the narrative owner through `module_hooks.preflight(..., NARRATIVE_VIEW)`. The `scene` in list, detail, lobby (including the password gate), SSE, recap and the LLM view is unchanged.
 > - R9-a: `adventure_progress` and `play_mode` have their authority in `modules.adventure_runtime` under `progress` and `play_mode`; migration 38→39 removes the old top-level keys. Adventure identity stays only in top-level `adventure_binding`. An empty or unknown play mode is still derived from the binding on load; in-place reset clears progress and keeps the play mode; a new run (reset/restart/seed) keeps the play mode and re-initializes v2 progress, all through the module owner after a preflight.
 > - R8-e: `ruleset_runtime`, `ruleset_state`, and `event_ledger` have their authority in `modules.ruleset_runtime` under `binding`, `state`, and `event_ledger`; migration 33→34 removes the old top-level keys. Reset preserves binding, rebuilds state, then clears the ledger. Encoding still drops unbound state/ledger without changing live data. Normal and seed creation bind `versioned_state` runtimes through `VersionedStateRuntime.game_binding` before advancement configuration or character joins, rolling creation back if binding fails. Rest, advancement, and ruleset event batches reject writes with missing or mismatched runtime IDs; narrative combat signals return False and log a warning. Existing unbound saves are not automatically bound; schema and persisted shape are unchanged.
 > - R8-d: `combat_active`, `combat_enemies`, `combat_state`, `initiative_order`, and `initiative_current` moved into `modules.legacy_combat` (migration 32→33 removes the old top-level keys). Since 41→42 the slot (schema 2) stored only `combat_enemies`; 42→43 removes the whole `modules.legacy_combat` slot (`combat_enemies` is retired and never guessed into NPCs; generic hp_based combat targets player uids and `npc:<id>` only). The four turn fields are a read-only derived view: a ruleset registers `legacy_combat.register_combat_projector(runtime_id, projector)` (D&D 2024 projects its own `ruleset_state["combat"]`), and rulesets without a formal encounter authority read neutral values (`"none"`/`False`/`[]`/`0`). The migration drops the stored copies and never reinterprets them. Only invalid types are repaired; valid list contents are not filtered.
@@ -489,11 +490,42 @@ This is one of the most important current **hard architecture boundaries**.
 
 `tests/architecture/test_game_instance_facades.py` records module-state facade debt: after R7–R9 moved fields into `src/engine/modules`, `GameInstance` still keeps a compatibility property for each one, and every `src/` caller that reads or writes `instance.<field>` is counted per file + property in a shrink-only baseline. The facade set is detected from the AST (properties whose body references `src.engine.modules`), and its size may only shrink too; when callers move to the module API, the same PR lowers or removes the matching baseline entries.
 
-`tests/architecture/test_module_pluggability.py` records where the core flow calls capability modules by name (#515; master plan §7.1, "deleting any module still leaves a playable game"). References to a capability module's API from the core create / round / snapshot / persistence / projection / context files are counted per file + module in a shrink-only baseline; every module under `src/engine/modules` except `KERNEL_MODULES` (`adventure_runtime_state`, `checks`, `content_binding`, `progression_state`, `round_safety`, `ruleset_runtime`, `session_stats`) is a capability, so new modules are covered automatically. When a module moves onto a lifecycle hook, the same PR lowers or removes its entries. The runtime side is measured by `scripts/audit_module_pluggability.py` (stubs one module's capability API at a time, runs the core-flow tests, and reports new failures plus the first core caller that hit a stub); it is a report, not a CI gate.
+`tests/architecture/test_module_pluggability.py` records where the core flow calls capability modules by name (#515; master plan §7.1, "deleting any module still leaves a playable game"). References to a capability module's API from the core create / round / snapshot / persistence / projection / context files are counted per file + module in a shrink-only baseline; every module under `src/engine/modules` except `KERNEL_MODULES` (`adventure_runtime_state`, `checks`, `content_binding`, `economy_state`, `game_config`, `progression_state`, `room_access`, `round_safety`, `ruleset_runtime`, `session_stats`) is a capability, so new modules are covered automatically. When a module moves onto a lifecycle hook, the same PR lowers or removes its entries. The runtime side is measured by `scripts/audit_module_pluggability.py` (stubs one module's capability API at a time, runs the core-flow tests, and reports new failures plus the first core caller that hit a stub); it is a report, not a CI gate.
 
 Capability modules join the core flow through `src/engine/module_hooks.py`: the core calls fixed hook points (`round.reset`, `round.processing.begin`, `instance.reset.preflight`, `instance.reset`, `round.recovery.preflight`, `round.abort`, `round.rewind.begin`, `round.rewind.restore`, `round.commit`, `module.state.record`, `module.state.read`) and never names a module; a point with no registered handler is a no-op, and reads answer empty. `module.state.record` / `module.state.read` store and read module-held data by kind (e.g. `quick_actions`, `health_events`), answered by the module that owns the kind. The set of points is closed (registering an unknown point raises), and only modules under `src/engine/modules` may register (architecture guard). Modules on hooks so far: `world_reports` (overreach, world legality and world event round reports) and `round_presentation` (quick actions, recap, token budget bump, pending combat results, private GM directives) and `lorebook_runtime` (Lorebook sticky / cooldown / delay timers, ticked at `round.processing.begin`) and `health` (GM-visible degradation events and component status, which `engine.health` reads and writes as `health_events` / `health_status` module state), `check_reveals` (check reveal records), `player_control_state` (away-control policy, defaulting to `pause`) `private_channels` (private messages and table talk) and `seat_activity` (the "seat has acted" lock, via `seat.preflight` / `seat.acted` / `seat.forgotten` / `seat.has_acted`; without it no seat is locked, the behaviour before #480) and `legacy_combat` (the read-only combat turn view, read via `module_hooks.combat_view`; without it every game reads the neutral view) and `combat_extension_state` (the generic combat-extension payload and its per-round snapshots; the snapshot code moved from `round_snapshots` into the module and joins round commit / abort / rewind through hooks, with log entry fields unchanged) and `media` (scene-image reference and map background, read and written as `scene_image` / `map_background` module state; `payload_container`, used when importing a save package, is a storage contract and stays a direct call); removing any of them leaves a playable game that simply lacks those extras, with API payloads keeping their shape (empty list or `null`).
 
 ---
+
+The creation group now follows [ADR0007](adr/0007-runtime-state-ownership.md): `room_access`, the transaction ledger `economy_state`, and `game_config` are kernel. `narrative_notes`, `narration_preferences` and `check_presentation` join read/write and preflight hooks. A new run preflights every participating source slot before creating a candidate, then owners deep-copy preferences. In-place reset preserves preferences. Disabled optional owners return neutral views and ignore their writes while preserving opaque storage.
+
+`src/game_preferences.py` validates the application contract stored at `config.json.game_defaults`.
+`src/engine/game_preferences.py` composes owners through module hooks and
+`LiveAdvancementPolicyRuntime`. New games copy defaults; explicit creation choices win.
+Loading/importing a save never reads the current defaults. The optional `check_policy` v1
+slot owns `push_enabled`; missing old-save slots retain enabled behavior, with hook-based
+reads/writes and new-run carry rather than new GameInstance fields.
+
+The `round_presentation` v1 owner also stores `quick_actions_enabled`, defaulting to true
+when absent. State read/write/preflight and new-run carry hooks preserve this display
+preference; in-place reset clears round suggestions while retaining the preference.
+Historical migration output is unchanged; module normalization adds the default.
+The public game projection includes the flag, and settings changes use the existing SSE refresh chain.
+This flag only supplies initial suggestion visibility; it neither controls generation nor
+overrides a player's personal choice. The frontend's `features/play/preferences/useQuickActionVisibility.ts`
+owns device-local visibility in localStorage, keyed by canonical game key and actor ID without
+run/round scope. It never writes server preferences, and explicit personal choices take priority.
+The raw preferences response advertises field support: a stale backend disables the default
+switch with a restart hint, and saving other defaults does not inject the unsupported field.
+
+The check domain closes unfinished Push choices without rerolling or changing Luck, then the existing round authority
+chain attempts continuation after persistence. `src/webui/services/game_preferences.py` uses
+the authoritative write gate, state lock and a staged transaction; in-flight generation and
+unknown owner schemas are refused, and failed persistence rolls back. Later narration failure
+does not undo saved preferences. `/api/games/{game_key}/preferences` is GM-only; on access-protected
+installations global profiles are owner-only and public configuration omits their custom narration instructions. Frontend
+feature components own Settings' separate Game page, the GM check-flow panel and profile actions.
+
+Narrative HP delegates through the optional `NarrativeHealthRuntime` contract: generic player updates pass bounded net deltas and receive actual accepted changes. D&D settles out-of-combat changes through a versioned EventBatch; dead characters require explicit revival and narrative HP never duplicates active combat settlement. Rejection repairs legacy health projections and informs the GM. Round snapshots protect characters, ruleset state and ledger together. Re-projection reuses `merge_live_character_projection` to preserve live inventory and currency.
 
 ## 2.3 Authority Model: Who May Decide What
 
@@ -637,6 +669,14 @@ Frontend rules:
 - Use backend `ruleset capabilities / available_intents` for professional-rules capabilities;
 - Do not treat whether a button is visible as authorization;
 - UI capability gating is an experience layer only; the server must validate again.
+
+Global styles load through the single `frontend-v2/src/styles/index.css` entry.
+`shared.css` owns document and control primitives, `navigation.css` owns application
+and section navigation, and `pages/<feature>.css` owns each feature's global layout,
+states and media queries. Component styles remain with their feature; tokens,
+Tailwind and Markdown keep separate boundaries. The old `styles.css` / `styles/v2.css`
+cascade and historical patch sheets are retired. Edit the relevant owner instead of
+adding another late override sheet. See the [style guide](../frontend-v2/src/styles/README.md).
 
 AI organization of imported scripts is owned by `src/webui/services/adventure_ai_import.py`. `POST /api/adventures/script/ai` requires owner access and token-use consent, reuses the main-model generation service, and streams actual work progress as NDJSON; disconnecting cancels the active model call. Output is limited to story and reference material, preserving adventure identity, rules binding, and GM visibility, and is validated by the native Adventure owner before client preview. Adopting the draft and publishing remain separate; persistence still uses the existing review/commit contract.
 
@@ -4043,9 +4083,13 @@ World core owns:
 
 The Worlds page's Preview / Edit world entry exposes the complete background and
 default opening, with a separate short introduction.
-The world gallery and Lorebook page's World actions → Edit world share the World
-feature's `WorldDefinitionEditor`. The Lorebook entry expands the full editor in
-place, replacing its old introduction-only form. Cloning selects the copied world
+The world gallery and Lorebook page's World actions → New world / Edit world share
+the World feature's `WorldDefinitionEditor`. Creation and editing both expose the
+name, content language, introduction, full background and default opening.
+`POST /api/worlds` saves independent background/opening fields at creation; explicit
+empty strings stay empty, while older clients omitting them retain initialization
+from the introduction. The Lorebook entry expands the full form in place.
+Cloning selects the copied world
 for browsing and editing, without changing the active save's world or runtime.
 Owner-only
 `GET /api/worlds/{world_id}/definition` is a bounded projection of the name,
@@ -6123,7 +6167,7 @@ Each Agent model output uses independent `assistant_agent_max_tokens` (default 4
 
 The owner application shell mounts a shared `AssistantShell` across business routes; Appearance settings can hide it. Public/player routes do not mount the owner agent. A single `AssistantPanel` switches between a side drawer and a centered larger window, with desktop chat/task columns and a narrow-screen single column. Switching layouts preserves the component, unsent input and local draft edits. The read-only `/api/assistant/chat` contract remains; `/api/assistant/agent/*` adds owner-only execution, review, confirmation and recovery.
 
-`useAssistantLauncherPosition` owns PointerEvent dragging, browser-local position persistence and viewport clamping, separating a drag from click or keyboard activation; Appearance settings can reset the mounted launcher to its default position. `useAssistantWorkspace` owns task folding and the browser preference: phones fold by default while retaining a status summary, and a single-column task area occupies at most 45% of the message area. Hiding it preserves mounted drafts and pending approvals. `SectionWorkspaceShell` observes the application header height to anchor sticky secondary navigation. Batches of registered immediate read/draft tools execute sequentially in the framework. Batches containing deferred writes, final output or unknown tools are rejected as a whole and corrected, preserving one server-held approval at a time. Exhausted format retries return `MODEL_RESPONSE_INVALID` while retaining the session and existing drafts.
+`useAssistantLauncherPosition` owns PointerEvent dragging, browser-local position persistence and viewport clamping, separating a drag from click or keyboard activation; DF Agent settings can reset the mounted launcher to its default position. `useAssistantWorkspace` owns task folding and the browser preference: phones fold by default while retaining a status summary, and a single-column task area occupies at most 45% of the message area. Hiding it preserves mounted drafts and pending approvals. `SectionWorkspaceShell` observes the application header height to anchor sticky secondary navigation. Batches of registered immediate read/draft tools execute sequentially in the framework. Batches containing deferred writes, final output or unknown tools are rejected as a whole and corrected, preserving one server-held approval at a time. Exhausted format retries return `MODEL_RESPONSE_INVALID` while retaining the session and existing drafts.
 
 `assistant_agent_framework.py` directly uses Pydantic AI's Agent executor, validation retries, usage limits and deferred approvals, adapting the existing configured model transport. `assistant_agent.py` owns business-tool adapters, sessions and server-held confirmation plans. `assistant_agent_application.py` and `assistant_authoring.py` adapt existing content, game, plugin and image services through explicit dependencies. Model output is an untrusted named-tool candidate; schemas, framework deferral and server-held confirmation plans gate mutations, while domain services retain authority.
 
@@ -6142,6 +6186,16 @@ Lorebook SQLite 12 adds owner-private recovery records after main's external ide
 
 AI seats and check grants register their cleanup/reset lifecycle hooks in their own modules. `adventure_commands.py` owns node/choice transactions, authoritative admission, current-run fences, module preflight and owner-mediated compensation. Game Lorebook selection also restores through its content-binding owner; preview round reads do not materialize missing slots. The imagegen game projection captures storyboard inputs so core round orchestration does not increase narrative-module coupling.
 
+
+## Character dialogue and shared story sequences
+
+`modules.storytelling` (schema 1) owns per-game `prose` / `dialogue` generation preferences and public portrait overrides. Creation and the GM workbench use the same setting, effective on subsequent generation. Missing settings preserve prose behavior; unknown future slots reject writes. This setting is independent of Adventure `play_mode` and ruleset mechanics.
+
+The same module owns optional `speaker_aliases`: after explicit GM confirmation, a duplicate guest can be linked to a current public speaker for story and portrait projection. Original dialogue, NPC and player records remain intact; matching names never trigger automatic deduplication. The service validates active identities, holds the write lock and restores preferences on save failure. Guest identity links are cleared for a new run.
+
+`src/engine/story.py` owns version-1 ordered `story.segments`; `src/commands/story_output.py` adapts model output. Dialogue mode emits narration/dialogue NDJSON before the existing `---` state-tag block. Validated segments generate ordinary `gm_response` text for Bot, memory, context and export. Every swipe retains its matching story; historical prose is not heuristically split. SSE adds sanitized `story_update` snapshots alongside plain text, with retries clearing both provisional views. Public logs whitelist nested fields; internal NPC IDs remain private, same-name actors stay distinct, and concealed personas do not inherit a revealed identity or portrait.
+
+`frontend-v2/src/features/play/story/` renders narrator cards, character bubbles and searchable complete-cast portrait management. Explicit portraits are reused; missing images use stable initials/colors with no automatic image generation. Known `s_` identities carry across new runs through a game identity namespace; guest `g_` identities belong to their original run. Future stage renderers can consume the same versioned data; stage placement, expressions and story-route mechanics are not implemented here. See [ADR 0006](adr/0006-structured-story-presentation.md).
 
 ## Translation maintenance and display fallback
 

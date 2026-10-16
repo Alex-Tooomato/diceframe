@@ -158,6 +158,15 @@ These are dependency-ordered work packages, not release dates or a claim that al
 
 Start with A and B. For the first delivery use one small original adventure with two scenes, one branch, a private clue, a Book, a map/image and declared runtime support. Exercise the same artifact through validation, private import, export/reimport, game creation, player projection, save/restart and attempted incompatible update. A fixture with a claimed deterministic encounter must actually exercise the target rules runtime; a prose-only fixture must say reference/guided. Add further examples only when each brings a new contract, not just a new skin.
 
+The local implementation now includes the original [Lantern Harbor starter](../../plugins/examples/starter-adventure/README.md).
+Its [conformance test](../../tests/test_starter_adventure_conformance.py) exercises
+source and artifact validation, install, game creation, private projection,
+save/reload, export/reimport and bound-save update rejection. Negative cases cover
+executable entrypoints, path escape, missing runtime, invalid world relations and
+locale mechanics overrides. It is a guided example with a graph map, not a
+deterministic combat certification. Marketplace admission, release evidence and
+external-author milestones in C–E remain separate work.
+
 Existing author commands, run from the matching core revision:
 
 ```bash

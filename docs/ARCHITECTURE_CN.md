@@ -10,8 +10,9 @@
 > - 分支：`main`
 > - Commit：`d2246e0d0d32867e8e090c238b588441bad96a28`
 > - Release：`2.6.1`
-> - 当前 GameInstance persisted schema：`44`
-> - R9-b：`scene` 权威状态存于 `modules.narrative_notes.scene`，该槽升到 v2；39→40 迁移删除旧顶层键，值原样保留。reset 照旧清空；写 scene 的事务（开局、回合处理、swipe、规则批次与 Director 自动化、ruleset 事务回滚、reset）先做 `narrative_notes.require_writable` 预检。列表、详情、大厅（含密码遮挡）、SSE、recap 与 LLM 视图的 `scene` 不变。
+> - 上游 GameInstance persisted schema：`44`；本地实现写入 `45`（本局配置归属拆分）。
+> - 本地状态归属：`game_config` 为内核配置，`room_access` 与经济账本属于必要内核；`narration_preferences` 和 `check_presentation` 经 hooks 提供可选投影和新 run 偏好继承。44→45 迁移移动旧桌面字段与 `economy.reward_policy`，不换算金额、不改写事务账本；保留不透明扩展字段，拒绝未知或混杂结构。见 [ADR-0007](adr/0007-runtime-state-ownership.md)。
+> - R9-b：`scene` 权威状态存于 `modules.narrative_notes.scene`，该槽升到 v2；39→40 迁移删除旧顶层键，值原样保留。reset 照旧清空；写 scene 的事务（开局、回合处理、swipe、规则批次与 Director 自动化、ruleset 事务回滚、reset）经 `module_hooks.preflight(..., NARRATIVE_VIEW)` 对叙事拥有模块预检。列表、详情、大厅（含密码遮挡）、SSE、recap 与 LLM 视图的 `scene` 不变。
 > - R9-a：`adventure_progress` 与 `play_mode` 权威状态存于 `modules.adventure_runtime` 的 `progress`、`play_mode`；38→39 迁移删除旧顶层键。Adventure 身份仍只在顶层 `adventure_binding`。读档时空或未知的 play_mode 仍按绑定推导；原地 reset 清空 progress、保留 play_mode；新 run（reset/restart/种子）沿用 play_mode 并重新初始化 v2 进度，写入均经模块 owner 并先做预检。
 > - R8-e：`ruleset_runtime`、`ruleset_state`、`event_ledger` 权威状态存于 `modules.ruleset_runtime` 的 `binding`、`state`、`event_ledger`；33→34 迁移删除旧顶层键。reset 保留 binding、重建 state、清 ledger；编码继续丢弃无 binding 的 state/ledger，但不修改内存。创建普通或种子游戏时，`versioned_state` runtime 通过 `VersionedStateRuntime.game_binding` 在成长策略配置及角色加入前绑定；绑定失败回滚创建。休息、成长及规则事件批次拒绝无绑定或 runtime id 不匹配的写入；叙事战斗信号在此情况下返回 False 并记录警告。旧未绑定存档不自动绑定，schema 与存档形状不变。
 > - R8-d：`combat_active`、`combat_enemies`、`combat_state`、`initiative_order`、`initiative_current` 曾存于 `modules.legacy_combat`（32→33 迁移删除旧顶层键）。41→42 起槽位 schema 2 只存 `combat_enemies`，42→43 删除整个 `modules.legacy_combat` 槽位（`combat_enemies` 退役，不猜测迁入 NPC；通用 hp_based 战斗目标只用玩家 uid 与 `npc:<id>`）；四个回合字段改为只读派生视图：规则通过 `legacy_combat.register_combat_projector(runtime_id, projector)` 注册投影器（D&D 2024 投影自身 `ruleset_state["combat"]`），没有正式遭遇权威的规则返回中立值（`"none"`/`False`/`[]`/`0`）。迁移只丢弃旧副本，不重新解释。模块只修复非法类型，不过滤合法列表内容。
@@ -497,6 +498,27 @@ Frontend / Bot / Plugin Client
 
 ---
 
+建局组现已按 [ADR0007](adr/0007-runtime-state-ownership.md) 拆分：`room_access`、事务账本 `economy_state` 与 `game_config` 属于内核；`narrative_notes`、`narration_preferences`、`check_presentation` 通过读写与预检钩子接入。新 run 先预检全部源槽位，再创建候选，偏好由拥有模块深拷贝；原地 reset 保留偏好。禁用可选拥有模块时读取中立值、忽略对应写入，并保留不透明存储。
+
+新对局默认的应用配置契约由 `src/game_preferences.py` 校验，存于 `config.json.game_defaults`。
+`src/engine/game_preferences.py` 通过模块钩子与 `LiveAdvancementPolicyRuntime` 组合拥有模块；
+默认值在新建时复制，显式开局选择优先，加载与导入存档不读取当前默认。`check_policy` v1
+拥有 `push_enabled`，旧存档缺槽时仍默认开启；经钩子读写及继承，不新增 GameInstance 字段。
+`round_presentation` v1 同时拥有 `quick_actions_enabled` 显示偏好，缺字段默认为开启；
+经状态读写、预检与新 run 继承钩子接入，原地 reset 清理本轮建议但保留显示偏好。
+历史迁移输出保持原样，由模块规范化补齐默认；公开游戏投影向客户端提供开关，设置变更沿现有 SSE 刷新链同步。
+该字段仅提供建议区的初始显示状态，不控制生成或覆盖玩家的个人选择。
+前端 `features/play/preferences/useQuickActionVisibility.ts` 拥有当前设备的个人显示偏好，
+按 canonical game key 与 actor ID 存入 localStorage，不带 run／round；不写服务器偏好，个人选择优先于本局默认。
+前端从原始偏好响应判断新版字段是否受支持；旧进程未加载字段时禁用默认开关并提示重启，保存其他默认时不注入该字段。
+关闭未完成的孤注一掷由检定域处理，不重掷、不改变幸运选择，持久化后沿唯一回合推进链继续。
+`src/webui/services/game_preferences.py` 用权威写入门、状态锁和 staged transaction 保存本局偏好，
+拒绝生成中修改与未知拥有模块版本，保存失败回滚；后续叙事失败不回滚已经保存的偏好。
+`/api/games/{game_key}/preferences` 为 GM-only；配置访问保护时全局默认只向服务端 owner 提供，公开配置也不下发
+默认值中的自定义叙事指令。前端设置的独立“游戏”页、GM 规则页和默认管理入口分别归属 feature 组件。
+
+叙事 HP 通过可选 `NarrativeHealthRuntime` 契约委托给规则集：通用玩家更新只传入有界的净变化并接收实际接受的变化。D&D 在非战斗阶段通过版本化 EventBatch 更新 canonical HP；死亡角色要求明确复活，战斗中的叙事 HP 不重复结算。拒绝时修复旧展示投影并提供 GM 提示；回合快照同时保护角色、规则状态与账本。重投影复用 `merge_live_character_projection`，不恢复建卡初始背包和余额。
+
 ## 2.3 Authority Model：谁有权决定什么
 
 | 参与者 / 层 | 可以做 | 不可以直接做 |
@@ -639,6 +661,13 @@ frontend-v2/src/
 - 对专业规则能力使用后端 `ruleset capabilities / available_intents`；
 - 不把按钮是否显示当成权限检查；
 - UI capability gating 只是体验层，服务端仍需重新校验。
+
+全局样式通过 `frontend-v2/src/styles/index.css` 单一入口加载：共享基础与控件归
+`shared.css`，应用和二级导航归 `navigation.css`，各页面的布局、状态与媒体查询归
+`pages/<feature>.css`。组件内样式继续由所属功能维护；tokens、Tailwind 和 Markdown
+保持各自边界。旧 `styles.css` / `styles/v2.css` 及多轮覆盖补丁表已退役，修改页面时
+直接编辑所属样式，不再追加同页覆盖层。组织规则与外观对照方法见
+[样式说明](../frontend-v2/src/styles/README.md)。
 
 剧本导入的 AI 整理由 `src/webui/services/adventure_ai_import.py` 拥有。`POST /api/adventures/script/ai` 在 owner 与 token 用量确认后，复用主模型生成服务，分段整理资料并返回 NDJSON 工作进度；客户端断开时取消当前模型调用。输出只允许剧情与参考资料，保持原冒险身份、规则绑定与 GM 可见范围，经原生 Adventure owner 校验后交给前端预览。采用草稿和发布保存仍是分开的操作，保存继续走已有 review/commit 契约。
 
@@ -4062,8 +4091,10 @@ World core 负责：
 - deterministic lore metadata。
 
 世界页的“预览 / 编辑世界”展示完整世界背景与默认开场，简要介绍单独编辑。
-世界画廊与资料册页“世界操作 → 编辑世界”共用 World feature 的
-`WorldDefinitionEditor`。资料册入口在当前页面展开完整编辑器，移除独立的旧简介表单；
+世界画廊与资料册页“世界操作 → 新建世界 / 编辑世界”共用 World feature 的
+`WorldDefinitionEditor`，新建和编辑均提供名称、内容语言、简介、完整背景与默认开场。
+`POST /api/worlds` 在创建边界一次保存独立的背景与开场，显式空值保持为空；
+旧客户端省略这两项时仍沿用由简介初始化的行为。资料册入口在当前页面展开完整表单；
 克隆后切换浏览目标并编辑副本，不修改当前存档的世界或运行时内容。
 `GET /api/worlds/{world_id}/definition` 是 owner-only 的有界投影，只返回名称、
 简介、背景、开场、语言与来源/可编辑状态，不返回原始模板或资料册条目。
@@ -6164,6 +6195,16 @@ Lorebook SQLite 12 在 main 的外部身份和来源跟踪结构之后增加私�
 
 AI 席位和检定授权的离席/重开清理由所属模块注册生命周期 hooks。冒险节点与选择命令由 `adventure_commands.py` 在权威写入、当前 run 与模块预检之后执行；保存失败的补偿调用模块 owner。游玩资料册调整同样通过 content_binding owner 回滚，预览读取回合时不物化缺失槽。故事分镜输入由 imagegen 的游戏投影模块捕获，核心回合编排不增加对叙事状态模块的耦合。
 
+
+## 角色对话与共享剧情片段
+
+`modules.storytelling`（schema 1）拥有对局的 `prose` / `dialogue` 生成偏好和公开人物头像覆盖。创建页与 GM 工作台使用同一设置；切换只影响后续生成。旧存档缺失槽位时保持普通叙事，未知未来槽位拒绝写入。它与 Adventure `play_mode` 和 ruleset mechanics 独立。
+
+可选的 `speaker_aliases` 由同一模块拥有：GM 明确确认后，可以将重复的临时人物关联到当前公开人物，合并公开投影与头像；不改写原始台词、NPC 或玩家记录，不按同名自动去重。服务层负责当前人物校验、写入锁与保存失败回滚；临时身份关联在新 run 中清除。
+
+`src/engine/story.py` 拥有版本 1 的有序 `story.segments`，`src/commands/story_output.py` 负责模型协议适配。GM 对话模式在原有 `---` 状态标签前输出 NDJSON 旁白/台词；服务端验证后生成普通 `gm_response`，继续供 Bot、记忆、上下文和导出使用。每个 swipe 同步保存对应 story，旧正文不猜测拆分。SSE 在普通文本之外提供经过过滤的 `story_update` 快照，重试清除两种临时展示。公开日志逐层白名单投影，内部 NPC identity 不外发；同名人物不合并，隐藏身份不继承真名头像。
+
+`frontend-v2/src/features/play/story/` 展示旁白卡片、角色气泡和可搜索的完整出场人物头像管理。已有头像复用，缺省使用固定缩写/颜色，不自动生图。`s_` 人物引用通过对局 identity namespace 在新 run 中保持，`g_` 临时人物仅属于原 run。聊天与未来舞台式渲染共享此版本化数据；当前未实现立绘舞台、表情和路线机制。参见 [ADR 0006](adr/0006-structured-story-presentation.md) 和[使用说明](zh/character-dialogue.md)。
 
 ## 翻译维护与显示回退
 

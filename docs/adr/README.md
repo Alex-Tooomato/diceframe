@@ -4,6 +4,10 @@ ADR 用来记录“为什么做出一个长期架构决定”，不是所有 PR 
 
 ## 架构方向提案
 
+已接受的剧情表现决策见 [ADR-0006：共享结构化剧情片段](0006-structured-story-presentation.md)。
+
+内核状态、可选对局偏好与 44→45 存档拆分见 [ADR-0007：运行时状态归属](0007-runtime-state-ownership.md)（本地实现，尚未发布）。
+
 - [ADR-0005：通用底座、玩法拼装与具体游戏](0005-composable-game-platform.md) — `Proposed`；记录跨玩法架构的目标边界、取舍与验证方式，尚未落地，不替代当前架构事实来源。
 
 ## 什么时候需要 ADR

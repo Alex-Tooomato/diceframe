@@ -22,11 +22,13 @@ Lorebook cards keep the book's own title and identify its associated worlds. A p
 
 In **World materials**, lorebook choices follow the current world/game scope and selected content language. A direct link can add its exact independent book, without adding the whole catalogue. Choosing another world, including through the language filter, clears the previous book and entry targets without changing the active game's saved state.
 
-**Settings → Appearance → Interface language** shares the header's language selection and stores it on this device. **Settings → Advanced → Generation parameters → DF Agent Tokens** independently sets the maximum output tokens per Agent model request (default 4096). The Agent uses the main model; generation tools keep their own budgets. This setting is not a total task token or spending limit.
+**Settings → General → Interface language** shares the header's language selection and stores it on this device. **Settings → General → DF Agent** independently sets the maximum output tokens per Agent model request (default 4096). The Agent uses the main model; generation tools keep their own budgets. This setting is not a total task token or spending limit. See [AI and interface settings](ai-settings.md) for context limits, sampling and the independent check model.
 
 During game creation, choose a template, custom world or AI-generated draft. The compact view keeps the common choices visible; expandable settings retain language, seed, additional background and game-specific lorebook selection. Choosing books for this game changes only its bindings. Editing a shared source book can affect other games that reference it; use a personal copy when you need independent content.
 
 Standard free play uses normal GM narration. Adventure mode follows the selected adventure and its supported rules. Compatibility is checked by the server; a D&D 2014 module is not silently converted to D&D 2024.
+
+After switching to module mode, choose a package before checking its required rules and world. With no package selected, the page asks you to choose one. Source, rule and world corrections appear only for a selected package with a compatibility issue.
 
 ## Install or create an adventure
 
@@ -63,15 +65,80 @@ The text marker `@choice label -> scene_id` defines a graph connection. Several 
 
 On the play page, use **Invite players** beneath the party list. Share the actual invitation URL and let the player open it. Players do not need to extract or type `web|room|host` from a link. Invitations and seat credentials follow the server's access policy; a bare legacy player ID is not a credential. If an old link no longer authenticates, the GM should issue a new invitation.
 
+The GM can open **⋯ Member actions** on the right of each member card for control links, editing, away/return, AI control and removal. Available actions follow the member's current state. Kick appears after a divider in a danger color and requires confirmation; the host and current actor cannot be kicked. The workbench player list retains status and rest notices, while member management uses this menu.
+
+The menu's **Control link** resumes an existing character; **Invite players** beneath the list is for new players. Reissuing an existing seat link requires confirmation; reopening a valid link in the same GM session reuses it without disconnecting its player. Players do not see these management controls.
+
 AI-hosted seats and companions use the same server action and rules boundaries as human players. Their policy belongs to the game and survives saving/loading; narration cannot independently grant private information or bypass resource costs.
 
 ## Checks and combat
+
+When your character has skills, **Action skill** appears inside the input frame,
+above the action button on its right. Its choices open upward without resizing the conversation area.
+Leave it automatic or choose a skill from the server's
+character sheet. An explicit choice takes priority over the planner's guess;
+modifiers still follow the selected rules. Skill descriptions cannot grant
+arbitrary bonuses. A failed draft retains its choice on this browser for the
+same game, run, actor and round. A skill choice applies to one submission: acceptance
+resets it to automatic, so the next action does not reuse it. Refreshing a confirmed
+post-commit failure also resets it; an unconfirmed draft retains its choice for review
+or retry. The section folds after
+selection to keep the conversation visible on phones.
+
+New games default to automatic dice reveal. In Play, open **GM workspace → Rules →
+Check flow → Dice reveal** to choose automatic or shared click-to-reveal.
+Explicit choices survive reload and restart; upgrading preserves an existing
+game's recorded choice. Revealing changes presentation, never the server's roll.
+
+**Settings → Game**, directly below General, stores new-game defaults for dice reveal,
+Push, quick action suggestions, Luck decision timeout, narrative perspective/presentation/style, and supported
+advancement policies. Creation copies these defaults; explicit creation choices win.
+Changing defaults never edits existing or imported saves. Reset, restart and seed
+recreation retain the source table's preferences. Following the world keeps its style.
+
+Each player can hide or show fixed and generated action suggestions using **Suggestions**
+beside the action panel title. The browser remembers this device's choice per game and
+character across reloads, rounds and new runs. It does not affect other players or stop
+suggestion generation. Free-form action input and skill selection remain available.
+
+**GM workspace → Settings → Action panel → Show quick action suggestions by default**
+sets the table's initial visibility. **Settings → Game → Action panel** sets the new-game
+default. Both start enabled, including old saves without the field. A player's explicit
+choice takes priority over later GM changes. If the running backend has not loaded the
+new field, the default switch requests a server restart instead of submitting an
+unsupported field; personal hide/show controls remain available.
+
+**GM workspace → Rules → Check flow → Allow Push** starts enabled for rulesets that
+support it. Disabling prevents new Push choices and closes unfinished ones using the
+original result, retaining an explanation. Completed rerolls remain unchanged, and
+reenabling never reopens old choices. Luck remains independent. Finishing the last
+blocking choice attempts to resume the existing round flow; a later generation failure
+does not undo saved settings, and the UI reports that continuation needs attention.
+
+Server owners can **save this game's preferences as defaults** or **apply current defaults**
+under **GM workspace → Settings → Game preferences**. Only preferences are copied, never
+passwords, characters, reward ledgers or immediate actions. Unsupported rule preferences
+do not overwrite other rules' defaults when saving a table profile. Generation in flight
+blocks changes; a pending judgment allows disabling Push but not changing story presentation.
+
+The right side inside the input frame is one compact column: the optional skill
+selector above the action button. Text and voice input occupy the left side.
+Skill options open upwards without increasing the composer's height. Characters
+without skills only show the action button.
 
 Available check modes depend on the selected rules and GM policy. CoC Push is a linked follow-up to an eligible failed check, not an unrestricted reroll. Required GM consent and its consequences remain attached to that check.
 
 In D&D 2024 authoritative combat, available spells depend on the character's prepared/granted spells, resources and current trigger. A level 2+ Paladin gains **Divine Smite** through Paladin's Smite. It becomes available after a qualifying melee hit while the bonus action and a spell slot or free use remain available. It is not an always-available attack button. Long Rest restores the class's free use. This follows the supported 2024 rules, not the 2014 version of Smite.
 
 The Lite rules and custom rules expose only the actions their runtime declares. Missing spell mechanics are not inferred from a class name. See [rules and dice](rules-and-dice.md) and the [automation coverage](../rulesets/dnd2024/AUTOMATION_COVERAGE.md) for the implemented boundary.
+
+Leaving combat does not resurrect a character. In D&D, healing an unconscious
+living character outside combat updates canonical HP, clears unconscious/stable
+state and resets death saves. A truly dead character requires explicit revival;
+ordinary healing and Long Rest do not revive them. Rejected narrative healing
+does not display a successful HP change; the GM receives a resurrection notice.
+During authoritative combat, narrative HP tags cannot duplicate settlement.
+Combat, rest, saving and reloading read the same ruleset health state.
 
 ## DF Agent and recovery
 
@@ -80,5 +147,19 @@ The owner's DF Agent can search documentation, inspect game/content state and pr
 Operations use the live tool catalog and current application state. Help is retrieved only when needed through `search_documentation`, using this installed version's bundled English or Simplified Chinese instructions. Development checkouts use their current local files. Moving remote manuals and older unversioned indexes do not describe the Agent's available actions or enter every conversation automatically.
 
 On phones, **Game tools** groups character information, scene maps and the party; the GM workspace retains its own top entry. The compact character status strip also opens the character drawer. These replace the duplicate floating navigation buttons.
+The party rail is ordered **Party members → Party actions → Rules recap**.
+Each member shows their submitted, waiting-for-roll or away status. Rulesets
+with a registered rest interface offer **Party rest**, opening the character
+center directly at its rest controls. An active rest shows readiness and a
+**Join rest** or **View party rest** action. Opening it does not resolve the rest;
+the player must confirm elapsed game time and submit.
+GMs **Request roll** here. Players see **Pending roll · count** for unfinished
+requests and **Roll history** when records exist. Empty history and unsupported
+rest controls stay hidden. The server retains dice, actor and current-run authority;
+a player who already rolled is not prompted again while others are pending.
+On phones, **Game tools → Party** opens the same controls. Targeted roll
+confirmations still arrive with the party drawer closed; postponed requests can
+be reopened from the pending entry. The GM workspace retains management tools
+without a duplicate roll panel.
 
 Lorebook operation history supports reviewing and recovering supported changes. Recovery is owner-private and validates its plan before applying it. It does not replace an upgrade backup: preserve the complete `data/` directory before changing program versions.
