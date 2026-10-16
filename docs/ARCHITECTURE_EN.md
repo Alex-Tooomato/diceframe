@@ -2328,6 +2328,40 @@ but does not expose the internal canonical Lore entry ID. This prevents IDs such
 
 ---
 
+### 15.4.1 Current Adventure scenes and objectives
+
+`src/adventures/scene_context.py` owns the Adventure v2 scene projection. The
+WebAPI composition root injects the application-owned resolver into
+GameHandler / PromptComposer. The projection verifies package source, version,
+digest and world binding, and reads the module's non-mutating
+`progress_snapshot()`. It never creates missing slots, generates a plan or
+advances nodes. Regular turns, openings, resume narration and player questions
+share this seam.
+
+The GM view contains active nodes, related objectives and one-hop successor
+candidates; candidates are not asserted to be unlocked. Players and AI seats
+receive only active public nodes, objectives related to known nodes and their
+completion status. Canonical IDs, NPC/encounter references, transition conditions
+and outcomes are omitted. Public visibility alone does not reveal inactive,
+unvisited future nodes to the model. Existing private/party Q&A knowledge
+boundaries remain in force. The game Adventure query exposes the same projection
+as `adventure.scene_objectives`.
+
+The context builder budgets at most 10% of its window, capped at 4096 characters,
+for this block, retaining objectives before optional descriptions. Dedicated
+opening/resume narration requests also cap the block at 4096 characters. No
+additional model call is introduced. Historical swipe uses the owning module's rewind hook to restore the target
+round's `pre_adventure_progress` before projecting; v2 histories without the
+progress or character snapshot cannot be regenerated using later progress. Resolution failures produce
+an empty player projection and an unavailable notice for the GM. Existing binding
+and gameplay authority paths continue to own admission.
+
+v1 retains its ruleset-owned campaign projection. Unbound free games receive no
+Adventure block. This step does not implement free-game plans, NPC constraints,
+automatic plot progression or a CoC Adventure runtime.
+
+---
+
 ## 15.5 Preventing Reasoning Leakage
 
 Some model providers mix reasoning into content:

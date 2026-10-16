@@ -383,6 +383,10 @@ class GameLifecycle:
             f"{opening_instruction}"
         )
 
+        scene_context = self.prompt.scene_context_text(instance)
+        if scene_context:
+            welcome_context = scene_context + "\n\n---\n\n" + welcome_context
+
         response = None
         opening_story = None
         try:
@@ -563,7 +567,7 @@ class GameLifecycle:
         try:
             response = await self.llm_client.call(
                 system_prompt=gm_prompt,
-                user_message=resume_prompt,
+                user_message="\n\n---\n\n".join(filter(None, (self.prompt.scene_context_text(instance), resume_prompt))),
                 temperature=0.6,
                 max_tokens=self.brief_max_tokens,
             )

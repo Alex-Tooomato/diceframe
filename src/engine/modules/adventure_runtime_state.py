@@ -24,8 +24,10 @@ mode and re-initializes v2 progress through the Adventure runtime.
 
 from __future__ import annotations
 
+from copy import deepcopy
 from typing import Any
 
+from src.engine import module_hooks
 from src.engine.module_state import (
     ModuleStateError, ModuleStateSpec, get_module_state, register_module_state,
 )
@@ -87,6 +89,14 @@ def progress(instance: Any) -> dict[str, Any]:
     return get_module_state(instance, MODULE_NAME)["progress"]
 
 
+def progress_snapshot(instance: Any) -> dict[str, Any]:
+    """Read progress without repairing or materializing missing stored slots."""
+    require_writable(instance)
+    slot = instance.modules.get(MODULE_NAME)
+    value = slot.get("progress") if isinstance(slot, dict) else None
+    return deepcopy(value) if isinstance(value, dict) else {}
+
+
 def replace_progress(instance: Any, value: Any) -> None:
     require_writable(instance)
     get_module_state(instance, MODULE_NAME)["progress"] = value if isinstance(value, dict) else {}
@@ -123,3 +133,15 @@ def effective_bot_surface(instance: Any) -> str:
 
 SPEC = ModuleStateSpec(name=MODULE_NAME, schema_version=SCHEMA_VERSION, fresh=fresh, ensure=ensure)
 register_module_state(SPEC)
+
+
+def _restore_swipe_progress(instance: Any, entry: dict[str, Any], _round: int, source: str) -> None:
+    """Restore this owner's facts before the staged rewrite builds context."""
+    if source != module_hooks.REWIND_SOURCE_SWIPE:
+        return
+    snapshot = entry.get("pre_adventure_progress")
+    if isinstance(snapshot, dict):
+        replace_progress(instance, deepcopy(snapshot))
+
+
+module_hooks.register(module_hooks.ROUND_REWIND_RESTORE, MODULE_NAME, _restore_swipe_progress)

@@ -2345,6 +2345,30 @@ content
 
 ---
 
+### 15.4.1 当前冒险场景与目标
+
+Adventure v2 的当前剧情上下文由 `src/adventures/scene_context.py` 拥有。WebAPI
+组合层向 GameHandler / PromptComposer 注入应用持有的来源解析器；领域投影核对
+包来源、版本、digest 和世界绑定，读取模块的只读 `progress_snapshot()`，不创建
+缺失槽位、不生成计划、不推进节点。普通回合、开场、恢复叙事与玩家问答复用这条接缝。
+
+GM 视图包含当前节点、相关目标及一跳后继候选；候选不等于已解锁。玩家和 AI
+席位只获得当前公开节点、已知节点相关目标及完成状态，不携带 canonical ID、
+NPC/遭遇引用、transition 条件或 outcome。公开但尚未激活/完成的节点不会因
+`visibility=public` 自动进入模型上下文。个人和队伍问答原有的私密知识隔离继续生效。
+对局 Adventure 查询同时提供 `adventure.scene_objectives`，与模型使用相同投影。
+
+上下文拼接为该块分配最多窗口的 10%、上限 4096 字符，并优先保留目标、裁剪描述；
+开场/恢复的专门叙事请求同样限制该块最多 4096 字符。不增加额外模型调用。
+历史 swipe 通过模块所属的回滚钩子恢复该轮 `pre_adventure_progress`；缺少该进度或角色快照的 v2 历史
+拒绝重新生成，避免把当前分支的未来目标带回过去。包解析失败时玩家获得空投影，GM
+获得不可用提示；正常的绑定/运行准入仍由既有权威路径负责。
+
+v1 保留原规则运行时的 campaign 投影；自由对局没有冒险绑定时此投影为空。
+这一步不宣称已实现自由对局运行计划、NPC 强约束、自动剧情推进或 CoC Adventure runtime。
+
+---
+
 ## 15.5 Reasoning 防泄漏
 
 模型 provider 有时把 reasoning 混进 content：

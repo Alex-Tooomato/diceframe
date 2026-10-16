@@ -22,6 +22,7 @@ from src.engine.memory_outbox import pending_memory_deliveries, pending_memory_r
 from src.engine.participant_view import Viewer
 from src.lorebook.store import LorebookStore
 from src.adventures import AdventureBundleLoader, AdventureResolver
+from src.adventures.scene_context import AdventureSceneContext
 from src.adventures.registry import AdventureSource, AdventureSourceRegistry
 from src.memory.delta import MemoryStore
 from src.rules.rule_system import RuleSystem
@@ -521,6 +522,12 @@ class WebAPI:
             queue_reward_intents=self._queue_adventure_reward_intents,
             save_instance=self._reg.save,
         )
+        if self._handler is not None and hasattr(self._handler, "set_scene_context_provider"):
+            def resolve_scene_binding(instance):
+                self._sync_plugin_adventure_sources()
+                return self._adventure_runtime_dependencies.resolve_binding(instance)
+
+            self._handler.set_scene_context_provider(AdventureSceneContext(resolve_scene_binding))
         if self._handler is not None and hasattr(self._handler, "set_adventure_world_advance"):
             self._handler.set_adventure_world_advance(
                 lambda instance: adventure_runtime.advance_adventure_world(

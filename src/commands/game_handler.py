@@ -8,6 +8,7 @@ import logging
 from pathlib import Path
 from typing import Any, Literal
 
+from src.adventures.scene_context import SceneContextProvider
 from src.engine.action_gate import StructuredIntentRequirement
 from src.engine.game_instance import GameInstance, GameRegistry
 from src.llm.client import LLMClient
@@ -236,6 +237,10 @@ class GameHandler:
             self._round_processor.set_image_generation_service(service)
         if hasattr(self._swipe_generator, "set_scene_image_hook"):
             self._swipe_generator.set_scene_image_hook(self._round_processor.schedule_scene_image)
+
+    def set_scene_context_provider(self, provider: SceneContextProvider | None) -> None:
+        """Share one safe scene source across opening, rounds and player Q&A."""
+        self._prompt.set_scene_context_provider(provider)
 
     def set_adventure_world_advance(self, callback) -> None:
         """Connect optional Adventure v2 gate reevaluation to round settlement."""
