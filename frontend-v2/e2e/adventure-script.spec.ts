@@ -6,6 +6,7 @@ test('text script is reviewed, published, launched and advanced in a real game',
   const title = `E2E 文字冒险 ${info.project.name}`
   const script = `# ${title}\n## 雾港\n### 抵达 {#arrival}\n浓雾笼罩码头。\nGM: 凶手藏在仓库。\n@choice 调查仓库 -> warehouse\n### 仓库 {#warehouse}\n找到线索。`
   await page.goto('/#/adventures')
+  await page.locator('.adventure-header-more > summary').click()
   await page.getByRole('button', { name: '导入剧本 / 外部模组', exact: true }).click()
   await page.locator('.script-review input[type=file]').setInputFiles({ name: 'quest.md', mimeType: 'text/markdown', buffer: Buffer.from(script) })
   await page.getByTestId('script-preview').click()

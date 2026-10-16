@@ -191,6 +191,19 @@ describe('combat actions entry near the action composer', () => {
     wrapper.unmount()
   })
 
+  it('places one roll controller in the party rail without a hidden player collaboration drawer', async () => {
+    gameState.detail.value = combatExtensionDetail({ solo_mode: false })
+    const wrapper = await mountPlayView()
+    expect(wrapper.find('[data-testid="play-gm-toggle"]').exists()).toBe(false)
+    expect(wrapper.find('[data-testid="play-gm-drawer"]').exists()).toBe(false)
+    await wrapper.get('[data-testid="play-tools-toggle"]').trigger('click')
+    expect(wrapper.find('[data-testid="play-collaboration-toggle"]').exists()).toBe(false)
+    const rolls = wrapper.findAllComponents({ name: 'ManualRollsPanel' })
+    expect(rolls).toHaveLength(1)
+    expect(rolls[0]!.element.closest('.party-rail')).not.toBeNull()
+    wrapper.unmount()
+  })
+
   it('keeps one check controller in the scene and opens it from the grouped GM task list', async () => {
     gameState.isGm.value = true
     gameState.detail.value = combatExtensionDetail({ solo_mode: false })
@@ -217,7 +230,8 @@ describe('combat actions entry near the action composer', () => {
     expect(wrapper.find('[data-section="party"] multiplayer-panel-stub').exists()).toBe(true)
     expect(wrapper.find('[data-section="party"] a-i-seats-panel-stub').exists()).toBe(true)
     await tabs[3]!.trigger('click')
-    expect(wrapper.find('[data-section="rules"] manual-rolls-panel-stub').exists()).toBe(true)
+    expect(wrapper.find('[data-section="rules"] manual-rolls-panel-stub').exists()).toBe(false)
+    expect(wrapper.findAll('.party-rail manual-rolls-panel-stub')).toHaveLength(1)
     expect(wrapper.findAll('[data-testid="check-controller"]')).toHaveLength(1)
     wrapper.unmount()
   })

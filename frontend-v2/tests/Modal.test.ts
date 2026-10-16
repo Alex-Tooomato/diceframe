@@ -6,6 +6,18 @@ import Modal from '../src/components/ui/Modal.vue'
 afterEach(() => { document.body.innerHTML = '' })
 
 describe('shared modal access', () => {
+  it('retains default backdrop behavior and allows a picker to opt into dismissal', async () => {
+    const wrapper = mount(Modal, { attachTo: document.body, props: { title: 'Picker' }, global: { plugins: [i18n], stubs: { Teleport: true } } })
+    await wrapper.get('.modal').trigger('click')
+    expect(wrapper.emitted('close')).toBeUndefined()
+    await wrapper.setProps({ closeOnBackdrop: true })
+    await wrapper.get('.dialog').trigger('click')
+    expect(wrapper.emitted('close')).toBeUndefined()
+    await wrapper.get('.modal').trigger('click')
+    expect(wrapper.emitted('close')).toHaveLength(1)
+    wrapper.unmount()
+  })
+
   it('announces its title as a dialog and restores focus to the opener', () => {
     const opener = document.createElement('button')
     document.body.append(opener)

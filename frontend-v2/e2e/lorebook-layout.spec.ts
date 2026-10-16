@@ -61,6 +61,7 @@ type LayoutSnapshot = {
   legacyWorldBarCount: number
   contextRows: number
   context: { left: number; right: number; top: number; bottom: number; display: string; paddingTop: string; borderRadius: string; backgroundImage: string; backgroundColor: string }
+  selections: Array<{ left: number; right: number; top: number; bottom: number }>
   workspace: { left: number; right: number; top: number; bottom: number }
   heading: { bottom: number }
   inspector: { left: number; right: number; top: number; bottom: number } | null
@@ -91,8 +92,9 @@ async function snapshot(page: Page): Promise<LayoutSnapshot> {
         backgroundImage: style?.backgroundImage || 'none',
         backgroundColor: style?.backgroundColor || 'transparent',
       },
+      selections: Array.from(document.querySelectorAll('.lore-context-row--world, .lore-context-row--book')).map(element => rectOf(element)!),
       workspace: rectOf(document.querySelector('.lorebook-workspace')) || { left: 0, right: 0, top: 0, bottom: 0 },
-      heading: rectOf(document.querySelector('.lorebook-page .archive-hero h1')) || { bottom: 0 },
+      heading: rectOf(document.querySelector('.lorebook-page h1')) || { bottom: 0 },
       inspector: rectOf(document.querySelector('.lore-perspective-inspector')),
       viewport: { width: window.innerWidth, height: window.innerHeight },
       documentWidth: document.documentElement.scrollWidth,
@@ -113,14 +115,26 @@ async function assertLayout(page: Page, light: boolean) {
   expect(layout.legacySidebarCount).toBe(0)
   expect(layout.legacyWorldBarCount).toBe(0)
   expect(layout.contextRows).toBe(3)
-  expect(layout.context.display).toBe('grid')
+  expect(layout.selections).toHaveLength(2)
+  for (const selection of layout.selections) {
+    expect(selection.left).toBeGreaterThanOrEqual(layout.context.left)
+    expect(selection.right).toBeLessThanOrEqual(layout.context.right)
+    expect(selection.top).toBeGreaterThanOrEqual(layout.context.top)
+    expect(selection.bottom).toBeLessThanOrEqual(layout.context.bottom)
+  }
+  const [world, book] = layout.selections
+  expect(world!.right <= book!.left + 1 || world!.bottom <= book!.top + 1).toBe(true)
   expect(Number.parseFloat(layout.context.paddingTop)).toBeGreaterThan(0)
   expect(Number.parseFloat(layout.context.borderRadius)).toBeGreaterThan(0)
   expect(layout.context.backgroundImage !== 'none' || layout.context.backgroundColor !== 'rgba(0, 0, 0, 0)').toBe(true)
   expect(layout.context.left).toBeGreaterThanOrEqual(layout.workspace.left - 1)
   expect(layout.context.right).toBeLessThanOrEqual(layout.workspace.right + 1)
   expect(layout.context.top).toBeGreaterThanOrEqual(layout.heading.bottom - 1)
-  expect(layout.context.bottom).toBeLessThanOrEqual(layout.viewport.height + 2)
+  // Expanded mobile selectors are stacked and may need normal page scrolling.
+  // Verify the last control can be reached instead of forcing it above the fold.
+  const lastSelection = page.locator('.lore-context-select').last()
+  await lastSelection.scrollIntoViewIfNeeded()
+  await expect(lastSelection).toBeInViewport()
   expect(layout.documentWidth).toBeLessThanOrEqual(layout.viewport.width + 1)
 
   if (layout.inspector) {

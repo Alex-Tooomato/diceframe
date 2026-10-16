@@ -56,6 +56,7 @@ function selected(event: MouseEvent) {
 function scrolled(event: Event) {
   if (!(event.target instanceof Node) || !panel.value?.contains(event.target)) positionPanel()
 }
+defineExpose({ focusTrigger: () => trigger.value?.focus() })
 onMounted(() => {
   document.addEventListener('pointerdown', outside)
   document.addEventListener('scroll', scrolled, true)

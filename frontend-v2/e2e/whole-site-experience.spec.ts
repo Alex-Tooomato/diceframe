@@ -82,7 +82,7 @@ test('creator workshop links to the five existing creation tools', async ({ page
 
 test('library world cards open the matching lorebook object for editing', async ({ page }) => {
   await page.goto('/#/library')
-  await page.getByRole('link', { name: '预览世界', exact: true }).click()
+  await page.getByRole('link', { name: '世界', exact: true }).click()
   await expect(page.locator('.worlds-grid')).toBeVisible()
   const editLore = page.getByTestId('world-edit-lore').first()
   await expect(editLore).toBeVisible()

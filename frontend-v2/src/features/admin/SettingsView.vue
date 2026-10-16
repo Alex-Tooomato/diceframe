@@ -4,7 +4,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { NButton, NInput, NInputNumber, NSelect, NSwitch, NTag, NIcon, NSpin, NProgress, NModal, NCollapse, NCollapseItem } from 'naive-ui'
 import {
   ServerOutline, CubeOutline, CloudDownloadOutline,
-  LockClosedOutline, OptionsOutline, InformationCircleOutline, ShareSocialOutline,
+  LockClosedOutline, OptionsOutline, InformationCircleOutline, ShareSocialOutline, PeopleOutline,
   KeyOutline, CopyOutline, EyeOutline, RefreshOutline, ColorPaletteOutline,
   ImageOutline, PowerOutline, MicOutline,
   TrashOutline, CheckmarkCircleOutline, AlertCircleOutline, SparklesOutline,
@@ -44,9 +44,12 @@ import { useAssistantPreferences } from '@/composables/useAssistantPreferences'
 import { resetAssistantLauncherPosition } from '@/composables/useAssistantLauncherPosition'
 import { assistantWorkspaceCopy } from '@/features/assistant/workspaceCopy'
 import { currentBackendUrl, isStandaloneFrontend, normalizeBackendUrl, setBackendUrl } from '@/api/connection'
-import { isSettingsSectionAvailable, normalizeSettingsSection, type SettingsSectionId } from '@/utils/settingsSections'
+import { isSettingsSectionAvailable, legacySettingsFocus, normalizeSettingsSection, type SettingsSectionId } from '@/utils/settingsSections'
 import ContentPageHeader from '@/components/content/ContentPageHeader.vue'
 import LanguagePreferences from '@/features/admin/settings/LanguagePreferences.vue'
+import SettingsSearch from '@/features/admin/settings/SettingsSearch.vue'
+import GameDefaultsSettings from '@/features/admin/settings/GameDefaultsSettings.vue'
+import { revealSettingTarget, settingsSearchTarget, settingsGroupIds, settingsGroupName, settingsGroupFor, type SettingsSearchResult } from '@/features/admin/settings/settingsSearch'
 
 type StatusTone = 'default' | 'success' | 'warning' | 'error' | 'info'
 type UpdatePackageKind = 'source' | 'portable' | 'docker'
@@ -257,39 +260,27 @@ async function toggleUpdateChannel(enabled: boolean) {
   }
 }
 
-const section = ref<SettingsSectionId>('api')
+const section = ref<SettingsSectionId>('general')
 const connectionSection: SettingsSection = { id: 'connection', labelKey: 'settingsSectionConnection', icon: ServerOutline }
 const sections: SettingsSection[] = [
-  ...(standaloneFrontend ? [connectionSection] : []),
+  { id: 'general', labelKey: 'settingsSectionGeneral', icon: OptionsOutline },
+  { id: 'game', labelKey: 'settingsSectionGame', icon: PeopleOutline },
+  { id: 'appearance', labelKey: 'settingsSectionAppearance', icon: ColorPaletteOutline },
   { id: 'api', labelKey: 'settingsSectionApi', icon: ServerOutline },
   { id: 'models', labelKey: 'settingsSectionModels', icon: SparklesOutline },
+  ...(standaloneFrontend ? [connectionSection] : []),
   { id: 'network', labelKey: 'settingsSectionNetwork', icon: CloudDownloadOutline },
   { id: 'sharing', labelKey: 'settingsSectionSharing', icon: ShareSocialOutline },
   { id: 'botapi', labelKey: 'settingsSectionBotApi', icon: KeyOutline },
-  { id: 'appearance', labelKey: 'settingsSectionAppearance', icon: ColorPaletteOutline },
   { id: 'access', labelKey: 'settingsSectionAccess', icon: LockClosedOutline },
   { id: 'security', labelKey: 'settingsSectionSecurity', icon: ShieldCheckmarkOutline },
-  { id: 'advanced', labelKey: 'settingsSectionAdvanced', icon: OptionsOutline },
   { id: 'about', labelKey: 'settingsSectionAbout', icon: InformationCircleOutline },
 ]
 
-type SettingsGroupId = 'ai' | 'access' | 'appearance'
-type SettingsGroup = { id: SettingsGroupId; label: string; sections: SettingsSection[] }
-const settingsGroupNames: Record<SettingsGroupId, Record<'zh-CN' | 'en' | 'de' | 'ja' | 'ru', string>> = {
-  ai: { 'zh-CN': 'AI 与语音', en: 'AI and speech', de: 'KI und Sprache', ja: 'AI と音声', ru: 'ИИ и речь' },
-  access: { 'zh-CN': '连接与访问', en: 'Connection and access', de: 'Verbindung und Zugriff', ja: '接続とアクセス', ru: 'Подключение и доступ' },
-  appearance: { 'zh-CN': '外观、高级与关于', en: 'Appearance, advanced, and about', de: 'Darstellung, erweitert und Info', ja: '外観・詳細・概要', ru: 'Внешний вид, расширенные и сведения' },
-}
-const settingsGroupFor = (id: SettingsSectionId): SettingsGroupId => {
-  if (id === 'api' || id === 'models') return 'ai'
-  if (id === 'appearance' || id === 'advanced' || id === 'about') return 'appearance'
-  return 'access'
-}
-const settingsGroups = computed<SettingsGroup[]>(() => {
-  const language = (String(locale.value).startsWith('zh') ? 'zh-CN' : String(locale.value).slice(0, 2)) as 'zh-CN' | 'en' | 'de' | 'ja' | 'ru'
-  return (['ai', 'access', 'appearance'] as SettingsGroupId[]).map(id => ({
+const settingsGroups = computed(() => {
+  return settingsGroupIds.map(id => ({
     id,
-    label: settingsGroupNames[id][language] || settingsGroupNames[id].en,
+    label: settingsGroupName(id, locale.value),
     sections: sections.filter(sectionItem => settingsGroupFor(sectionItem.id) === id),
   }))
 })
@@ -345,12 +336,22 @@ function selectSettingsSection(id: SettingsSectionId) {
   void router.replace({ query: { ...route.query, section: id, focus: undefined } })
 }
 
+async function selectSearchResult(result: SettingsSearchResult) {
+  if (!isSettingsSectionAvailable(result.section, standaloneFrontend)) return
+  section.value = result.section
+  if (settingsNavNarrow.value) settingsNavOpen.value = false
+  await router.replace({ query: { ...route.query, section: result.section, focus: result.id } })
+  await nextTick()
+  revealSettingTarget(document.getElementById(result.target))
+}
+
 function queryValue(value: unknown): string {
   return String(Array.isArray(value) ? (value[0] || '') : (value || ''))
 }
 
 function syncRouteTarget() {
-  const requestedSection = normalizeSettingsSection(queryValue(route.query.section))
+  const routeSection = queryValue(route.query.section)
+  const requestedSection = normalizeSettingsSection(routeSection)
   if (requestedSection && isSettingsSectionAvailable(requestedSection, standaloneFrontend)) {
     section.value = requestedSection
   }
@@ -359,6 +360,14 @@ function syncRouteTarget() {
     void nextTick(() => {
       document.getElementById('settings-update')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
     })
+  } else {
+    const focus = queryValue(route.query.focus) || legacySettingsFocus(routeSection) || ''
+    // Focus IDs are metadata IDs, never arbitrary DOM selectors from the URL.
+    const focused = settingsSearchTarget(focus, locale.value, standaloneFrontend)
+    if (focused) {
+      section.value = focused.section
+      void nextTick(() => revealSettingTarget(document.getElementById(focused.target)))
+    }
   }
 }
 
@@ -725,6 +734,7 @@ onMounted(() => {
   void initializeBackgrounds()
   void (async () => {
     await store.load()
+    syncRouteTarget()
     await loadTtsVoices()
   })()
   void refreshStatus()
@@ -1000,16 +1010,6 @@ function setNum(key: keyof AppConfig, v: string | number | null) {
 }
 function setBool(key: keyof AppConfig, v: string | number | boolean) { store.setConfigField(key, Boolean(v)) }
 
-const tokenFields: { key: keyof AppConfig; labelKey: MessageKey; hintKey: MessageKey }[] = [
-  { key: 'narrative_max_tokens', labelKey: 'narrativeTokens', hintKey: 'narrativeTokensHint' },
-  { key: 'character_gen_max_tokens', labelKey: 'characterGenTokens', hintKey: 'characterGenTokensHint' },
-  { key: 'summary_max_tokens', labelKey: 'summaryTokens', hintKey: 'summaryTokensHint' },
-  { key: 'brief_max_tokens', labelKey: 'briefTokens', hintKey: 'briefTokensHint' },
-  { key: 'analysis_max_tokens', labelKey: 'analysisTokens', hintKey: 'analysisTokensHint' },
-  { key: 'text_gen_max_tokens', labelKey: 'textGenTokens', hintKey: 'textGenTokensHint' },
-  { key: 'assistant_agent_max_tokens', labelKey: 'assistantAgentTokens', hintKey: 'assistantAgentTokensHint' },
-]
-
 async function save(keys: string[], secretKeys: SecretKey[] = []) {
   try {
     await store.saveSection(keys, secretKeys)
@@ -1267,6 +1267,7 @@ function redownloadUpdatePackage() {
         class="settings-nav"
         :class="{ collapsed: settingsNavNarrow && !settingsNavOpen, expanded: settingsNavNarrow && settingsNavOpen }"
       >
+        <SettingsSearch :standalone-frontend="standaloneFrontend" @select="selectSearchResult" />
         <button
           v-if="settingsNavNarrow"
           type="button"
@@ -1278,6 +1279,7 @@ function redownloadUpdatePackage() {
           <span>{{ t(activeSection.labelKey) }}</span>
           <NIcon :component="ChevronDownOutline" class="settings-nav-chevron" :class="{ open: settingsNavOpen }" />
         </button>
+        <div v-show="!settingsNavNarrow || settingsNavOpen" class="settings-nav-groups">
         <template v-for="group in settingsGroups" :key="group.id">
           <div v-show="!settingsNavNarrow || settingsNavOpen" class="settings-nav-group-label">{{ group.label }}</div>
           <button
@@ -1285,16 +1287,177 @@ function redownloadUpdatePackage() {
             v-show="!settingsNavNarrow || settingsNavOpen"
             :key="s.id"
             :class="['nav-item', { active: section === s.id }]"
+            :data-section="s.id"
+            :data-group="group.id"
             @click="selectSettingsSection(s.id)"
           >
             <NIcon :component="s.icon" />
             <span>{{ t(s.labelKey) }}</span>
           </button>
         </template>
+        </div>
       </aside>
 
       <div class="settings-content">
         <NSpin :show="store.loading">
+          <div v-show="section === 'game'" class="settings-pane settings-game-pane">
+            <GameDefaultsSettings />
+          </div>
+          <div v-show="section === 'general'" class="settings-pane settings-general-pane">
+            <section id="settings-language" class="settings-general-section">
+              <LanguagePreferences />
+            </section>
+            <section id="settings-voice" class="settings-general-group" :aria-label="t('settingsSectionVoice')">
+              <h3 class="settings-general-group-title">{{ t('settingsSectionVoice') }}</h3>
+              <section id="settings-tts" class="advanced-section advanced-section-wide tts-section">
+                <header class="advanced-section-head">
+                  <NIcon :component="OptionsOutline" />
+                  <div><h3>{{ t('ttsSettings') }}</h3><p>{{ t('ttsSettingsHint') }}</p></div>
+                </header>
+                <div class="model-binding-summary advanced-binding-summary">
+                  <NIcon :component="VolumeHighOutline" />
+                  <div>
+                    <strong>{{ t('modelRoleTts') }}</strong>
+                    <small>{{ ttsProvider === 'browser' ? t('ttsProviderBrowser') : ttsProvider === 'edge-tts' ? t('ttsProviderEdge') : modelBindingSummary(store.config.tts_provider_ref, store.config.tts_model) }}</small>
+                  </div>
+                  <NButton size="small" @click="section = 'models'">{{ t('modelRoutingOpen') }}</NButton>
+                </div>
+                <template v-if="ttsProvider !== 'browser'">
+                  <div v-if="ttsProvider !== 'edge-tts'" class="advanced-row">
+                    <div><strong>{{ t('ttsAudioFormat') }}</strong></div>
+                    <select :value="store.config.tts_audio_format ?? 'mp3'" @change="setStr('tts_audio_format', eventValue($event))">
+                      <option value="mp3">MP3</option><option value="wav">WAV</option><option value="opus">Opus</option><option value="flac">FLAC</option><option value="aac">AAC</option>
+                    </select>
+                  </div>
+                  <p v-if="ttsProvider === 'edge-tts'" class="muted tts-inline-hint">{{ t('ttsEdgeHint') }}</p>
+                  <div class="advanced-row">
+                    <div><strong>{{ t('ttsCacheSize') }}</strong></div>
+                    <NInputNumber :value="Number(store.config.tts_cache_mb ?? 256)" :min="16" :max="2048" :step="64" @update:value="setNum('tts_cache_mb', $event)" />
+                  </div>
+                  <TtsVoiceProfiles :provider="ttsProvider" @changed="loadTtsVoices" />
+                </template>
+
+                <div class="advanced-row tts-subheading-row">
+                  <div><strong>{{ t('ttsRoleMapping') }}</strong><small>{{ t('ttsRoleMappingHint') }}</small></div>
+                </div>
+                <template v-if="ttsProvider !== 'browser'">
+                  <div class="advanced-row">
+                    <div><strong>{{ t('ttsDefaultVoice') }}</strong></div>
+                    <input :value="store.config.tts_default_voice ?? ''" list="diceframe-tts-voices" @input="setStr('tts_default_voice', eventValue($event))" />
+                  </div>
+                  <datalist id="diceframe-tts-voices">
+                    <option v-for="voice in ttsVoiceOptions" :key="voice.id" :value="voice.id">{{ voice.name }}</option>
+                  </datalist>
+                  <div class="advanced-row">
+                    <div><strong>{{ t('ttsGmVoice') }}</strong></div>
+                    <input :value="store.config.tts_gm_voice ?? ''" list="diceframe-tts-voices" :placeholder="t('ttsFollowDefault')" @input="setStr('tts_gm_voice', eventValue($event))" />
+                  </div>
+                  <div class="advanced-row">
+                    <div><strong>{{ t('ttsPlayerVoice') }}</strong></div>
+                    <input :value="store.config.tts_player_voice ?? ''" list="diceframe-tts-voices" :placeholder="t('ttsFollowDefault')" @input="setStr('tts_player_voice', eventValue($event))" />
+                  </div>
+                  <p v-if="ttsProvider === 'gpt-sovits' && !ttsVoiceOptions.length" class="muted tts-inline-hint">{{ t('ttsGptVoiceHint') }}</p>
+                </template>
+                <p v-else class="muted tts-inline-hint">{{ t('ttsBrowserVoiceMappingHint') }}</p>
+
+                <div class="advanced-row">
+                  <div><strong>{{ t('ttsAutoSpeak') }}</strong><small>{{ t('ttsAutoSpeakHint') }}</small></div>
+                  <div class="switch-inline"><NSwitch :value="autoSpeak" @update:value="setAutoSpeak" /><span>{{ t('enabled') }}</span></div>
+                </div>
+                <div class="advanced-row">
+                  <div><strong>{{ t('ttsRate') }}</strong><small>{{ t('ttsRateHint') }}</small></div>
+                  <NInputNumber class="advanced-number" :value="ttsRateValue" :min="0.5" :max="5" :step="0.1" @update:value="setTtsRateValue" />
+                </div>
+                <footer class="advanced-save-row">
+                  <NButton type="primary" @click="saveTts()">{{ t('saveAction') }}</NButton>
+                  <NButton v-if="ttsProvider !== 'browser'" :loading="ttsTesting" @click="testTts">{{ t('ttsSaveAndTest') }}</NButton>
+                </footer>
+              </section>
+
+              <section id="settings-asr" class="advanced-section asr-section">
+                <header class="advanced-section-head">
+                  <NIcon :component="MicOutline" />
+                  <div><h3>{{ t('asrSettings') }}</h3><p>{{ t('asrSettingsHint') }}</p></div>
+                </header>
+                <div class="model-binding-summary advanced-binding-summary">
+                  <NIcon :component="MicOutline" />
+                  <div><strong>{{ t('modelRoleAsr') }}</strong><small>{{ asrProvider === 'disabled' ? t('asrProviderDisabled') : modelBindingSummary(store.config.asr_provider_ref, store.config.asr_model) }}</small></div>
+                  <NButton size="small" @click="section = 'models'">{{ t('modelRoutingOpen') }}</NButton>
+                </div>
+                <template v-if="asrProvider === 'openai-compatible'">
+                  <div class="advanced-row">
+                    <div><strong>{{ t('asrTimeout') }}</strong></div>
+                    <NInputNumber :value="Number(store.config.asr_timeout_seconds ?? 60)" :min="5" :max="300" :step="5" @update:value="setNum('asr_timeout_seconds', $event)" />
+                  </div>
+                  <p class="muted tts-inline-hint">{{ t('asrHint') }}</p>
+                </template>
+                <footer class="advanced-save-row">
+                  <NButton type="primary" @click="saveAsr()">{{ t('saveAction') }}</NButton>
+                  <NButton
+                    v-if="asrProvider === 'openai-compatible'"
+                    :loading="asrTesting && !asrTestRecording"
+                    @click="testAsr"
+                  >{{ asrTestRecording ? t('asrTestStop') : t('asrSaveAndTest') }}</NButton>
+                </footer>
+                <p v-if="asrTestText" class="muted tts-inline-hint">{{ t('asrTestResult', { text: asrTestText }) }}</p>
+              </section>
+            </section>
+            <section id="settings-general-agent" class="settings-general-group" :aria-label="t('settingsSectionAgent')">
+              <h3 class="settings-general-group-title">{{ t('settingsSectionAgent') }}</h3>
+              <section id="settings-agent" class="advanced-section advanced-section-wide">
+                <header class="advanced-section-head"><NIcon :component="SparklesOutline" /><div><h3>{{ t('assistantTitle') }}</h3><p>{{ t('assistantAppearanceHint') }}</p></div></header>
+                <div class="advanced-row"><div><strong>{{ t('assistantTitle') }}</strong><small>{{ assistantWorkspaceCopy(locale).resetPositionHint }}</small></div><div class="switch-inline"><NSwitch :value="assistantEnabled" @update:value="setAssistantEnabled" /><span>{{ assistantEnabled ? t('enabled') : t('disabled') }}</span></div></div>
+                <div class="advanced-row"><div><strong>{{ t('assistantResetPosition') }}</strong><small>{{ t('assistantResetPositionHint') }}</small></div><button type="button" data-testid="assistant-reset-position" @click="resetAssistantLauncherPosition">{{ assistantWorkspaceCopy(locale).resetPosition }}</button></div>
+              </section>
+              <section id="settings-agent-budget" class="advanced-section">
+                <header class="advanced-section-head"><NIcon :component="OptionsOutline" /><div><h3>{{ t('assistantAgentTokens') }}</h3><p>{{ t('assistantAgentTokensHint') }}</p></div></header>
+                <div class="advanced-row token-row"><div><strong>{{ t('assistantAgentTokens') }}</strong><small>{{ t('assistantAgentTokensHint') }}</small></div><div class="token-input-wrap"><NInputNumber class="advanced-number" :value="Number(store.config.assistant_agent_max_tokens ?? 0)" :step="256" @update:value="setNum('assistant_agent_max_tokens', $event)" /><span>Token</span></div></div>
+                <footer class="advanced-save-row"><NButton type="primary" @click="save(['assistant_agent_max_tokens'])">{{ t('saveAction') }}</NButton></footer>
+              </section>
+            </section>
+            <section id="settings-maintenance" class="settings-general-group" :aria-label="t('settingsSectionSystem')">
+              <h3 class="settings-general-group-title">{{ t('settingsSectionSystem') }}</h3>
+              <section id="settings-runtime-logs" class="advanced-section runtime-logs-section">
+                <header class="advanced-section-head">
+                  <NIcon :component="TrashOutline" />
+                  <div><h3>{{ t('runtimeLogsTitle') }}</h3><p>{{ t('runtimeLogsHint') }}</p></div>
+                </header>
+                <div class="advanced-row">
+                  <div>
+                    <strong>{{ t('runtimeLogsRetention', { days: runtimeLogStatus?.retention_days || 30 }) }}</strong>
+                    <small>{{ runtimeLogStatus ? t('runtimeLogsUsage', { count: runtimeLogStatus.file_count, size: formatBytes(runtimeLogStatus.total_bytes) }) : t('runtimeLogsUnavailable') }}</small>
+                  </div>
+                  <NButton type="error" secondary :disabled="runtimeLogExportBusy" :loading="runtimeLogBusy" @click="clearRuntimeLogs">
+                    <template #icon><NIcon :component="TrashOutline" /></template>
+                    {{ t('runtimeLogsClearAction') }}
+                  </NButton>
+                </div>
+                <div class="advanced-row">
+                  <div>
+                    <strong>{{ t('runtimeLogsExportAction') }}</strong>
+                    <small>{{ t('runtimeLogsExportHint') }}</small>
+                  </div>
+                  <NButton secondary :disabled="runtimeLogBusy || !runtimeLogStatus?.file_count" :loading="runtimeLogExportBusy" @click="exportRuntimeLogs">
+                    <template #icon><NIcon :component="CloudDownloadOutline" /></template>
+                    {{ t('runtimeLogsExportAction') }}
+                  </NButton>
+                </div>
+              </section>
+              <section id="settings-test-timeout" class="advanced-section test-timeout-section">
+                <header class="advanced-section-head">
+                  <NIcon :component="ServerOutline" />
+                  <div><h3>{{ t('testTimeoutTitle') }}</h3><p>{{ t('testTimeoutHint') }}</p></div>
+                </header>
+                <div class="advanced-row">
+                  <div><strong>{{ t('testTimeoutSeconds') }}</strong><small>{{ t('testTimeoutScope') }}</small></div>
+                  <NInputNumber class="advanced-number" :value="Number(store.config.test_timeout_seconds ?? 30)" :min="5" :max="300" :step="5" @update:value="setNum('test_timeout_seconds', $event)" />
+                </div>
+                <footer class="advanced-save-row">
+                  <NButton type="primary" @click="save(['test_timeout_seconds'])">{{ t('saveAction') }}</NButton>
+                </footer>
+              </section>
+            </section>
+          </div>
           <div v-show="section === 'api'" class="settings-pane ai-management-pane">
             <header class="ai-manager-header">
               <div>
@@ -1327,7 +1490,7 @@ function redownloadUpdatePackage() {
               </div>
             </div>
 
-            <div class="ai-provider-workspace">
+            <div id="settings-providers" class="ai-provider-workspace">
               <ProviderLibrary
                 v-model:active-provider-id="activeProviderId"
                 v-model:search="providerSearch"
@@ -1491,19 +1654,9 @@ function redownloadUpdatePackage() {
             @add-all="addAllCatalogModels"
           />
 
-          <ModelRoutingPane
-            v-show="section === 'models'"
-            :supported="providerLibrarySupported"
-            :saving="modelRoutingSaving"
-            :embedding-testing="testing && testKind === 'embedding'"
-            :embedding-result="testKind === 'embedding' ? testResult : null"
-            @save="saveModelRouting"
-            @open-providers="section = 'api'"
-            @toggle-and-save="setModelRoutingBool"
-            @test-embedding="runTest('embedding')"
-          />
 
-          <div v-show="section === 'network'" class="settings-pane">
+
+          <div id="settings-network" v-show="section === 'network'" class="settings-pane">
             <h3>{{ t('networkProxy') }}</h3>
             <div class="proxy-status">
               <NTag :type="store.config.proxy_source ? 'info' : 'default'" size="small">{{ t('source') }}: {{ proxySourceLabel }}</NTag>
@@ -1523,7 +1676,7 @@ function redownloadUpdatePackage() {
             <TestResultCard v-if="testKind === 'proxy' && testResult" :result="testResult" kind="proxy" />
           </div>
 
-          <div v-if="standaloneFrontend" v-show="section === 'connection'" class="settings-pane">
+          <div id="settings-connection" v-if="standaloneFrontend" v-show="section === 'connection'" class="settings-pane">
             <h3>{{ t('backendConnectionTitle') }}</h3>
             <p class="muted">{{ t('backendConnectionHelp') }}</p>
             <div class="form-row">
@@ -1535,7 +1688,7 @@ function redownloadUpdatePackage() {
             </div>
           </div>
 
-          <div v-show="section === 'sharing'" class="settings-pane">
+          <div id="settings-sharing" v-show="section === 'sharing'" class="settings-pane">
             <h3>{{ t('sharingLinkAddress') }}</h3>
             <p class="muted">{{ t('sharingHelp') }}</p>
             <div class="form-row">
@@ -1572,7 +1725,7 @@ function redownloadUpdatePackage() {
             </div>
           </div>
 
-          <div v-show="section === 'botapi'" class="settings-pane">
+          <div id="settings-botapi" v-show="section === 'botapi'" class="settings-pane">
             <h3>{{ t('botApiTitle') }}</h3>
             <p class="muted">{{ t('botApiHelp') }}</p>
             <div class="form-row">
@@ -1616,22 +1769,7 @@ function redownloadUpdatePackage() {
                 <p class="muted">{{ t('appearanceSubtitle') }}</p>
               </div>
             </div>
-            <LanguagePreferences />
-            <section class="appearance-agent-section">
-              <div>
-                <h4>{{ t('assistantTitle') }}</h4>
-                <p>{{ t('assistantAppearanceHint') }}</p>
-                <p>{{ assistantWorkspaceCopy(locale).resetPositionHint }}</p>
-              </div>
-              <div class="appearance-agent-actions">
-                <div class="switch-inline">
-                  <NSwitch :value="assistantEnabled" @update:value="setAssistantEnabled" />
-                  <span>{{ assistantEnabled ? t('enabled') : t('disabled') }}</span>
-                </div>
-                <button type="button" data-testid="assistant-reset-position" @click="resetAssistantLauncherPosition">{{ assistantWorkspaceCopy(locale).resetPosition }}</button>
-              </div>
-            </section>
-            <section class="appearance-mode-section">
+            <section id="settings-appearance" class="appearance-mode-section">
               <h4>{{ t('appearanceMode') }}</h4>
               <div class="appearance-mode-grid">
                 <button :class="{ active: themeMode === 'dark' }" @click="applyThemeMode('dark')">
@@ -1700,7 +1838,43 @@ function redownloadUpdatePackage() {
             </div>
           </div>
 
-          <div v-show="section === 'security'" class="settings-pane advanced-settings-pane security-pane">
+          <div id="settings-security" v-show="section === 'security'" class="settings-pane advanced-settings-pane security-pane">
+            <section id="settings-hub-privacy" v-show="section === 'security'" class="advanced-section advanced-section-wide hub-section">
+              <header class="advanced-section-head">
+                <NIcon :component="InformationCircleOutline" />
+                <div><h3>{{ t('hubPrivacyTitle') }}</h3><p>{{ t('hubTelemetryChoiceSummary') }}</p></div>
+              </header>
+              <div class="advanced-row">
+                <div>
+                  <strong>{{ t('hubTelemetryChoiceTitle') }}</strong>
+                  <small>{{ hubPreferences?.choice_made ? t('hubChoiceRecorded') : t('hubChoiceNotRecorded') }}</small>
+                </div>
+                <div class="switch-inline">
+                  <NSwitch
+                    :value="Boolean(hubPreferences?.telemetry_enabled)"
+                    :loading="hubPrivacyBusy"
+                    :disabled="!hubPreferences?.available"
+                    @update:value="toggleHubTelemetry"
+                  />
+                  <span>{{ hubPreferences?.telemetry_enabled ? t('enabled') : t('disabled') }}</span>
+                </div>
+              </div>
+              <div class="advanced-row">
+                <div>
+                  <strong>{{ t('hubInstallationIdentity') }}</strong>
+                  <small>{{ hubPreferences?.identity_created ? t('hubIdentityExists') : t('hubIdentityNotCreated') }}</small>
+                </div>
+                <NButton
+                  type="error"
+                  tertiary
+                  :disabled="!hubPreferences?.identity_created"
+                  :loading="hubPrivacyBusy"
+                  @click="clearHubIdentity"
+                >
+                  {{ t('hubClearIdentity') }}
+                </NButton>
+              </div>
+            </section>
             <section class="advanced-section advanced-section-wide security-guide">
               <header class="advanced-section-head">
                 <NIcon :component="InformationCircleOutline" />
@@ -1934,7 +2108,7 @@ function redownloadUpdatePackage() {
             </section>
           </div>
 
-          <div v-show="section === 'access'" class="settings-pane">
+          <div id="settings-access" v-show="section === 'access'" class="settings-pane">
             <h3>{{ t('accessPassword') }}</h3>
             <p class="muted">{{ t('accessPasswordHelp') }}</p>
             <div class="form-row"><label>{{ t('newPassword') }}</label><NInput v-model:value="password" type="password" show-password-on="click" :placeholder="t('passwordMinPlaceholder')" /></div>
@@ -1977,196 +2151,20 @@ function redownloadUpdatePackage() {
             <p v-else-if="!loginHistoryLoading" class="muted">{{ t('noLoginHistory') }}</p>
           </div>
 
-          <div v-show="section === 'advanced'" class="settings-pane advanced-settings-pane">
-            <section class="advanced-section advanced-section-wide generation-section">
-              <header class="advanced-section-head">
-                <NIcon :component="OptionsOutline" />
-                <div><h3>{{ t('generationParams') }}</h3><p>{{ t('generationParamsHint') }}</p></div>
-              </header>
-              <div class="advanced-row token-row">
-                <div><strong>{{ t('modelRequestTimeout') }}</strong><small>{{ t('modelRequestTimeoutHint') }}</small></div>
-                <div class="token-input-wrap">
-                  <NInputNumber class="advanced-number" :value="Number(store.config.model_request_timeout_seconds ?? 120)" :min="10" :max="600" :step="10" @update:value="setNum('model_request_timeout_seconds', $event)" />
-                  <span>{{ t('secondsUnit') }}</span>
-                </div>
-              </div>
-              <div v-for="item in tokenFields" :key="item.key" class="advanced-row token-row">
-                <div><strong>{{ t(item.labelKey) }}</strong><small>{{ t(item.hintKey) }}</small></div>
-                <div class="token-input-wrap">
-                  <NInputNumber class="advanced-number" :value="Number(store.config[item.key] ?? 0)" :step="256" @update:value="setNum(item.key, $event)" />
-                  <span>Token</span>
-                </div>
-              </div>
-              <footer class="advanced-save-row">
-                <NButton type="primary" @click="save(['model_request_timeout_seconds', 'narrative_max_tokens', 'character_gen_max_tokens', 'summary_max_tokens', 'brief_max_tokens', 'analysis_max_tokens', 'text_gen_max_tokens', 'assistant_agent_max_tokens'])">{{ t('saveAction') }}</NButton>
-              </footer>
-            </section>
-            <section class="advanced-section runtime-logs-section">
-              <header class="advanced-section-head">
-                <NIcon :component="TrashOutline" />
-                <div><h3>{{ t('runtimeLogsTitle') }}</h3><p>{{ t('runtimeLogsHint') }}</p></div>
-              </header>
-              <div class="advanced-row">
-                <div>
-                  <strong>{{ t('runtimeLogsRetention', { days: runtimeLogStatus?.retention_days || 30 }) }}</strong>
-                  <small>{{ runtimeLogStatus ? t('runtimeLogsUsage', { count: runtimeLogStatus.file_count, size: formatBytes(runtimeLogStatus.total_bytes) }) : t('runtimeLogsUnavailable') }}</small>
-                </div>
-                <NButton type="error" secondary :disabled="runtimeLogExportBusy" :loading="runtimeLogBusy" @click="clearRuntimeLogs">
-                  <template #icon><NIcon :component="TrashOutline" /></template>
-                  {{ t('runtimeLogsClearAction') }}
-                </NButton>
-              </div>
-              <div class="advanced-row">
-                <div>
-                  <strong>{{ t('runtimeLogsExportAction') }}</strong>
-                  <small>{{ t('runtimeLogsExportHint') }}</small>
-                </div>
-                <NButton secondary :disabled="runtimeLogBusy || !runtimeLogStatus?.file_count" :loading="runtimeLogExportBusy" @click="exportRuntimeLogs">
-                  <template #icon><NIcon :component="CloudDownloadOutline" /></template>
-                  {{ t('runtimeLogsExportAction') }}
-                </NButton>
-              </div>
-            </section>
-            <section class="advanced-section test-timeout-section">
-              <header class="advanced-section-head">
-                <NIcon :component="ServerOutline" />
-                <div><h3>{{ t('testTimeoutTitle') }}</h3><p>{{ t('testTimeoutHint') }}</p></div>
-              </header>
-              <div class="advanced-row">
-                <div><strong>{{ t('testTimeoutSeconds') }}</strong><small>{{ t('testTimeoutScope') }}</small></div>
-                <NInputNumber class="advanced-number" :value="Number(store.config.test_timeout_seconds ?? 30)" :min="5" :max="300" :step="5" @update:value="setNum('test_timeout_seconds', $event)" />
-              </div>
-              <footer class="advanced-save-row">
-                <NButton type="primary" @click="save(['test_timeout_seconds'])">{{ t('saveAction') }}</NButton>
-              </footer>
-            </section>
-            <section class="advanced-section advanced-section-wide tts-section">
-              <header class="advanced-section-head">
-                <NIcon :component="OptionsOutline" />
-                <div><h3>{{ t('ttsSettings') }}</h3><p>{{ t('ttsSettingsHint') }}</p></div>
-              </header>
-              <div class="model-binding-summary advanced-binding-summary">
-                <NIcon :component="VolumeHighOutline" />
-                <div>
-                  <strong>{{ t('modelRoleTts') }}</strong>
-                  <small>{{ ttsProvider === 'browser' ? t('ttsProviderBrowser') : ttsProvider === 'edge-tts' ? t('ttsProviderEdge') : modelBindingSummary(store.config.tts_provider_ref, store.config.tts_model) }}</small>
-                </div>
-                <NButton size="small" @click="section = 'models'">{{ t('modelRoutingOpen') }}</NButton>
-              </div>
-              <template v-if="ttsProvider !== 'browser'">
-                <div v-if="ttsProvider !== 'edge-tts'" class="advanced-row">
-                  <div><strong>{{ t('ttsAudioFormat') }}</strong></div>
-                  <select :value="store.config.tts_audio_format ?? 'mp3'" @change="setStr('tts_audio_format', eventValue($event))">
-                    <option value="mp3">MP3</option><option value="wav">WAV</option><option value="opus">Opus</option><option value="flac">FLAC</option><option value="aac">AAC</option>
-                  </select>
-                </div>
-                <p v-if="ttsProvider === 'edge-tts'" class="muted tts-inline-hint">{{ t('ttsEdgeHint') }}</p>
-                <div class="advanced-row">
-                  <div><strong>{{ t('ttsCacheSize') }}</strong></div>
-                  <NInputNumber :value="Number(store.config.tts_cache_mb ?? 256)" :min="16" :max="2048" :step="64" @update:value="setNum('tts_cache_mb', $event)" />
-                </div>
-                <TtsVoiceProfiles :provider="ttsProvider" @changed="loadTtsVoices" />
-              </template>
-
-              <div class="advanced-row tts-subheading-row">
-                <div><strong>{{ t('ttsRoleMapping') }}</strong><small>{{ t('ttsRoleMappingHint') }}</small></div>
-              </div>
-              <template v-if="ttsProvider !== 'browser'">
-                <div class="advanced-row">
-                  <div><strong>{{ t('ttsDefaultVoice') }}</strong></div>
-                  <input :value="store.config.tts_default_voice ?? ''" list="diceframe-tts-voices" @input="setStr('tts_default_voice', eventValue($event))" />
-                </div>
-                <datalist id="diceframe-tts-voices">
-                  <option v-for="voice in ttsVoiceOptions" :key="voice.id" :value="voice.id">{{ voice.name }}</option>
-                </datalist>
-                <div class="advanced-row">
-                  <div><strong>{{ t('ttsGmVoice') }}</strong></div>
-                  <input :value="store.config.tts_gm_voice ?? ''" list="diceframe-tts-voices" :placeholder="t('ttsFollowDefault')" @input="setStr('tts_gm_voice', eventValue($event))" />
-                </div>
-                <div class="advanced-row">
-                  <div><strong>{{ t('ttsPlayerVoice') }}</strong></div>
-                  <input :value="store.config.tts_player_voice ?? ''" list="diceframe-tts-voices" :placeholder="t('ttsFollowDefault')" @input="setStr('tts_player_voice', eventValue($event))" />
-                </div>
-                <p v-if="ttsProvider === 'gpt-sovits' && !ttsVoiceOptions.length" class="muted tts-inline-hint">{{ t('ttsGptVoiceHint') }}</p>
-              </template>
-              <p v-else class="muted tts-inline-hint">{{ t('ttsBrowserVoiceMappingHint') }}</p>
-
-              <div class="advanced-row">
-                <div><strong>{{ t('ttsAutoSpeak') }}</strong><small>{{ t('ttsAutoSpeakHint') }}</small></div>
-                <div class="switch-inline"><NSwitch :value="autoSpeak" @update:value="setAutoSpeak" /><span>{{ t('enabled') }}</span></div>
-              </div>
-              <div class="advanced-row">
-                <div><strong>{{ t('ttsRate') }}</strong><small>{{ t('ttsRateHint') }}</small></div>
-                <NInputNumber class="advanced-number" :value="ttsRateValue" :min="0.5" :max="5" :step="0.1" @update:value="setTtsRateValue" />
-              </div>
-              <footer class="advanced-save-row">
-                <NButton type="primary" @click="saveTts()">{{ t('saveAction') }}</NButton>
-                <NButton v-if="ttsProvider !== 'browser'" :loading="ttsTesting" @click="testTts">{{ t('ttsSaveAndTest') }}</NButton>
-              </footer>
-            </section>
-            <section class="advanced-section hub-section">
-              <header class="advanced-section-head">
-                <NIcon :component="InformationCircleOutline" />
-                <div><h3>{{ t('hubPrivacyTitle') }}</h3><p>{{ t('hubTelemetryChoiceSummary') }}</p></div>
-              </header>
-              <div class="advanced-row">
-                <div>
-                  <strong>{{ t('hubTelemetryChoiceTitle') }}</strong>
-                  <small>{{ hubPreferences?.choice_made ? t('hubChoiceRecorded') : t('hubChoiceNotRecorded') }}</small>
-                </div>
-                <div class="switch-inline">
-                  <NSwitch
-                    :value="Boolean(hubPreferences?.telemetry_enabled)"
-                    :loading="hubPrivacyBusy"
-                    :disabled="!hubPreferences?.available"
-                    @update:value="toggleHubTelemetry"
-                  />
-                  <span>{{ hubPreferences?.telemetry_enabled ? t('enabled') : t('disabled') }}</span>
-                </div>
-              </div>
-              <div class="advanced-row">
-                <div>
-                  <strong>{{ t('hubInstallationIdentity') }}</strong>
-                  <small>{{ hubPreferences?.identity_created ? t('hubIdentityExists') : t('hubIdentityNotCreated') }}</small>
-                </div>
-                <NButton
-                  type="error"
-                  tertiary
-                  :disabled="!hubPreferences?.identity_created"
-                  :loading="hubPrivacyBusy"
-                  @click="clearHubIdentity"
-                >
-                  {{ t('hubClearIdentity') }}
-                </NButton>
-              </div>
-            </section>
-            <section class="advanced-section asr-section">
-              <header class="advanced-section-head">
-                <NIcon :component="MicOutline" />
-                <div><h3>{{ t('asrSettings') }}</h3><p>{{ t('asrSettingsHint') }}</p></div>
-              </header>
-              <div class="model-binding-summary advanced-binding-summary">
-                <NIcon :component="MicOutline" />
-                <div><strong>{{ t('modelRoleAsr') }}</strong><small>{{ asrProvider === 'disabled' ? t('asrProviderDisabled') : modelBindingSummary(store.config.asr_provider_ref, store.config.asr_model) }}</small></div>
-                <NButton size="small" @click="section = 'models'">{{ t('modelRoutingOpen') }}</NButton>
-              </div>
-              <template v-if="asrProvider === 'openai-compatible'">
-                <div class="advanced-row">
-                  <div><strong>{{ t('asrTimeout') }}</strong></div>
-                  <NInputNumber :value="Number(store.config.asr_timeout_seconds ?? 60)" :min="5" :max="300" :step="5" @update:value="setNum('asr_timeout_seconds', $event)" />
-                </div>
-                <p class="muted tts-inline-hint">{{ t('asrHint') }}</p>
-              </template>
-              <footer class="advanced-save-row">
-                <NButton type="primary" @click="saveAsr()">{{ t('saveAction') }}</NButton>
-                <NButton
-                  v-if="asrProvider === 'openai-compatible'"
-                  :loading="asrTesting && !asrTestRecording"
-                  @click="testAsr"
-                >{{ asrTestRecording ? t('asrTestStop') : t('asrSaveAndTest') }}</NButton>
-              </footer>
-              <p v-if="asrTestText" class="muted tts-inline-hint">{{ t('asrTestResult', { text: asrTestText }) }}</p>
-            </section>
+          <div v-show="section === 'models'" class="settings-pane advanced-settings-pane">
+          <ModelRoutingPane
+            id="settings-model-routing"
+            class="advanced-section-wide"
+            v-show="section === 'models'"
+            :supported="providerLibrarySupported"
+            :saving="modelRoutingSaving"
+            :embedding-testing="testing && testKind === 'embedding'"
+            :embedding-result="testKind === 'embedding' ? testResult : null"
+            @save="saveModelRouting"
+            @open-providers="section = 'api'"
+            @toggle-and-save="setModelRoutingBool"
+            @test-embedding="runTest('embedding')"
+          />
           </div>
 
           <div v-show="section === 'about'" class="settings-pane about">
@@ -2374,6 +2372,7 @@ function redownloadUpdatePackage() {
 .appearance-agent-section p { margin-top: 4px; color: var(--df-text-muted); font-size: 12px; line-height: 1.5; }
 
 @media (max-width: 560px) {
+  .settings-search { max-width: none; }
   .appearance-agent-section { align-items: flex-start; flex-direction: column; }
 }
 

@@ -4,6 +4,7 @@ import { RouterLink } from 'vue-router'
 import { api, errorMessage } from '@/api/client'
 import { useLocale } from '@/composables/useLocale'
 import PlayStageHeader from '@/features/play/surface/PlayStageHeader.vue'
+import ThemeToggle from '@/components/ThemeToggle.vue'
 import { profileCopy } from './copy'
 import type { ProfileView } from './types'
 const props = defineProps<{ gameKey: string; initial: ProfileView }>()
@@ -54,7 +55,14 @@ const actorName = (uid: string) => state.value.actors.find(actor => actor.uid ==
 <template>
   <main class="profile-board view" :class="{ 'player-page': !state.is_gm }" data-testid="profile-board">
     <PlayStageHeader :title="state.game_name" :subtitle="objective" :markers="sceneMarkers" heading-tag="h1">
-      <template #trailing><div class="profile-header-actions"><RouterLink v-if="state.is_gm" :to="{ name: 'overview' }">{{ copy.back }}</RouterLink><strong>{{ label(state.status) }}</strong><button data-testid="profile-refresh" :disabled="busy" @click="reload()">{{ copy.refresh }}</button></div></template>
+      <template #trailing>
+        <div class="profile-header-actions">
+          <RouterLink v-if="state.is_gm" :to="{ name: 'overview' }">{{ copy.back }}</RouterLink>
+          <strong>{{ label(state.status) }}</strong>
+          <button data-testid="profile-refresh" :disabled="busy" @click="reload()">{{ copy.refresh }}</button>
+          <ThemeToggle v-if="!state.is_gm" />
+        </div>
+      </template>
     </PlayStageHeader>
     <section class="profile-time"><strong>{{ state.progression.mode === 'phase' ? copy.phase : copy.day }}: {{ state.progression.mode === 'phase' ? label(state.progression.phase) : state.progression.day }}</strong><span v-if="state.progression.mode === 'phase'">{{ copy.cycle }}: {{ state.progression.cycle }}</span><span v-if="state.weather">{{ copy.weather }}: {{ label(state.weather) }}</span><button v-if="state.can_advance" data-testid="profile-advance" :disabled="busy" @click="act('advance')">{{ copy.advance }}</button></section>
     <p v-if="error" role="alert">{{ error }}</p>

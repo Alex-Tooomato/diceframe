@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { api, errorMessage } from '@/api/client'
-import type { WorldCloneResponse, WorldDefinition, WorldDefinitionResponse } from '@/api/types'
+import type { WorldCloneResponse, WorldCreateResponse, WorldDefinition, WorldDefinitionResponse } from '@/api/types'
 import { useLocale, type Locale } from '@/composables/useLocale'
 import { CONTENT_LANGUAGE_OPTIONS, contentLanguageOf } from '@/utils/contentLanguage'
 import { worldsCopy } from './copy'
@@ -14,14 +14,14 @@ export interface WorldDefinitionClonePayload {
 }
 
 const props = withDefaults(defineProps<{
-  worldId: string
-  mode?: 'view' | 'edit'
+  worldId?: string
+  mode?: 'view' | 'edit' | 'create'
   source?: 'builtin' | 'user' | 'plugin' | string
   initialName?: string
   initialDescription?: string
   initialLanguage?: string
   showHeading?: boolean
-}>(), { mode: 'view', showHeading: true })
+}>(), { worldId: '', mode: 'view', showHeading: true })
 
 const emit = defineEmits<{
   saved: [{ worldId: string; definition: WorldDefinition }]
@@ -49,20 +49,23 @@ let requestEpoch = 0
 let operationEpoch = 0
 
 const definitionMatchesWorld = computed(() => Boolean(definition.value && definition.value.world_id === props.worldId))
+const creating = computed(() => props.mode === 'create')
 const canEdit = computed(() => Boolean(
-  props.mode === 'edit'
-  && definitionMatchesWorld.value
-  && definition.value?.source === 'user'
-  && definition.value.editable
+  (creating.value || (
+    props.mode === 'edit'
+    && definitionMatchesWorld.value
+    && definition.value?.source === 'user'
+    && definition.value.editable
+  ))
   && !loading.value
   && !loadError.value
   && !saving.value
   && !cloning.value,
 ))
 const readonlyDefinition = computed(() => Boolean(
-  definitionMatchesWorld.value
+  !creating.value && (definitionMatchesWorld.value
     ? definition.value?.source !== 'user' || !definition.value.editable
-    : props.source && props.source !== 'user',
+    : props.source && props.source !== 'user'),
 ))
 const canSave = computed(() => Boolean(canEdit.value && draft.value.name.trim() && !saving.value))
 const canClone = computed(() => Boolean(readonlyDefinition.value && !cloning.value && !saving.value))
@@ -86,6 +89,10 @@ async function loadDefinition() {
   loadError.value = ''
   saveError.value = ''
   cloneError.value = ''
+  if (creating.value) {
+    loading.value = false
+    return
+  }
   loading.value = true
   try {
     const result = await api<WorldDefinitionResponse>(
@@ -116,6 +123,7 @@ function retry() {
 
 async function save() {
   const worldId = props.worldId
+  const wasCreating = creating.value
   if (!canSave.value) return
   const requestAtStart = requestEpoch
   const operationAtStart = ++operationEpoch
@@ -123,8 +131,8 @@ async function save() {
   saveError.value = ''
   saving.value = true
   try {
-    const result = await api<{ ok: boolean; error?: string }>(`/worlds/${encodeURIComponent(worldId)}`, {
-      method: 'PUT',
+    const result = await api<WorldCreateResponse>(wasCreating ? '/worlds' : `/worlds/${encodeURIComponent(worldId)}`, {
+      method: wasCreating ? 'POST' : 'PUT',
       body: JSON.stringify({
         name: submitted.name.trim(),
         description: submitted.description,
@@ -133,12 +141,14 @@ async function save() {
         starter_scene: submitted.starter_scene,
       }),
     })
-    if (!result.ok) throw new Error(result.error || 'world-update-failed')
+    if (!result.ok) throw new Error(result.error || (wasCreating ? 'world-create-failed' : 'world-update-failed'))
     if (requestAtStart !== requestEpoch || operationAtStart !== operationEpoch || props.worldId !== worldId) return
+    const savedWorldId = wasCreating ? String(result.world_id || result.id || '') : worldId
+    if (!savedWorldId) throw new Error('world-create-missing-id')
     emit('saved', {
-      worldId,
+      worldId: savedWorldId,
       definition: {
-        world_id: worldId,
+        world_id: savedWorldId,
         world_name: submitted.name.trim(),
         description: submitted.description,
         world_setting: submitted.world_setting,
@@ -178,7 +188,7 @@ async function cloneToEdit() {
   }
 }
 
-watch(() => props.worldId, () => {
+watch(() => [props.worldId, props.mode], () => {
   operationEpoch += 1
   saving.value = false
   cloning.value = false
@@ -201,32 +211,32 @@ onBeforeUnmount(() => {
     <p v-if="saveError" class="notice world-definition-error">{{ saveError }}</p>
     <p v-if="cloneError" class="notice world-definition-error">{{ cloneError }}</p>
 
-    <div v-if="mode === 'edit'" class="world-metadata-editor">
-      <h3 v-if="showHeading">{{ t('worldsEditTitle') }}</h3>
+    <div v-if="mode !== 'view'" class="world-metadata-editor">
+      <h3 v-if="showHeading">{{ t(creating ? 'newWorld' : 'worldsEditTitle') }}</h3>
       <label><span>{{ t('worldName') }}</span><input v-model="draft.name" :placeholder="t('nameNewWorld')" :readonly="!canEdit"></label>
       <label><span>{{ t('contentLanguage') }}</span><select v-model="draft.language" :disabled="!canEdit"><option v-for="option in CONTENT_LANGUAGE_OPTIONS" :key="option.value" :value="option.value">{{ t(option.labelKey) }}</option></select></label>
       <label><span>{{ copy.shortIntro }}</span><textarea v-model="draft.description" rows="3" :readonly="!canEdit"></textarea></label>
     </div>
 
-    <div v-if="definitionMatchesWorld" class="world-definition-fields">
+    <div v-if="creating || definitionMatchesWorld" class="world-definition-fields">
       <p v-if="readonlyDefinition" class="notice">{{ copy.definitionReadonly }}</p>
       <p class="muted world-defaults-notice">{{ copy.defaultsNotice }}</p>
       <label>
         <span>{{ copy.worldSetting }}</span>
-        <textarea v-if="mode === 'edit'" v-model="draft.world_setting" rows="8" maxlength="16000" :readonly="!canEdit" data-testid="world-setting" />
+        <textarea v-if="mode !== 'view'" v-model="draft.world_setting" rows="8" maxlength="16000" :readonly="!canEdit" data-testid="world-setting" />
         <textarea v-else :value="definition?.world_setting || ''" rows="8" readonly data-testid="world-setting" />
       </label>
       <label>
         <span>{{ copy.starterScene }}</span>
-        <textarea v-if="mode === 'edit'" v-model="draft.starter_scene" rows="6" maxlength="8192" :readonly="!canEdit" data-testid="starter-scene" />
+        <textarea v-if="mode !== 'view'" v-model="draft.starter_scene" rows="6" maxlength="8192" :readonly="!canEdit" data-testid="starter-scene" />
         <textarea v-else :value="definition?.starter_scene || ''" rows="6" readonly data-testid="starter-scene" />
       </label>
     </div>
 
-    <div v-if="mode === 'edit'" class="world-definition-actions">
+    <div v-if="mode !== 'view'" class="world-definition-actions">
       <button type="button" @click="emit('cancel')">{{ t('cancel') }}</button>
       <button v-if="readonlyDefinition" type="button" class="world-card-clone" :disabled="!canClone" @click="cloneToEdit">{{ copy.cloneToEdit }}</button>
-      <button type="button" class="primary" :disabled="!canSave" @click="save">{{ t('saveAction') }}</button>
+      <button type="button" class="primary" :disabled="!canSave" @click="save">{{ saving ? t('saving') : t(creating ? 'create' : 'saveAction') }}</button>
     </div>
     <div v-else-if="readonlyDefinition" class="world-definition-actions">
       <button type="button" class="world-card-clone" :disabled="!canClone" @click="cloneToEdit">{{ copy.cloneToEdit }}</button>

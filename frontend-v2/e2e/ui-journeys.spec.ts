@@ -106,7 +106,7 @@ test('library refuses to offer start when no installed runtime matches', async (
   await expect(card).toContainText(/不可用|Unavailable/)
 })
 
-test('library intents open their adventure owner with the matching review modal', async ({ page }, info) => {
+test('library shortcuts reach the adventure workbench and its review tools', async ({ page }, info) => {
   desktopOnly(info)
   const intents = [
     ['new', /新建冒险|New adventure/],
@@ -116,7 +116,15 @@ test('library intents open their adventure owner with the matching review modal'
   ] as const
   for (const [intent, modalName] of intents) {
     await page.goto(`/#/library`)
-    await page.locator(`a[href*="/adventures?intent=${intent}"]`).click()
+    if (intent === 'script-import') await page.locator('a[href*="/adventures?intent=script-import"]').click()
+    else {
+      await page.getByRole('link', { name: '冒险工作台', exact: true }).click()
+      if (intent === 'new') await page.getByRole('button', { name: /新建冒险包|New adventure package/ }).click()
+      else {
+        await page.locator('.adventure-header-more > summary').click()
+        await page.locator('.adventure-header-menu').getByRole('button', { name: intent === 'ai' ? /生成|Generate/ : /文本|text/i }).click()
+      }
+    }
     await expect(page).toHaveURL(/#\/adventures(?:\?|$)/)
     await expect(page.getByRole('dialog')).toBeVisible()
     await expect(page.getByRole('dialog')).toContainText(modalName)
@@ -127,8 +135,9 @@ test('library intents open their adventure owner with the matching review modal'
 test('package import intent opens the file importer without inventing a modal', async ({ page }, info) => {
   desktopOnly(info)
   await page.goto('/#/library')
-  await page.locator('a[href*="/adventures?intent=package-import"]').click()
+  await page.getByRole('link', { name: '冒险工作台', exact: true }).click()
   await expect(page).toHaveURL(/#\/adventures(?:\?|$)/)
+  await page.locator('.adventure-header-more > summary').click()
   const fileChooser = page.waitForEvent('filechooser')
   await page.getByRole('button', { name: /导入冒险包|Import adventure package|Import package/ }).click()
   await fileChooser
@@ -164,7 +173,7 @@ test('library and create entry points remain contained at desktop and phone widt
 
 test('lorebook keeps the list and adjacent detail readable on desktop', async ({ page }, info) => {
   await page.setViewportSize({ width: 1366, height: 900 })
-  await page.goto('/#/lorebook')
+  await page.goto('/#/lorebook?world=default_fantasy')
   await expect(page.locator('.lore-row').first()).toBeVisible()
   await page.evaluate(() => window.scrollTo(0, 0))
   await page.screenshot({ path: info.outputPath(`journey-lore-list-${info.project.name}-desktop.png`), fullPage: true })
@@ -177,7 +186,7 @@ test('lorebook keeps the list and adjacent detail readable on desktop', async ({
 
 test('lorebook opens a row detail, edits inline, saves, and returns on phone', async ({ page }, info) => {
   await page.setViewportSize({ width: 375, height: 844 })
-  await page.goto('/#/lorebook')
+  await page.goto('/#/lorebook?world=default_fantasy')
   await expect(page.locator('.lore-row').first()).toBeVisible()
   await page.evaluate(() => window.scrollTo(0, 0))
   await page.screenshot({ path: info.outputPath(`journey-lore-list-${info.project.name}-375.png`), fullPage: true })

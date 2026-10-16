@@ -25,6 +25,10 @@ export type CreatePayload = Record<string, unknown> & {
   game_name?: string
 }
 
+export function applyStoryMode(payload: CreatePayload, mode: 'prose' | 'dialogue'): CreatePayload {
+  return { ...payload, story_mode: mode }
+}
+
 /**
  * Applies the existing world/lorebook contract to a create payload.
  * The server remains the owner of world creation; this only makes the

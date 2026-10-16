@@ -293,7 +293,7 @@ test('phone play side panels open as drawers without entering document flow', as
   })
   expect(Math.abs(sidebarBounds.top)).toBeLessThanOrEqual(1)
   expect(Math.abs(sidebarBounds.viewportHeight - sidebarBounds.bottom)).toBeLessThanOrEqual(1)
-  await sidebar.getByRole('button', { name: '收起侧栏' }).click()
+  await sidebar.getByRole('button', { name: '关闭', exact: true }).click()
   await expect(sidebar).toBeHidden()
 
   const gmToggle = page.getByTestId('play-gm-toggle')
@@ -417,7 +417,8 @@ test('phone play opens the scene map as a full-screen workspace', async ({ page 
   await page.goto('/#/play?game=web%7Ce2e-room%7Cweb_bot')
   await expect(page.locator('.composer')).toBeVisible({ timeout: PLAY_READY_TIMEOUT })
 
-  await page.getByRole('button', { name: '地图', exact: true }).click()
+  await page.getByTestId('play-tools-toggle').click()
+  await page.getByTestId('play-tools-panel').getByRole('button', { name: '场景地图', exact: true }).click()
   const workspace = page.locator('.map-workspace-shell')
   await expect(workspace).toBeVisible()
   await expect(workspace.getByPlaceholder('搜索地点或关键词')).toBeVisible()

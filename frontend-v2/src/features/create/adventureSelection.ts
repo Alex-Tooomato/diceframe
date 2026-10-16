@@ -37,6 +37,7 @@ export function useAdventureSelection(options: {
   const issue = computed<MessageKey | ''>(() => {
     if (playMode.value === 'free') return ''
     if (loadIssue.value) return loadIssue.value
+    if (!selectedKey.value) return 'adventureSelectionRequired'
     if (selectedKey.value && !selectedProjection.value) return loading.value ? '' : 'adventureLaunchUnavailable'
     if (selectedProjection.value?.compatibility === 'incompatible' || !options.supported.value) return 'adventureLaunchIncompatible'
     return ''

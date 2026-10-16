@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+from copy import deepcopy
 import json
 import os
 import secrets
@@ -291,6 +292,13 @@ def prepare_e2e_data(data_dir: Path) -> Path:
         "gm_response": "The road is quiet.",
     }]
     save_file = _write_save(data_dir, instance)
+    # Mutating party journeys need independent seats for each viewport; other
+    # smoke tests invite extra members into the shared room.
+    for journey in ("party-actions", "party-control-links"):
+        for viewport in ("desktop", "mobile"):
+            party = deepcopy(instance)
+            party.game_key = ("web", f"e2e-{journey}-{viewport}", "web_bot")
+            _write_save(data_dir, party)
 
     # FIX-00：独立的一局绑定 data-only v2 冒险，供 Play 页 AdventurePanel 的
     # “GM 可读 / 分享玩家只读公开部分”浏览器验收使用，避免扰动既有布局用例。

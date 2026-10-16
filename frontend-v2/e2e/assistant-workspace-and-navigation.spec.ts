@@ -49,12 +49,12 @@ test('phone task workspace folds without losing edits or covering the conversati
   await page.screenshot({ path: info.outputPath('agent-workspace-folded.png'), scale: 'css' })
 })
 
-test('appearance settings recover a misplaced Agent launcher without clearing chat', async ({ page }, info) => {
+test('general settings recover a misplaced Agent launcher without clearing chat', async ({ page }, info) => {
   await page.addInitScript(() => {
     localStorage.setItem('diceframe_assistant_launcher_position', '{"x":0,"y":0}')
     localStorage.setItem('diceframe_assistant_messages', JSON.stringify([{ role: 'user', content: '保留我的对话' }]))
   })
-  await page.goto('/#/settings?section=appearance')
+  await page.goto('/#/settings?section=general&focus=agent')
   const recover = page.getByTestId('assistant-reset-position')
   await recover.scrollIntoViewIfNeeded()
   await recover.click()

@@ -49,12 +49,15 @@ test('角色卡库的不同按钮数量仍保持卡片和动作区整齐', async
   await expect(page.getByRole('tab', { name: '角色卡库', exact: true })).toHaveAttribute('aria-selected', 'true')
   const tabGeometry = await tabs.evaluateAll(elements => elements.map(element => {
     const rect = element.getBoundingClientRect()
-    return { width: rect.width, height: rect.height }
+    return { width: rect.width, height: rect.height, overflow: element.scrollWidth - element.clientWidth }
   }))
   expect(Math.max(...tabGeometry.map(item => item.width)) - Math.min(...tabGeometry.map(item => item.width))).toBeLessThanOrEqual(1)
   expect(Math.max(...tabGeometry.map(item => item.height)) - Math.min(...tabGeometry.map(item => item.height))).toBeLessThanOrEqual(1)
-  expect(tabGeometry[0].height).toBeGreaterThanOrEqual(52)
-  expect(tabGeometry[0].width).toBeGreaterThanOrEqual(260)
+  expect(tabGeometry[0].height).toBeGreaterThanOrEqual(40)
+  for (const tab of tabGeometry) expect(tab.overflow).toBeLessThanOrEqual(1)
+  const tabGroup = (await page.locator('.character-collection-tabs').boundingBox())!
+  const pageContent = (await page.locator('.characters-page').boundingBox())!
+  expect(Math.abs(tabGroup.x + tabGroup.width / 2 - pageContent.x - pageContent.width / 2)).toBeLessThanOrEqual(2)
   await expect(page.locator('.library-character-card').filter({ hasText: '职业测试者' })).toBeVisible()
 
   const geometry = await page.locator('.library-character-card').evaluateAll(elements => elements.map(element => {

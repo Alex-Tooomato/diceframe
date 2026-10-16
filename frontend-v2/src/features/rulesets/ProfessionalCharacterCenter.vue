@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, reactive, ref, watch } from 'vue'
+import { computed, nextTick, reactive, ref, watch } from 'vue'
 import { api, errorMessage } from '@/api/client'
 import type {
   CharacterClassFeature,
@@ -21,6 +21,7 @@ const props = withDefaults(defineProps<{
   userId?: string
   cardId?: string
   restSession?: RestSessionStatus | null
+  initialFocus?: 'rest'
 }>(), { language: 'zh-CN', gameKey: '', userId: '', cardId: '' })
 const emit = defineEmits<{
   saved: [character: CharacterSheet, reason?: 'profile' | 'rest']
@@ -30,6 +31,12 @@ const emit = defineEmits<{
 
 type Tab = 'overview' | 'profile' | 'build' | 'magic'
 const activeTab = ref<Tab>('overview')
+const restCenter = ref<HTMLElement | null>(null)
+watch(() => props.initialFocus, focus => {
+  if (focus !== 'rest' || props.target !== 'game') return
+  activeTab.value = 'magic'
+  void nextTick(() => restCenter.value?.scrollIntoView?.({ block: 'nearest' }))
+}, { immediate: true })
 const busy = ref(false)
 const failure = ref('')
 const zh = computed(() => props.language.toLowerCase().startsWith('zh'))
@@ -259,7 +266,7 @@ async function completeRest(): Promise<void> {
     </header>
 
     <nav class="center-tabs" :aria-label="text('角色资料分类', 'Character sections')">
-      <button :class="{ active: activeTab === 'overview' }" @click="activeTab = 'overview'">{{ text('一眼看懂', 'Overview') }}</button>
+      <button :class="{ active: activeTab === 'overview' }" @click="activeTab = 'overview'">{{ text('基础信息', 'Basic information') }}</button>
       <button :class="{ active: activeTab === 'profile' }" @click="activeTab = 'profile'">{{ text('人物资料', 'Profile') }}</button>
       <button :class="{ active: activeTab === 'build' }" @click="activeTab = 'build'">{{ text('构筑与成长', 'Build & growth') }}</button>
       <button :class="{ active: activeTab === 'magic' }" @click="activeTab = 'magic'">{{ text('法术与资源', 'Magic & resources') }}</button>
@@ -363,7 +370,7 @@ async function completeRest(): Promise<void> {
       </section>
       <h3>{{ text('戏法', 'Cantrips') }}</h3><div class="tag-list"><span v-for="spell in spellRefs('cantrip_refs')" :key="spell">{{ spell }}</span><i v-if="!spellRefs('cantrip_refs').length">{{ text('此职业当前没有职业戏法', 'No class cantrips at this level') }}</i></div>
       <h3>{{ text('已准备法术', 'Prepared spells') }}</h3><div class="tag-list"><span v-for="spell in spellRefs('prepared_spell_refs')" :key="spell">{{ spell }}</span><i v-if="!spellRefs('prepared_spell_refs').length">{{ text('此职业当前没有准备法术', 'No prepared spells at this level') }}</i></div>
-      <section v-if="target === 'game'" class="rest-center">
+      <section v-if="target === 'game'" ref="restCenter" class="rest-center">
         <div><h3>{{ text('需要恢复？在这里完成休息', 'Need to recover? Complete a rest here') }}</h3><p>{{ text('你只选择休息类型和要花几颗生命骰；实际骰点、生命值、法术位和职业资源都由服务端计算。', 'Choose the rest type and how many Hit Dice to spend. The server rolls and updates HP, spell slots, and class resources.') }}</p></div>
         <div v-if="restSession?.active || restSession?.status === 'completed'" class="party-rest-status" role="status">
           <strong>{{ restSession.status === 'completed' ? text('队伍休息已完成', 'Party rest completed') : text(`队伍${restSession.rest === 'short' ? '短休' : '长休'}准备：${restSession.ready_count}/${restSession.active_count}`, `Party ${restSession.rest === 'short' ? 'short' : 'long'} rest: ${restSession.ready_count}/${restSession.active_count} ready`) }}</strong>

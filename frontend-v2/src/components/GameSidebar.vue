@@ -53,7 +53,7 @@ function perceptionKey(m: PrivateMessage | string, i: number) {
 
 <template>
   <aside class="game-sidebar" :class="{ collapsed }">
-    <button class="sidebar-toggle" @click="emit('toggle-sidebar')" :title="toggleLabel" :aria-label="toggleLabel">
+    <button class="sidebar-toggle" type="button" @click="emit('toggle-sidebar')" :title="toggleLabel" :aria-label="toggleLabel" :aria-expanded="!collapsed">
       <NIcon :component="collapsed ? ChevronForward : ChevronBack" size="16" />
     </button>
     <CharacterPanel :player="player" :rule-meta="ruleMeta" :portrait-editable="portraitEditable" :show-advanced-center="showAdvancedCenter" @portrait-click="emit('portrait-click')" @allocate-level-up="(attrs) => emit('allocate-level-up', attrs)" @open-character-center="emit('open-character-center')" />

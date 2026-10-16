@@ -1,9 +1,10 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { defaultGamePreferences } from '@/features/game-preferences/model'
 import { useRoute, useRouter } from 'vue-router'
 import { api, errorMessage } from '@/api/client'
 import { accessTokenStorageKey } from '@/api/connection'
-import type { CharacterCard, CharacterCardsResponse, CharacterSheet, GameMutationResponse, GeneratedRuleResponse, GeneratedWorldResponse, GmStyle, RuleDetailResponse, RuleSummary, RuleTemplate, RulesResponse, SceneImageRef, WorldListResponse, WorldSummary, WorldTemplateSummary, WorldTemplatesResponse } from '@/api/types'
+import type { CharacterCard, CharacterCardsResponse, CharacterSheet, GameMutationResponse, GeneratedRuleResponse, GeneratedWorldResponse, GmStyle, RuleDetailResponse, RuleSummary, RuleTemplate, RulesResponse, SceneImageRef, StoryMode, WorldListResponse, WorldSummary, WorldTemplateSummary, WorldTemplatesResponse } from '@/api/types'
 import { useToast } from '@/composables/useToast'
 import { useLocale, type Locale } from '@/composables/useLocale'
 import { SUPPORTED_LOCALES, localeChain, normalizeLocale } from '@/i18n'
@@ -33,7 +34,8 @@ import { isLlmConfigReady } from '@/utils/modelConfiguration'
 import { roomPasswordProblem, roomPasswordProblemMessage } from '@/utils/roomPassword'
 import { moduleApi, type ModuleSummary } from '@/api/modules'
 import { adventureKey, useAdventureSelection } from '@/features/create/adventureSelection'
-import { applyLorebookSource, type LorebookSource } from '@/features/create/createPayload'
+import { applyLorebookSource, applyStoryMode, type LorebookSource } from '@/features/create/createPayload'
+import { normalizeStoryMode } from '@/features/create/storyMode'
 import { canAdvanceCreateStep, createStepProgress } from '@/features/create/createFlow'
 import { clearCreateDraft, loadCreateDraft, saveCreateDraft, setCreateDraftSession, type CreateDraftSnapshot } from '@/features/create/createDraft'
 import {
@@ -102,6 +104,7 @@ const mode = ref<CreateMode>('template')
 const world = ref(''), rule = ref(''), name = ref(''), description = ref('')
 const difficulty = ref(DIFFICULTY_NORMAL), solo = ref(true), roomPassword = ref(''), openRoom = ref(false)
 const narrativePerspective = ref<NarrativePerspective>('immersive')
+const storyMode = ref<StoryMode>('prose')
 const narrativePerspectiveTouched = ref(false)
 const gmStyleFollowWorld = ref(true)
 const gmStyle = ref<GmStyle>({ tone: '', verbosity: 'normal', pace: 'normal', custom_instructions: '' })
@@ -346,6 +349,7 @@ function draftSnapshot(): CreateDraftSnapshot {
     step: step.value, mode: mode.value, world: world.value, rule: rule.value, name: name.value,
     description: description.value, difficulty: difficulty.value, solo: solo.value, openRoom: openRoom.value,
     narrativePerspective: narrativePerspective.value, narrativePerspectiveTouched: narrativePerspectiveTouched.value,
+    storyMode: storyMode.value,
     gmStyleFollowWorld: gmStyleFollowWorld.value, gmStyle: { ...gmStyle.value }, advancementMode: advancementMode.value,
     advancementAuthority: advancementAuthority.value, gameLanguage: gameLanguage.value, customName: customName.value,
     customDesc: customDesc.value, aiPrompt: aiPrompt.value, aiRule: aiRule.value, aiAutoRule: aiAutoRule.value, aiGeneratedRule: aiGeneratedRule.value ? JSON.parse(JSON.stringify(aiGeneratedRule.value)) as GeneratedRuleResponse : null,
@@ -360,6 +364,7 @@ function restoreDraft(snapshot: CreateDraftSnapshot): void {
   step.value = snapshot.step; mode.value = snapshot.mode; world.value = snapshot.world; rule.value = snapshot.rule; name.value = snapshot.name
   description.value = snapshot.description; difficulty.value = snapshot.difficulty; solo.value = snapshot.solo; openRoom.value = snapshot.openRoom
   narrativePerspective.value = snapshot.narrativePerspective; narrativePerspectiveTouched.value = snapshot.narrativePerspectiveTouched
+  storyMode.value = normalizeStoryMode(snapshot.storyMode)
   gmStyleFollowWorld.value = snapshot.gmStyleFollowWorld; gmStyle.value = { ...snapshot.gmStyle }
   advancementMode.value = snapshot.advancementMode; advancementAuthority.value = snapshot.advancementAuthority; gameLanguage.value = snapshot.gameLanguage as Locale
   customName.value = snapshot.customName; customDesc.value = snapshot.customDesc; aiPrompt.value = snapshot.aiPrompt; aiRule.value = snapshot.aiRule; aiAutoRule.value = snapshot.aiAutoRule; aiGeneratedRule.value = snapshot.aiGeneratedRule ? JSON.parse(JSON.stringify(snapshot.aiGeneratedRule)) as GeneratedRuleResponse : null
@@ -523,6 +528,17 @@ onMounted(async () => {
     rules.value = r.rules || []
     loreWorlds.value = lw.worlds || []
     cards.value = cs.cards || []
+    if (!savedDraft && !seed.value.trim()) {
+      const defaults = { ...defaultGamePreferences(), ...settings.config.game_defaults }
+      narrativePerspective.value = defaults.narrative_perspective === 'auto'
+        ? (solo.value ? 'immersive' : 'third_person') : defaults.narrative_perspective
+      narrativePerspectiveTouched.value = defaults.narrative_perspective !== 'auto'
+      storyMode.value = defaults.story_mode
+      gmStyleFollowWorld.value = defaults.gm_style_override === null
+      if (defaults.gm_style_override) gmStyle.value = { ...defaults.gm_style_override }
+      advancementMode.value = defaults.advancement_mode
+      advancementAuthority.value = defaults.advancement_authority
+    }
     world.value = worldIdOf(availableWorlds.value[0] || worlds.value[0] || {})
     // 从世界画廊跳入时预填所选世界（仅当它仍在当前语言可用列表中）。
     const preselectedWorld = String(route.query.world || '')
@@ -718,7 +734,7 @@ async function create() {
       ? await uploadSceneImage(sceneImageFile.value)
       : (seed.value.trim() ? undefined : defaultSceneImageRef.value)
     if (seed.value.trim()) {
-      const r = await api<GameMutationResponse>('/games/create-from-seed', { method: 'POST', body: JSON.stringify({ seed_code: seed.value.trim(), solo: solo.value, players, language: gameLanguage.value, scene_image: selectedSceneImage, narrative_perspective: narrativePerspective.value }) })
+      const r = await api<GameMutationResponse>('/games/create-from-seed', { method: 'POST', body: JSON.stringify({ seed_code: seed.value.trim(), solo: solo.value, players, language: gameLanguage.value, scene_image: selectedSceneImage, narrative_perspective: narrativePerspective.value, story_mode: storyMode.value }) })
       if (!r.ok && r.error) throw new Error(r.error)
       if (!r.game_key) throw new Error(t('missingGameId'))
       clearCreateDraft(draftSource.value)
@@ -730,7 +746,7 @@ async function create() {
       ? await uploadMapBackground(mapBackgroundFile.value)
       : mapBackgroundSelection(mapBackgroundChoice.value)
     if (playMode.value === 'adventure' && !adventureSelection.ready.value) throw new Error(t(adventureIssue.value || 'adventureLaunchIncompatible'))
-    const payload: Record<string, unknown> = { solo: solo.value, difficulty: difficulty.value, rule_id: activeRule.value, play_mode: playMode.value, ...adventureSelection.bindingPayload.value, description: description.value, room_password: openRoom.value ? '' : (roomPassword.value.trim() || null), players, language: gameLanguage.value, scene_image: selectedSceneImage, map_background: selectedMapBackground, narrative_perspective: narrativePerspective.value, gm_style_override: gmStyleFollowWorld.value ? null : { ...gmStyle.value }, advancement_mode: supportsAdvancementPolicy.value ? advancementMode.value : 'milestone', advancement_authority: supportsAdvancementPolicy.value ? advancementAuthority.value : 'ai_gm' }
+    const payload: Record<string, unknown> = applyStoryMode({ solo: solo.value, difficulty: difficulty.value, rule_id: activeRule.value, play_mode: playMode.value, ...adventureSelection.bindingPayload.value, description: description.value, room_password: openRoom.value ? '' : (roomPassword.value.trim() || null), players, language: gameLanguage.value, scene_image: selectedSceneImage, map_background: selectedMapBackground, narrative_perspective: narrativePerspective.value, gm_style_override: gmStyleFollowWorld.value ? null : { ...gmStyle.value }, advancement_mode: supportsAdvancementPolicy.value ? advancementMode.value : 'milestone', advancement_authority: supportsAdvancementPolicy.value ? advancementAuthority.value : 'ai_gm' }, storyMode.value)
     let worldId = ''
     if (mode.value === 'template') {
       worldId = world.value; payload.world_id = worldId
@@ -907,6 +923,17 @@ async function create() {
                 </button>
               </div>
             </fieldset>
+            <fieldset class="wide narrative-perspective-field" data-testid="create-story-mode">
+              <legend>{{ t('storyMode') }}</legend>
+              <div class="narrative-perspective-cards">
+                <button type="button" :class="{ active: storyMode === 'prose' }" :aria-pressed="storyMode === 'prose'" @click="storyMode = 'prose'">
+                  <strong>{{ t('storyModeProse') }}</strong><small>{{ t('storyModeProseHint') }}</small>
+                </button>
+                <button type="button" :class="{ active: storyMode === 'dialogue' }" :aria-pressed="storyMode === 'dialogue'" @click="storyMode = 'dialogue'">
+                  <strong>{{ t('storyModeDialogue') }}</strong><small>{{ t('storyModeDialogueHint') }}</small>
+                </button>
+              </div>
+            </fieldset>
             <fieldset class="wide narrative-perspective-field create-gm-style-field">
               <legend>{{ t('gmStyleTitle') }}</legend>
               <div class="narrative-perspective-cards">
@@ -1032,6 +1059,7 @@ async function create() {
             <div class="create-confirm-grid">
               <article><span>{{ t('gameMode') }}</span><strong>{{ solo ? t('solo') : t('multiplayer') }}</strong></article>
               <article><span>{{ t('narrativePerspective') }}</span><strong>{{ narrativePerspective === 'immersive' ? t('narrativeImmersive') : t('narrativeThirdPerson') }}</strong></article>
+              <article><span>{{ t('storyMode') }}</span><strong>{{ storyMode === 'dialogue' ? t('storyModeDialogue') : t('storyModeProse') }}</strong></article>
               <article v-if="supportsAdvancementPolicy && !seed.trim()"><span>{{ t('advancementMode') }}</span><strong>{{ advancementMode === 'milestone' ? t('advancementMilestone') : t('advancementXp') }} · {{ advancementAuthority === 'ai_gm' ? t('advancementAiGm') : t('advancementHumanGm') }}</strong></article>
               <article><span>{{ t('difficulty') }}</span><strong>{{ difficulty === DIFFICULTY_EASY ? t('easy') : difficulty === DIFFICULTY_HARDCORE ? t('hardcore') : t('normal') }}</strong></article>
               <article><span>{{ t('roomOpen') }}</span><strong>{{ openRoom ? gameDefault('公开房间', 'Open room', 'Offener Raum') : gameDefault('需要邀请或密码', 'Invite or password', 'Einladung oder Passwort') }}</strong></article>
@@ -1043,7 +1071,8 @@ async function create() {
           </div>
         </section>
 
-        <div v-if="adventureIssue" class="error-banner" role="alert">
+        <p v-if="adventureIssue === 'adventureSelectionRequired'" class="notice" role="status">{{ t(adventureIssue) }}</p>
+        <div v-else-if="adventureIssue" class="error-banner" role="alert">
           <p>{{ t(adventureIssue) }}</p>
           <p class="adventure-issue-guide">{{ adventureIssueGuide }}</p>
           <div class="adventure-issue-actions">

@@ -100,10 +100,13 @@ test('appearance and advanced settings obey the compact layout contract', async 
   }
 
   await page.goto('/#/settings?section=advanced')
-  const advancedPane = page.locator('.advanced-settings-pane')
+  const advancedPane = page.locator('.advanced-settings-pane:visible')
+  await advancedPane.locator('.generation-settings > summary').click()
   await expect(advancedPane.getByRole('heading', { name: '生成参数' })).toBeVisible()
-  await expect(advancedPane.getByRole('heading', { name: 'DiceFrame Hub 与隐私' })).toBeVisible()
   await expect(advancedPane.getByRole('button', { name: '保存' }).first()).toBeEnabled()
+
+  await page.goto('/#/settings?section=security')
+  await expect(page.locator('#settings-hub-privacy').getByRole('heading', { name: 'DiceFrame Hub 与隐私' })).toBeVisible()
 
   await page.goto('/#/settings?section=about')
   await expect(page.locator('.about-card')).toBeVisible()
@@ -159,7 +162,7 @@ test('model settings expose DeepSeek help and configurable test timeout', async 
     columnCount: 2,
   })
 
-  await page.goto('/#/settings?section=advanced')
+  await page.goto('/#/settings?section=system')
   const timeoutSection = page.locator('.test-timeout-section')
   await expect(timeoutSection.getByRole('heading', { name: '连接测试超时' })).toBeVisible()
   await expect(timeoutSection.locator('input')).toHaveValue('30')

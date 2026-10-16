@@ -128,7 +128,7 @@ test('Lorebook mocked frontend flow: import, select, activate safely, and export
 
   await bookSelect.selectOption('book:imported')
   await expect(bookSelect).toHaveValue('book:imported')
-  await expect(page.locator('.lore-row strong')).toContainText('Imported clue')
+  await expect(page.locator('.lore-row').getByRole('button', { name: 'Imported clue', exact: true })).toBeVisible()
 
   const activationInput = page.locator('.lore-activation-input')
   await activationInput.fill('open the sigil archive')

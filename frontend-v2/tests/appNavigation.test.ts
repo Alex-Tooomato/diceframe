@@ -57,15 +57,15 @@ describe('app navigation', () => {
   })
 
   it('keeps navigation styling out of the generic layout stylesheet', () => {
-    const layoutCss = readFileSync(resolve(process.cwd(), 'src/styles/v2/layout.css'), 'utf8')
-    const navigationCss = readFileSync(resolve(process.cwd(), 'src/styles/v2/navigation.css'), 'utf8')
-    const entryCss = readFileSync(resolve(process.cwd(), 'src/styles/v2.css'), 'utf8')
+    const layoutCss = readFileSync(resolve(process.cwd(), 'src/styles/pages/play.css'), 'utf8')
+    const navigationCss = readFileSync(resolve(process.cwd(), 'src/styles/navigation.css'), 'utf8')
+    const entryCss = readFileSync(resolve(process.cwd(), 'src/styles/index.css'), 'utf8')
 
     expect(layoutCss).not.toContain('.desktop-nav')
     expect(layoutCss).not.toContain('.mobile-bottom-nav')
     expect(navigationCss).not.toContain('.desktop-nav-menu')
     expect(navigationCss).not.toContain('.mobile-nav-panel')
-    expect(entryCss).toContain("@import './v2/navigation.css';")
+    expect(entryCss).toContain("@import './navigation.css';")
   })
 
   it('preserves only the play identity context for top-level return navigation', () => {

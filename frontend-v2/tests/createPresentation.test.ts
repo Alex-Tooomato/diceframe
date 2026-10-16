@@ -7,7 +7,7 @@ const createView = readFileSync(
   'utf8',
 )
 const createCss = readFileSync(
-  join(process.cwd(), 'src/styles/v2/create.css'),
+  join(process.cwd(), 'src/styles/pages/create.css'),
   'utf8',
 )
 

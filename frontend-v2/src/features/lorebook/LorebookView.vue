@@ -2,7 +2,7 @@
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { onBeforeRouteLeave, onBeforeRouteUpdate } from 'vue-router'
 import { api, ApiError, errorMessage } from '@/api/client'
-import type { CharacterListResponse, GameSummary, GamesResponse, LorebookResponse, LoreEntry, LoreGenerateResponse, Player, WorldCreateResponse, WorldListResponse, WorldSummary } from '@/api/types'
+import type { CharacterListResponse, GameSummary, GamesResponse, LorebookResponse, LoreEntry, LoreGenerateResponse, Player, WorldListResponse, WorldSummary } from '@/api/types'
 import { readCurrentGame } from '@/stores/gameContext'
 import { activePeerGameClient } from '@/peer/game/bridge'
 import { useToast } from '@/composables/useToast'
@@ -146,7 +146,6 @@ const editWorldId = ref('')
 const editWorldInitial = ref<{ name?: string; description?: string; language?: string }>({})
 let worldEditorContextEpoch = 0
 const players = ref<Player[]>([])
-const newWorld = ref({ name: '', description: '', language: locale.value })
 const entries = computed(() => data.value.entries || [])
 const languageWorlds = computed(() => filterByContentLanguage(worlds.value, worldLanguage.value))
 const currentWorld = computed(() => worlds.value.find(w => worldIdOf(w) === currentWorldId.value))
@@ -285,7 +284,6 @@ function applyRouteWorldSelection(): boolean {
 function toggleNewWorld() {
   showNewWorld.value = !showNewWorld.value
   closeEditWorld()
-  if (showNewWorld.value) newWorld.value.language = worldLanguage.value
 }
 
 function openEditWorld() {
@@ -912,20 +910,12 @@ async function generateLore() {
   } catch (e: unknown) { error.value = errorMessage(e) } finally { busy.value = false }
 }
 
-async function createWorld() {
-  if (!newWorld.value.name.trim()) { toast.error(t('enterWorldName')); return }
-  busy.value = true
-  try {
-    const createdLanguage = contentLanguageOf({ language: newWorld.value.language })
-    const r = await api<WorldCreateResponse>('/worlds', { method: 'POST', body: JSON.stringify({ name: newWorld.value.name, description: newWorld.value.description, language: newWorld.value.language }) })
-    if (!r.ok) throw new Error(r.error || t('createFailed'))
-    toast.success(t('worldCreated'))
-    newWorld.value = { name: '', description: '', language: locale.value }
-    showNewWorld.value = false
-    await loadWorlds()
-    worldLanguage.value = createdLanguage
-    if (r.world_id || r.id) currentWorldId.value = String(r.world_id || r.id)
-  } catch (e: unknown) { error.value = errorMessage(e) } finally { busy.value = false }
+async function onWorldCreated(payload: { worldId: string; definition: { language: string } }) {
+  showNewWorld.value = false
+  await loadWorlds()
+  worldLanguage.value = contentLanguageOf({ language: payload.definition.language })
+  currentWorldId.value = payload.worldId
+  toast.success(t('worldCreated'))
 }
 
 async function deleteWorld() {
@@ -1417,16 +1407,15 @@ async function removeBinding(bindingId: string) {
     />
     <LorebookRecoveryDialog v-if="recoveryDialogOpen" :open="recoveryDialogOpen" @close="recoveryDialogOpen = false" @changed="onRecoveryChanged" />
 
-    <details v-if="showNewWorld" class="ai-block" open>
+    <details v-if="showNewWorld" class="ai-block lore-world-creator" open>
       <summary>{{ t('newWorld') }}</summary>
-      <label>{{ t('worldName') }}<input v-model="newWorld.name" :placeholder="t('nameNewWorld')"></label>
-      <label>{{ t('contentLanguage') }}
-        <select v-model="newWorld.language">
-          <option v-for="option in CONTENT_LANGUAGE_OPTIONS" :key="option.value" :value="option.value">{{ t(option.labelKey) }}</option>
-        </select>
-      </label>
-      <label>{{ t('description') }}<textarea rows="2" v-model="newWorld.description"></textarea></label>
-      <div class="actions"><button @click="showNewWorld = false">{{ t('cancel') }}</button><button class="primary" :disabled="busy" @click="createWorld">{{ t('create') }}</button></div>
+      <WorldDefinitionEditor
+        mode="create"
+        :show-heading="false"
+        :initial-language="worldLanguage"
+        @saved="onWorldCreated"
+        @cancel="showNewWorld = false"
+      />
     </details>
 
     <details v-if="showEditWorld" class="ai-block lore-world-editor" open>

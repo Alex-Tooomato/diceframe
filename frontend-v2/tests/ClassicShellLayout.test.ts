@@ -9,7 +9,7 @@ describe('familiar navigation layout', () => {
     expect(app.includes('<nav class="desktop-nav"')).toBe(true)
     expect(app.includes('<ExperienceNavigation')).toBe(false)
     expect(app.includes('experience-menu-toggle')).toBe(false)
-    expect(source('src/styles/v2.css').includes("@import './v2/experience.css'")).toBe(false)
+    expect(source('src/styles/index.css').includes("@import './v2/experience.css'")).toBe(false)
   })
 
   // Direct settings navigation is exercised through the mounted SettingsView

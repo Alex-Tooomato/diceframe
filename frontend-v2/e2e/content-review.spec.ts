@@ -5,7 +5,8 @@ test('edited text fragments save into all four real content libraries', async ({
   test.setTimeout(90_000)
   const suffix = info.project.name
   await page.goto('/#/adventures')
-  await page.getByRole('button', { name: '文本分配导入', exact: true }).click()
+  await page.locator('.adventure-header-more > summary').click()
+  await page.getByRole('button', { name: '文本整理与分配', exact: true }).click()
   await page.getByTestId('text-source').fill(`# Review World ${suffix}\nDense fog.\n# Review Keeper ${suffix}\nFriendly keeper.\n# Review Book ${suffix}\nLost bell.\n# Review Quest ${suffix}\nFind the bell.`)
   await page.getByTestId('text-preview').click()
   await expect(page.getByTestId('fragment-target')).toHaveCount(4)

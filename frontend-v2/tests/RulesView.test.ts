@@ -253,4 +253,23 @@ describe('RulesView combat editor integration', () => {
     expect(wrapper.findAll('.rule-card')).toHaveLength(1)
     wrapper.unmount()
   })
+
+  it('keeps the editor and reports a rejected rule instead of showing success', async () => {
+    const original = mocks.api.getMockImplementation()!
+    mocks.api.mockImplementation(async (path: string, init?: RequestInit) => {
+      if (init?.method === 'PUT') return { ok: false, error: 'special_stats[0].max: invalid maximum' }
+      return original(path, init)
+    })
+    const wrapper = mount(RulesView, { global: { plugins: [i18n], stubs: { Modal: { template: '<div class="modal"><slot /><slot name="actions" /></div>' } } } })
+    await flushPromises()
+    await wrapper.findAll('button').find(button => button.text().includes('新建规则'))!.trigger('click')
+    await flushPromises()
+    expect(wrapper.find('.rule-resources-editor').exists()).toBe(true)
+    await wrapper.findAll('button').find(button => button.text().includes('保存规则'))!.trigger('click')
+    await flushPromises()
+    expect(wrapper.get('.error-banner').text()).toContain('special_stats[0].max')
+    expect(mocks.success).not.toHaveBeenCalled()
+    expect(wrapper.find('.rule-resources-editor').exists()).toBe(true)
+    wrapper.unmount()
+  })
 })

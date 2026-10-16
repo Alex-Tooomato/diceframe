@@ -10,12 +10,15 @@ import {
   CashOutline,
   StopCircleOutline,
 } from '@vicons/ionicons5'
-import type { GameDetail, GmStyle, Player } from '@/api/types'
+import type { GameDetail, GmStyle, LogEntry, Player, StoryMode } from '@/api/types'
 import { useLocale } from '@/composables/useLocale'
 import GmWorkspace from '@/features/play/workbench/GmWorkspace.vue'
 import { gameLorebookCopy } from './gameLorebookCopy'
+import StoryPortraits from '@/features/play/story/StoryPortraits.vue'
+import GameSessionPreferences from '@/features/play/preferences/GameSessionPreferences.vue'
+import GameDefaultActions from '@/features/play/preferences/GameDefaultActions.vue'
 
-const props = defineProps<{ detail: GameDetail; players: Player[]; isGm: boolean; recapBusy?: boolean; manualImageEnabled?: boolean; manualImageBusy?: boolean; pendingCount?: number; needsAttention?: boolean }>()
+const props = defineProps<{ detail: GameDetail; players: Player[]; isGm: boolean; recapBusy?: boolean; manualImageEnabled?: boolean; manualImageBusy?: boolean; pendingCount?: number; needsAttention?: boolean; gameKey?: string; log?: LogEntry[]; ruleId?: string }>()
 // 强制推进 = 中止在飞生成并重新处理本回合；只有本轮真的在判定/生成时才有意义
 // （平时点它等同于「推进」，所以平时禁用，避免两个按钮行为重复）。
 const forceAdvanceAvailable = computed(() => props.detail?.state === 'active_judgment')
@@ -28,6 +31,7 @@ const emit = defineEmits<{
   'bot-bind': []
   mode: []
   'narrative-perspective': [perspective: 'auto' | 'immersive' | 'third_person']
+  'story-mode': [payload: { mode: StoryMode }]
   'gm-style': [payload: { gm_style: GmStyle | null }]
   'advancement-control': [payload: Record<string, string | number>]
   access: []
@@ -44,6 +48,7 @@ const emit = defineEmits<{
   'map-background': []
   payment: []
   'generate-current-round': []
+  refresh: []
 }>()
 
 const cmdText = ref('')
@@ -51,6 +56,7 @@ const percTarget = ref('')
 const percText = ref('')
 const xpAwards = reactive<Record<string, number>>({})
 const workspace = ref<InstanceType<typeof GmWorkspace> | null>(null)
+const preferencesRevision = ref(0)
 defineExpose({ openSection: (section: 'todo' | 'party' | 'scene' | 'rules' | 'settings') => workspace.value?.select(section) })
 const { t, locale } = useLocale()
 const gameLorebookText = computed(() => gameLorebookCopy(locale.value))
@@ -110,6 +116,10 @@ function changeNarrativePerspective(event: Event) {
   if (perspective === 'auto' || perspective === 'immersive' || perspective === 'third_person') {
     emit('narrative-perspective', perspective)
   }
+}
+function changeStoryMode(event: Event) {
+  const mode = (event.target as HTMLSelectElement).value
+  if (mode === 'prose' || mode === 'dialogue') emit('story-mode', { mode })
 }
 function configureAdvancement(field: 'mode' | 'authority', event: Event) {
   const value = (event.target as HTMLSelectElement).value
@@ -177,6 +187,7 @@ function awardXp(userId: string) {
         <slot name="scene" />
       </template>
       <template #rules>
+        <GameSessionPreferences v-if="gameKey" :game-key="gameKey" :revision="preferencesRevision" @changed="emit('refresh')" />
         <details v-if="detail.ruleset_runtime?.id === 'core:dnd2024' && detail.advancement" class="perc gm-perc gm-console-section gm-advancement-section" open>
           <summary>{{ t('advancementPolicy') }}</summary>
           <div class="gm-advancement-settings">
@@ -217,6 +228,8 @@ function awardXp(userId: string) {
         <slot name="rules" />
       </template>
       <template #settings>
+        <GameSessionPreferences v-if="gameKey" section="actions" :game-key="gameKey" :revision="preferencesRevision" @changed="emit('refresh')" />
+        <GameDefaultActions v-if="gameKey" :game-key="gameKey" @changed="preferencesRevision++; emit('refresh')" />
         <button @click="emit('room-password')"><NIcon :component="KeyOutline" size="14" /> {{ t('gameSettings') }}</button>
         <div class="gm-group gm-grow gm-command-group">
           <h4>{{ t('commandGroup') }}</h4>
@@ -234,6 +247,14 @@ function awardXp(userId: string) {
                 <option value="third_person">{{ t('narrativeThirdPerson') }}</option>
               </select>
               <small>{{ t('narrativeChangeHint') }}</small>
+            </label>
+            <label class="gm-narrative-setting">
+              <span>{{ t('storyMode') }}</span>
+              <select data-testid="story-mode-select" :value="detail.story_mode || 'prose'" @change="changeStoryMode">
+                <option value="prose">{{ t('storyModeProse') }}</option>
+                <option value="dialogue">{{ t('storyModeDialogue') }}</option>
+              </select>
+              <small>{{ t('storyModeHint') }}</small>
             </label>
             <div class="gm-narrative-setting">
               <span>{{ t('gmStyleTitle') }}</span>
@@ -274,6 +295,10 @@ function awardXp(userId: string) {
                           :placeholder="t('gmStyleCustomPlaceholder')" @change="saveGmStyle"></textarea>
               </label>
             </template>
+            <details v-if="gameKey && log" class="perc gm-perc gm-console-section" open>
+              <summary>{{ t('storyPortraits') }}</summary>
+              <StoryPortraits :game-key="gameKey" :log="log" :rule-id="ruleId" @refresh="emit('refresh')" />
+            </details>
             <button @click="emit('access')"><NIcon :component="detail.player_access_open === false ? LockOpenOutline : LockClosedOutline" size="14" /> {{ detail.player_access_open === false ? t('openAccess') : t('closeAccess') }}</button>
           </div>
         </details>

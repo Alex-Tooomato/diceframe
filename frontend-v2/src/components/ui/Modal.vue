@@ -2,7 +2,7 @@
 import { onMounted, onUnmounted, ref, useId } from 'vue'
 import { useLocale } from '@/composables/useLocale'
 
-defineProps<{ title: string; dialogClass?: string; closeTestId?: string }>()
+defineProps<{ title: string; dialogClass?: string; closeTestId?: string; closeOnBackdrop?: boolean }>()
 const emit = defineEmits<{ close: [] }>()
 const { t } = useLocale()
 const titleId = useId()
@@ -48,7 +48,7 @@ onUnmounted(() => {
 
 <template>
   <Teleport to="body">
-    <div class="modal" data-df-ui="modal">
+    <div class="modal" data-df-ui="modal" @click.self="closeOnBackdrop && emit('close')">
       <section ref="dialog" class="dialog" :class="dialogClass" role="dialog" aria-modal="true" :aria-labelledby="titleId" tabindex="-1" data-df-dialog>
         <header>
           <h2 :id="titleId">{{ title }}</h2>

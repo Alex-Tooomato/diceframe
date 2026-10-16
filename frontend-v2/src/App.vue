@@ -169,7 +169,7 @@ watch(publicRoute, (isPublic) => {
               @settled="onStartupUpdateSettled"
             />
             <RouterView v-if="fullscreen" v-slot="{ Component }">
-              <ThemeToggle class="theme-toggle-floating" />
+              <ThemeToggle v-if="activeKey !== 'play'" class="theme-toggle-floating" />
               <KeepAlive :include="['PlayView', 'PlayEntry']">
                 <component :is="Component" />
               </KeepAlive>

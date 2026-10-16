@@ -59,3 +59,8 @@ def _write_coc_fixture(data_dir: Path, write_save, viewport: str) -> None:
     check_decisions.prepare(pushes, rule)
     pushes.complete_round_check_preparation()
     write_save(data_dir, pushes)
+    # Disabling Push resolves pending decisions permanently. Preference tests
+    # must not consume the decisions exercised by the player/Keeper journey.
+    preferences = deepcopy(pushes)
+    preferences.game_key = ("web", f"e2e-preferences-push-{viewport}", "web_bot")
+    write_save(data_dir, preferences)

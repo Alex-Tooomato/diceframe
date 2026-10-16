@@ -15,7 +15,7 @@ function source(path: string): string {
 
 const appSource = source('src/App.vue')
 const settingsSource = source('src/features/admin/SettingsView.vue')
-const navigationStyles = source('src/styles/v2/navigation.css')
+const navigationStyles = source('src/styles/navigation.css')
 
 const headerActionsStart = appSource.indexOf('<div class="app-header-actions">')
 const headerActions = appSource.slice(headerActionsStart, appSource.indexOf('</header>'))

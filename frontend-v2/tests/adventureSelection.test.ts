@@ -14,10 +14,20 @@ function setup(api = vi.fn().mockResolvedValue({ ok: true, adventures: [builtin,
   const scope = effectScope()
   const rule = ref('legacy'), world = ref('forest'), language = ref('zh-CN'), mode = ref('template'), supported = ref(true)
   const selection = scope.run(() => useAdventureSelection({ rule, world, language, mode, supported, request: api }))!
-  return { scope, selection, rule, world, language, api }
+  return { scope, selection, rule, world, language, supported, api }
 }
 
 describe('adventure launch selection', () => {
+  it('requests an adventure choice before checking an unselected package for compatibility', async () => {
+    const state = setup()
+    await flushPromises()
+    state.supported.value = false
+    state.selection.selectPlayMode('adventure')
+    expect(state.selection.issue.value).toBe('adventureSelectionRequired')
+    expect(state.selection.ready.value).toBe(false)
+    expect(state.selection.bindingPayload.value.adventure_id).toBe('')
+    state.scope.stop()
+  })
   it('does not restore an old discovery catalogue after the content language changes', async () => {
     let oldResult!: (value: unknown) => void
     let newResult!: (value: unknown) => void

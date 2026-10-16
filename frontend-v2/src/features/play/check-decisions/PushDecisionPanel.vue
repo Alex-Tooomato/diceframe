@@ -4,6 +4,7 @@ import type { CheckResult } from '@/api/types'
 import { api } from '@/api/client'
 import { useLocale } from '@/composables/useLocale'
 import { pushCopy } from './copy'
+import { gamePreferencesCopy } from '@/features/game-preferences/copy'
 const props = defineProps<{ gameKey?: string; check: CheckResult; actorId?: string; isGm?: boolean; readonly?: boolean }>()
 const emit = defineEmits<{ refresh: [] }>()
 const { locale } = useLocale()
@@ -58,7 +59,7 @@ async function send(operation: string) {
       <p v-else>{{ c[push.status] }}</p>
       <p v-if="push.reason">{{ c.reason }}: {{ push.reason }}</p>
       <p v-if="push.consequence"><strong>{{ c.risk }}:</strong> {{ push.consequence }}</p>
-      <p v-if="push.decision_reason">{{ push.decision_reason }}</p>
+      <p v-if="push.decision_reason">{{ push.decision_reason === 'push_disabled_by_gm' ? gamePreferencesCopy(locale).pushDisabled : push.decision_reason }}</p>
       <p v-if="push.original">{{ push.original.roll }} → {{ check.roll }}</p>
       <p v-if="push.failed">{{ c.failed }}</p>
       <template v-if="actionable">

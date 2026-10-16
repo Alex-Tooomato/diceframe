@@ -33,6 +33,22 @@ export interface CharacterPortrait {
   path?: string
 }
 
+export type StoryMode = 'prose' | 'dialogue'
+
+export interface StorySegment {
+  id: string
+  kind: 'narration' | 'dialogue'
+  text: string
+  speaker_id?: string
+  speaker_name?: string
+  portrait?: CharacterPortrait | null
+}
+
+export interface StorySequence {
+  version: 1
+  segments: StorySegment[]
+}
+
 export interface SceneImageRef {
   kind: 'builtin' | 'upload' | 'plugin' | 'asset' | 'generated'
   id?: string
@@ -335,6 +351,7 @@ export interface GameDetail {
   language?: string
   solo_mode?: boolean
   narrative_perspective?: 'auto' | 'immersive' | 'third_person' | string
+  story_mode?: StoryMode
   advancement?: LiveAdvancementStatus
   rest_session?: RestSessionStatus
   player_access_open?: boolean
@@ -351,6 +368,7 @@ export interface GameDetail {
   }
   multiplayer?: Multiplayer
   quick_actions?: string[]
+  quick_actions_enabled?: boolean
   economy_proposals?: PendingPayment[]
   run_id?: string
   pending_luck_decisions?: CheckResult[]
@@ -439,6 +457,7 @@ export interface LogEntry {
   tags_summary?: LogTagsSummary
   check_results?: CheckResult[]
   story_recaps?: StoryRecap[]
+  story?: StorySequence
   scene_image?: RoundSceneImage
   [key: string]: unknown
 }
@@ -640,6 +659,7 @@ export interface GamesResponse {
 }
 
 export interface GameMutationResponse {
+  story_mode?: StoryMode
   ok?: boolean
   error?: string
   error_code?: string
@@ -1744,6 +1764,13 @@ export interface CharacterSchemaResponse {
   ruleset_runtime?: RulesetRuntimeMeta
 }
 
+export interface RuleSpecialStat extends JsonObject {
+  key: string
+  name?: string
+  max?: number
+  initial?: number
+}
+
 export interface RuleTemplate extends JsonObject {
   rule_id?: string
   rule_name?: string
@@ -1762,6 +1789,7 @@ export interface RuleTemplate extends JsonObject {
   currency?: string
   currency_system?: CurrencySystem
   hp_formula?: string
+  special_stats?: RuleSpecialStat[]
   gm_prompt_appendix?: string
   attributes?: RuleAttributeEdit[]
   skill_pool?: SkillSpec[]
@@ -1795,6 +1823,7 @@ export interface RuleForm {
   currency_symbol: string
   currency_simple_editable: boolean
   hp_formula: string
+  special_stats: RuleSpecialStat[]
   gm_prompt_appendix: string
   attributes: RuleAttributeEdit[]
 }
@@ -2132,7 +2161,20 @@ export interface BotTokenResponse {
   regenerated: boolean
 }
 
+export interface GamePreferences {
+  push_enabled: boolean
+  quick_actions_enabled: boolean
+  dice_reveal_mode: 'auto' | 'click'
+  luck_timeout_seconds: number
+  narrative_perspective: 'auto' | 'immersive' | 'third_person'
+  story_mode: StoryMode
+  gm_style_override: GmStyle | null
+  advancement_mode: 'milestone' | 'xp'
+  advancement_authority: 'ai_gm' | 'gm'
+}
+
 export interface AppConfig {
+  game_defaults?: GamePreferences
   /** 服务器版本（/api/config 公开下发，供客户端做版本兼容提示） */
   server_version?: string
   /** 服务器仍能正确服务的最低客户端版本；客户端版本低于它应提示升级 App */
@@ -2160,6 +2202,11 @@ export interface AppConfig {
   analysis_max_tokens?: number
   text_gen_max_tokens?: number
   assistant_agent_max_tokens?: number
+  llm_generation_options?: Partial<Record<'temperature' | 'top_p' | 'frequency_penalty' | 'presence_penalty', number>>
+  context_recent_rounds?: number
+  check_model_enabled?: boolean
+  check_provider_ref?: string
+  check_model?: string
   proxy_enabled?: boolean
   proxy_url?: string
   proxy_source?: string

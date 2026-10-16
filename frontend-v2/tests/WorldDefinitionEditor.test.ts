@@ -34,6 +34,47 @@ describe('WorldDefinitionEditor', () => {
     })
   })
 
+  it('creates a world with the same independent fields as editing, without a definition fetch', async () => {
+    mocks.api.mockResolvedValue({ ok: true, world_id: 'new-world' })
+    const wrapper = mount(WorldDefinitionEditor, {
+      props: { mode: 'create', initialLanguage: 'en' },
+      global: { plugins: [i18n] },
+    })
+    await flushPromises()
+    expect(mocks.api).not.toHaveBeenCalled()
+    expect(wrapper.get('.world-definition-actions button.primary').attributes('disabled')).toBeDefined()
+    await wrapper.get('.world-metadata-editor input').setValue('  My world  ')
+    await wrapper.get('.world-metadata-editor textarea').setValue('Short intro')
+    await wrapper.get('[data-testid="world-setting"]').setValue('Full background')
+    await wrapper.get('[data-testid="starter-scene"]').setValue('Independent opening')
+    await wrapper.get('.world-definition-actions button.primary').trigger('click')
+    await flushPromises()
+    expect(mocks.api).toHaveBeenCalledTimes(1)
+    const [path, init] = mocks.api.mock.calls[0]
+    expect(path).toBe('/worlds')
+    expect(init.method).toBe('POST')
+    expect(JSON.parse(init.body)).toEqual({ name: 'My world', description: 'Short intro', language: 'en', world_setting: 'Full background', starter_scene: 'Independent opening' })
+    expect(wrapper.emitted('saved')?.[0]?.[0]).toMatchObject({ worldId: 'new-world', definition: { world_id: 'new-world', world_setting: 'Full background', starter_scene: 'Independent opening' } })
+  })
+
+  it('retains a new world draft on failure and allows retrying', async () => {
+    mocks.api.mockRejectedValueOnce(new Error('Creation unavailable'))
+      .mockResolvedValueOnce({ ok: true, world_id: 'retry-world' })
+    const wrapper = mount(WorldDefinitionEditor, {
+      props: { mode: 'create' }, global: { plugins: [i18n] },
+    })
+    await flushPromises()
+    await wrapper.get('.world-metadata-editor input').setValue('Retry world')
+    await wrapper.get('[data-testid="world-setting"]').setValue('Keep this background')
+    await wrapper.get('.world-definition-actions button.primary').trigger('click')
+    await flushPromises()
+    expect(wrapper.text()).toContain('Creation unavailable')
+    expect(wrapper.get('[data-testid="world-setting"]').element).toHaveProperty('value', 'Keep this background')
+    await wrapper.get('.world-definition-actions button.primary').trigger('click')
+    await flushPromises()
+    expect(wrapper.emitted('saved')?.[0]?.[0]).toMatchObject({ worldId: 'retry-world' })
+  })
+
   it('loads and persists all independent world fields', async () => {
     const wrapper = mount(WorldDefinitionEditor, {
       props: { worldId: 'w1', mode: 'edit', initialName: '我的世界' },

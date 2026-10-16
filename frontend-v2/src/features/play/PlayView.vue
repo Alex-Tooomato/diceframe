@@ -4,7 +4,7 @@ import { NIcon } from 'naive-ui'
 import { BookOutline, ChatbubbleEllipsesOutline, ChevronBack, ChevronForward, PlayForwardOutline, ShareOutline, ShieldOutline, StatsChartOutline, TerminalOutline } from '@vicons/ionicons5'
 import { useRoute, useRouter } from 'vue-router'
 import { api, apiBlob, errorMessage as apiErrorMessage, hasAccessToken, isNotFoundError, retryOnRateLimit } from '@/api/client'
-import type { BotBindTokenResponse, CharacterCard, CharacterCardsResponse, CharacterListResponse, CharacterPortrait, CharacterSheet, CheckResult, CommandResponse, GameDetail, GmStyle, HealthResponse, JsonObject, LuckDecisionResponse, PendingPayment, Player, PlayerContextResponse, PublicAction, RuleMeta, RulesetDirectorProposal, RulesetGameplayView, WorldCandidate, WorldListResponse, WorldTemplatesResponse } from '@/api/types'
+import type { BotBindTokenResponse, CharacterCard, CharacterCardsResponse, CharacterListResponse, CharacterPortrait, CharacterSheet, CheckResult, CommandResponse, GameDetail, GmStyle, HealthResponse, JsonObject, LuckDecisionResponse, PendingPayment, Player, PlayerContextResponse, PublicAction, RuleMeta, RulesetDirectorProposal, RulesetGameplayView, StoryMode, WorldCandidate, WorldListResponse, WorldTemplatesResponse } from '@/api/types'
 import { queryString } from '@/stores/gameContext'
 import { isStoredPlayerMember } from '@/utils/joinIdentity'
 import { readSeatToken, storeSeatToken } from '@/utils/seatToken'
@@ -20,6 +20,7 @@ import { copyToClipboard } from '@/utils/clipboard'
 import { contentLanguageOf, filterByContentLanguage } from '@/utils/contentLanguage'
 import { cardAdoptionLocked, characterCardNeedsConversion, characterCardRuleName } from '@/utils/characterCards'
 import GameTimeline from '@/components/GameTimeline.vue'
+import ThemeToggle from '@/components/ThemeToggle.vue'
 import ActionComposer from '@/components/ActionComposer.vue'
 import DirectorProposalCard from '@/components/play/DirectorProposalCard.vue'
 import CombatMessageComposer from '@/components/play/CombatMessageComposer.vue'
@@ -50,7 +51,7 @@ import PortraitPicker from '@/components/admin/PortraitPicker.vue'
 import AdventureSceneImagePicker from '@/components/common/AdventureSceneImagePicker.vue'
 import MapBackgroundSettingsModal from '@/components/play/MapBackgroundSettingsModal.vue'
 import GameLorebookSelectionDialog from '@/components/play/GameLorebookSelectionDialog.vue'
-import ManualRollsPanel from '@/features/play/manual-rolls/ManualRollsPanel.vue'
+import PartyActions from '@/features/play/party/PartyActions.vue'
 import AISeatsPanel from '@/features/play/ai-seats/AISeatsPanel.vue'
 import { pendingPostChecks, postCheckWaiting } from '@/features/play/check-decisions/projection'
 import { useCheckReveal } from '@/features/play/check-decisions/useCheckReveal'
@@ -91,6 +92,7 @@ const actionRecoveryStatus = ref({ count: 0, message: '' })
 const actionComposer = ref<{ focusRecovery: () => void } | null>(null)
 const recoveryRefreshToken = ref('')
 const gmToggle = ref<HTMLButtonElement | null>(null)
+const utilityMenu = ref<InstanceType<typeof PlayUtilityMenu> | null>(null)
 const unresolvedHealthCount = computed(() => (health.value.events || []).filter(event => !event.resolved && !event.ignored).length)
 const gmPendingCount = computed(() => (
   checkModeStatus.value.pendingCount
@@ -101,8 +103,7 @@ const gmPendingCount = computed(() => (
   + actionRecoveryStatus.value.count
 ))
 const workspaceCopy = computed(() => workbenchCopy(locale.value))
-const worldCandidates = ref<WorldCandidate[]>([]), showWorldSwitch = ref(false), showRoomPassword = ref(false), roomPasswordInput = ref(''), luckTimeoutInput = ref(''), diceRevealModeInput = ref('click')
-const diceRevealModeTouched = ref(false)
+const worldCandidates = ref<WorldCandidate[]>([]), showWorldSwitch = ref(false), showRoomPassword = ref(false), roomPasswordInput = ref('')
 // 邀请/接管二维码弹窗：title 非空即展示，关闭时置空。链接由弹窗自己按选中的
 // 可达地址算（见 InviteQrModal），这里只交代给谁开、开哪一局。
 const inviteTitle = ref(''), inviteHint = ref(''), inviteSeatToken = ref('')
@@ -136,6 +137,7 @@ const luckBusyId = ref('')
 const hostingUid = ref('')
 const showPortraitEditor = ref(false)
 const showCharacterCenter = ref(false)
+const characterCenterFocus = ref<'rest'>()
 const portraitDraft = ref<CharacterPortrait | null>()
 const portraitBusy = ref(false)
 const playSceneImageUrl = ref(ruleSceneUrl())
@@ -170,7 +172,10 @@ function togglePartyRail() { partyRailCollapsed.value = !partyRailCollapsed.valu
 function closeControls() {
   mobilePanel.value = ''
   railCollapsed.value = true
-  void nextTick(() => gmToggle.value?.focus())
+  void nextTick(() => {
+    if (gmToggle.value) gmToggle.value.focus()
+    else utilityMenu.value?.focusTrigger()
+  })
 }
 
 /**
@@ -490,6 +495,17 @@ async function onCharacterCenterRestPending() {
   await game.refresh(true)
 }
 
+function openCharacterRest() {
+  characterCenterFocus.value = 'rest'
+  showCharacterCenter.value = true
+  if (!characterDocked.value) mobilePanel.value = ''
+}
+
+function openCharacterCenter() {
+  characterCenterFocus.value = undefined
+  showCharacterCenter.value = true
+}
+
 let sceneImageSequence = 0
 async function refreshPlaySceneImage() {
   const gameKey = game.currentGame.value
@@ -664,6 +680,17 @@ function onMode() { command('mode', { solo: !game.detail.value?.solo_mode }) }
 function onNarrativePerspective(perspective: 'auto' | 'immersive' | 'third_person') {
   command('settings/narrative-perspective', { perspective })
 }
+async function onStoryMode(payload: { mode: StoryMode }) {
+  if (!game.currentGame.value) return
+  try {
+    const result = await api<{ ok?: boolean; error?: string }>(`/games/${encodeURIComponent(game.currentGame.value)}/settings/story-mode`, {
+      method: 'POST', body: JSON.stringify({ mode: payload.mode }),
+    })
+    if (result.ok === false || result.error) throw new Error(result.error || t('operationFailed'))
+    await game.refresh(true)
+    toast.success(t('storyModeSaved'))
+  } catch (cause: unknown) { toast.error(errorMessage(cause)) }
+}
 function onGmStyle(payload: { gm_style: GmStyle | null }) {
   command('settings/gm-style', payload)
 }
@@ -704,9 +731,6 @@ const passwordTouched = ref(false)
 function onRoomPassword() {
   roomPasswordInput.value = ''
   passwordTouched.value = false
-  luckTimeoutInput.value = ''
-  diceRevealModeInput.value = game.diceRevealMode.value === 'auto' ? 'auto' : 'click'
-  diceRevealModeTouched.value = false
   awayPolicyInput.value = game.detail.value?.away_control_policy === 'ai_takeover' ? 'ai_takeover' : 'pause'
   awayPolicyTouched.value = false
   const policy = game.detail.value?.economy_reward_policy || {}
@@ -735,20 +759,6 @@ async function setRoomPassword() {
     if (passwordSave) {
       const r = await api<{ ok?: boolean; error?: string }>(`/games/${encodeURIComponent(game.currentGame.value)}/room-password`, { method: 'POST', body: JSON.stringify(passwordSave) })
       if (r.error || r.ok === false) throw new Error(r.error || t('settingFailed'))
-    }
-    // 同弹窗一并设置幸运超时（仅在填写时）
-    const lt = String(luckTimeoutInput.value || '').trim()
-    if (lt !== '') {
-      const ltR = await api<{ ok?: boolean; error?: string }>(`/games/${encodeURIComponent(game.currentGame.value)}/settings/luck-timeout`, { method: 'POST', body: JSON.stringify({ seconds: Number(lt) }) })
-      if (ltR.error || ltR.ok === false) throw new Error(ltR.error || t('settingFailed'))
-      toast.success(t('luckTimeoutSaved', { seconds: lt }))
-    }
-    // 骰子揭示方式仅在 GM 实际改动过时提交；纯表现偏好，不影响任何判定。
-    if (diceRevealModeTouched.value) {
-      const drR = await api<{ ok?: boolean; error?: string }>(`/games/${encodeURIComponent(game.currentGame.value)}/settings/dice-reveal-mode`, { method: 'POST', body: JSON.stringify({ mode: diceRevealModeInput.value }) })
-      if (drR.error || drR.ok === false) throw new Error(drR.error || t('settingFailed'))
-      game.diceRevealMode.value = diceRevealModeInput.value === 'auto' ? 'auto' : 'click'
-      toast.success(t('diceRevealModeSaved'))
     }
     // 奖励策略仅在 GM 实际改动过时提交；显式选“跟随默认”仍会清除覆盖。
     const rewardSave = buildRewardPolicySave(
@@ -925,6 +935,14 @@ async function setControl(uid: string, mode: 'ai' | 'human') {
 // 本次会话里 GM 已拿到的接管凭证（只在内存里）：再次打开同一席位的链接直接复用，
 // 不会因为多点一次就把玩家踢下线。
 const takeoverTokens = new Map<string, string>()
+const controlLinkBusyUid = ref('')
+
+async function openMemberControlLink(uid: string) {
+  if (!game.isGm.value || controlLinkBusyUid.value) return
+  controlLinkBusyUid.value = uid
+  try { await copyLink(uid) }
+  finally { controlLinkBusyUid.value = '' }
+}
 
 async function issueTakeoverToken(uid: string, rotate: boolean, check = ''): Promise<string> {
   const r = await api<{ seat_token: string }>(
@@ -1337,11 +1355,11 @@ function onPlayKeydown(event: KeyboardEvent) {
           </select>
         </label>
         <button class="play-secondary-action" @click="openSidebar">{{ t('characters') }}</button>
-        <button v-if="(!characterDocked || !partyRailInline) && (game.isGm.value || game.detail.value?.solo_mode === false)" ref="gmToggle" class="play-gm-toggle" data-testid="play-gm-toggle" :aria-expanded="gmToolsOpen" @click="toggleRailPanel">
-          {{ game.isGm.value ? workspaceCopy.title : workspaceCopy.party }}<span v-if="gmPendingCount" class="gm-task-count">{{ gmPendingCount }}</span>
+        <button v-if="(!characterDocked || !partyRailInline) && game.isGm.value" ref="gmToggle" class="play-gm-toggle" data-testid="play-gm-toggle" :aria-expanded="gmToolsOpen" @click="toggleRailPanel">
+          {{ workspaceCopy.title }}<span v-if="gmPendingCount" class="gm-task-count">{{ gmPendingCount }}</span>
         </button>
         <button class="play-secondary-action play-map-action" @click="openMap">{{ t('mapTitle') }}</button>
-        <PlayUtilityMenu :key="game.currentGame.value" :label="gameToolsLabel(locale)">
+        <PlayUtilityMenu ref="utilityMenu" :key="game.currentGame.value" :label="gameToolsLabel(locale)">
           <button v-if="!characterDocked" @click="openSidebar">{{ t('characters') }}</button>
           <button v-if="!characterDocked" @click="openMap">{{ t('mapTitle') }}</button>
           <button v-if="!characterDocked" @click="toggleMobilePanel('party')">{{ workspaceCopy.party }}</button>
@@ -1350,6 +1368,7 @@ function onPlayKeydown(event: KeyboardEvent) {
           <button class="play-secondary-action" @click="help = true">{{ t('help') }}</button>
           <button class="play-secondary-action play-refresh" @click="game.refresh()">{{ t('refresh') }}</button>
         </PlayUtilityMenu>
+        <ThemeToggle v-if="isPlayer" />
       </div>
     </header>
 
@@ -1390,7 +1409,7 @@ function onPlayKeydown(event: KeyboardEvent) {
           @toggle-sidebar="toggleCharacterSidebar"
           @portrait-click="openPortraitEditor"
           @allocate-level-up="allocateLevelUp"
-          @open-character-center="showCharacterCenter = true"
+          @open-character-center="openCharacterCenter"
         />
       </aside>
 
@@ -1416,6 +1435,7 @@ function onPlayKeydown(event: KeyboardEvent) {
           :game-key="game.currentGame.value"
           :user-id="actorId"
           :rest-session="game.detail.value.rest_session"
+          :initial-focus="characterCenterFocus"
           @saved="onCharacterCenterSaved"
           @rest-pending="onCharacterCenterRestPending"
           @cancel="showCharacterCenter = false"
@@ -1508,6 +1528,7 @@ function onPlayKeydown(event: KeyboardEvent) {
           :processing="showGmThinking"
           :is-gm="game.isGm.value"
           :live-narration="game.liveNarration.value"
+          :live-story="game.liveStory?.value"
           :pending-checks="pendingCheckDecisions"
           :decision-readonly="preview && !delegate"
           :reveal-checks="revealChecks"
@@ -1595,6 +1616,7 @@ function onPlayKeydown(event: KeyboardEvent) {
           :game-key="game.currentGame.value"
           :user-id="actorId"
           :detail="game.detail.value"
+          :player="game.player.value || undefined"
           :disabled="(preview && !delegate) || !!pendingCheckDecisions.length"
           :recovery-refresh-token="recoveryRefreshToken"
           @recovery-status="actionRecoveryStatus = $event"
@@ -1642,17 +1664,24 @@ function onPlayKeydown(event: KeyboardEvent) {
       </section>
 
       <PartyRail
-        v-if="characterDocked || mobilePanel === 'party'"
+        v-show="characterDocked || mobilePanel === 'party'"
         class="play-party-dock"
+        :aria-hidden="!characterDocked && mobilePanel !== 'party'"
+        :inert="(!characterDocked && mobilePanel !== 'party') || undefined"
         :class="{ 'party-rail--collapsed': characterDocked && partyRailCollapsed, 'gm-tools-open': characterDocked && gmToolsOpen, 'mobile-open': mobilePanel === 'party' }"
         :detail="game.detail.value"
         :players="game.players.value"
         :rule-meta="ruleMeta"
         :current-user-id="actorId"
+        :is-gm="game.isGm.value"
+        :link-busy-uid="controlLinkBusyUid"
+        :hosting-uid="hostingUid"
+        @copy-link="openMemberControlLink"
+        @edit="onEdit" @kick="kick" @set-away="setAway" @set-control="setControl"
       >
         <template #toolbar>
           <button
-            v-if="partyRailInline && (game.isGm.value || game.detail.value.solo_mode === false)"
+            v-if="partyRailInline && game.isGm.value"
             ref="gmToggle"
             class="play-gm-toggle party-rail__gm-toggle"
             data-testid="play-gm-toggle"
@@ -1661,17 +1690,18 @@ function onPlayKeydown(event: KeyboardEvent) {
             @click="toggleRailPanel"
           >
             <NIcon :component="TerminalOutline" size="15" />
-            <span class="party-rail__gm-label">{{ game.isGm.value ? workspaceCopy.title : workspaceCopy.party }}</span>
+            <span class="party-rail__gm-label">{{ workspaceCopy.title }}</span>
             <span v-if="gmPendingCount" class="gm-task-count">{{ gmPendingCount }}</span>
           </button>
           <button
             class="party-rail__toggle"
             type="button"
             :aria-expanded="characterDocked ? !partyRailCollapsed : true"
-            :title="characterDocked && partyRailCollapsed ? t('expandSidebar') : t('collapseSidebar')"
+            :title="!characterDocked ? t('close') : partyRailCollapsed ? t('expandSidebar') : t('collapseSidebar')"
+            :aria-label="!characterDocked ? t('close') : partyRailCollapsed ? t('expandSidebar') : t('collapseSidebar')"
             @click="characterDocked ? togglePartyRail() : mobilePanel = ''"
           >
-            <NIcon :component="partyRailCollapsed ? ChevronBack : ChevronForward" size="16" />
+            <NIcon :component="characterDocked && partyRailCollapsed ? ChevronBack : ChevronForward" size="16" />
           </button>
         </template>
         <template #membersActions>
@@ -1686,10 +1716,17 @@ function onPlayKeydown(event: KeyboardEvent) {
             <span>{{ t('invitePlayer') }}</span>
           </button>
         </template>
+        <template #actions>
+          <PartyActions
+            :game-key="game.currentGame.value" :detail="game.detail.value" :players="game.players.value" :player="game.player.value"
+            :actor-id="actorId" :is-gm="game.isGm.value" :preview="preview" :delegate="delegate"
+            @rest="openCharacterRest"
+          />
+        </template>
       </PartyRail>
 
       <aside
-        v-if="game.isGm.value || game.detail.value.solo_mode === false"
+        v-if="game.isGm.value"
         ref="gmDrawer"
         class="play-control-rail"
         data-testid="play-gm-drawer"
@@ -1713,6 +1750,9 @@ function onPlayKeydown(event: KeyboardEvent) {
           :manual-image-busy="currentRoundImageBusy"
           :pending-count="gmPendingCount"
           :needs-attention="Boolean(checkModeStatus.error) || roundJudgmentStuck"
+          :game-key="game.currentGame.value"
+          :log="game.log.value"
+          :rule-id="String(game.detail.value.rule_id || '')"
           @advance="command('advance', { force: true })"
           @force-advance="onForceAdvance"
           @rollback="command('rollback')"
@@ -1721,6 +1761,7 @@ function onPlayKeydown(event: KeyboardEvent) {
           @bot-bind="copyBotBind"
           @mode="onMode"
           @narrative-perspective="onNarrativePerspective"
+          @story-mode="onStoryMode"
           @gm-style="onGmStyle"
           @advancement-control="onAdvancementControl"
           @access="onAccess"
@@ -1737,6 +1778,7 @@ function onPlayKeydown(event: KeyboardEvent) {
           @map-background="openMapBackgroundEditor"
           @payment="openPaymentComposer"
           @generate-current-round="showCurrentRoundImage = true"
+          @refresh="game.refresh"
         >
           <template #todo>
             <button v-if="aiAttentionCount" type="button" class="gm-task-link" data-testid="gm-open-ai-attention" @click="gmToolbar?.openSection('party')">
@@ -1782,15 +1824,9 @@ function onPlayKeydown(event: KeyboardEvent) {
               v-if="game.detail.value.solo_mode === false"
               :players="game.players.value"
               :detail="game.detail.value"
-              :is-gm="game.isGm.value"
               :current-user-id="actorId"
               :hosting-uid="hostingUid"
-              @kick="kick"
-              @set-away="setAway"
-              @set-control="setControl"
-              @copy-link="copyLink"
-              @edit="onEdit"
-              @open-character-center="showCharacterCenter = true"
+              @open-character-center="openCharacterRest"
             />
 
             <AISeatsPanel
@@ -1803,50 +1839,8 @@ function onPlayKeydown(event: KeyboardEvent) {
           </template>
           <template #rules>
             <HealthPanel v-if="game.isGm.value" :health="health" :detail="game.detail.value" :is-gm="game.isGm.value" @resolve="resolveHealth" />
-            <ManualRollsPanel
-              :game-key="game.currentGame.value"
-              :run-id="String(game.detail.value.run_id || '')"
-              :actor-id="actorId"
-              :is-gm="game.isGm.value"
-              :preview="preview"
-              :delegate="delegate"
-              :last-activity="typeof game.detail.value.last_activity === 'string' ? game.detail.value.last_activity : undefined"
-              :players="game.players.value"
-            />
           </template>
         </GmToolbar>
-        <template v-else>
-          <MultiplayerPanel
-            v-if="game.detail.value.solo_mode === false"
-            :players="game.players.value"
-            :detail="game.detail.value"
-            :is-gm="game.isGm.value"
-            :current-user-id="actorId"
-            :hosting-uid="hostingUid"
-            @kick="kick"
-            @set-away="setAway"
-            @set-control="setControl"
-            @copy-link="copyLink"
-            @edit="onEdit"
-            @open-character-center="showCharacterCenter = true"
-          />
-
-          <AISeatsPanel
-            :game-key="game.currentGame.value" :run-id="String(game.detail.value.run_id || '')"
-            :players="game.players.value" :is-gm="game.isGm.value" :preview="preview"
-            @changed="game.refresh(true)" @set-control="setControl"
-          />
-          <ManualRollsPanel
-            :game-key="game.currentGame.value"
-            :run-id="String(game.detail.value.run_id || '')"
-            :actor-id="actorId"
-            :is-gm="game.isGm.value"
-            :preview="preview"
-            :delegate="delegate"
-            :last-activity="typeof game.detail.value.last_activity === 'string' ? game.detail.value.last_activity : undefined"
-            :players="game.players.value"
-          />
-        </template>
       </aside>
       <button
         v-if="!characterDocked && !sidebarOpen && !mobilePanel"
@@ -1960,13 +1954,6 @@ function onPlayKeydown(event: KeyboardEvent) {
         <header><h2>{{ t('gameSettings') }}</h2><button @click="showRoomPassword = false">×</button></header>
         <p>{{ t('roomPasswordHelp') }}</p>
         <label>{{ t('newPassword') }}<input type="password" v-model="roomPasswordInput" :placeholder="t('emptyCancelsPassword')" @input="passwordTouched = true" @keyup.enter="setRoomPassword"></label>
-        <label>{{ t('luckTimeoutSeconds') }}<input type="number" v-model="luckTimeoutInput" :placeholder="t('luckTimeoutPlaceholder')" min="0" max="3600"></label>
-        <label>{{ t('diceRevealModeLabel') }}
-          <select v-model="diceRevealModeInput" @change="diceRevealModeTouched = true">
-            <option value="auto">{{ t('diceRevealModeAuto') }}</option>
-            <option value="click">{{ t('diceRevealModeClick') }}</option>
-          </select>
-        </label>
         <label>{{ t('rewardPolicyMode') }}
           <select v-model="rewardPolicyMode" @change="rewardPolicyTouched = true">
             <option value="">{{ t('rewardPolicyFollowDefault') }}</option>

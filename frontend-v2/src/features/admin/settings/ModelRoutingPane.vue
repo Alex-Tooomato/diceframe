@@ -9,6 +9,8 @@ import { useLocale } from '@/composables/useLocale'
 import { useSettingsStore } from '@/stores/useSettingsStore'
 import { modelCapability, type ModelCapability } from '@/utils/providerModels'
 import type { AppConfig, TestResult } from '@/api/types'
+import CheckModelSettings from './CheckModelSettings.vue'
+import GenerationSettings from './GenerationSettings.vue'
 
 defineProps<{
   supported: boolean
@@ -156,7 +158,7 @@ function setAsrProvider(value: string) {
 </script>
 
 <template>
-  <div class="settings-pane model-routing-pane">
+  <div class="model-routing-pane">
     <header class="model-routing-header">
       <div><h3>{{ t('modelRoutingTitle') }}</h3><p>{{ t('modelRoutingHint') }}</p></div>
       <div class="model-routing-actions">
@@ -185,7 +187,7 @@ function setAsrProvider(value: string) {
         <header><NIcon :component="SparklesOutline" /><div><h4>{{ t('modelRoleMain') }}</h4><p>{{ t('modelRoleMainHint') }}</p></div></header>
         <label><span>{{ t('providerName') }}</span><select :value="store.config.llm_provider_ref || ''" @change="setRoleProvider('llm_provider_ref', 'model', eventValue($event), 'chat')"><option value="">{{ t('modelRoutingChooseProvider') }}</option><option v-for="provider in providers" :key="provider.id" :value="provider.id">{{ provider.name || provider.id }}</option></select></label>
         <label><span>{{ t('model') }}</span><select :value="store.config.model || ''" :disabled="!store.config.llm_provider_ref" @change="setString('model', eventValue($event))"><option value="">{{ t('modelRoutingChooseModel') }}</option><option v-for="model in savedModels(String(store.config.llm_provider_ref || ''), 'chat')" :key="model" :value="model">{{ model }}</option></select></label>
-        <div class="model-fallback-grid">
+        <div id="settings-fallback" class="model-fallback-grid">
           <section v-for="slot in [1, 2]" :key="slot" class="model-fallback-slot">
             <header><strong>{{ t(slot === 1 ? 'fallbackSlot1' : 'fallbackSlot2') }}</strong><NSwitch :value="!!store.config[slot === 1 ? 'fallback1_enabled' : 'fallback2_enabled']" :disabled="saving" @update:value="emit('toggle-and-save', slot === 1 ? 'fallback1_enabled' : 'fallback2_enabled', $event)" /></header>
             <label><span>{{ t('providerName') }}</span><select :value="store.config[slot === 1 ? 'fallback1_provider_ref' : 'fallback2_provider_ref'] || ''" :disabled="!store.config[slot === 1 ? 'fallback1_enabled' : 'fallback2_enabled']" @change="setRoleProvider(slot === 1 ? 'fallback1_provider_ref' : 'fallback2_provider_ref', slot === 1 ? 'fallback1_model' : 'fallback2_model', eventValue($event), 'chat')"><option value="">{{ t('modelRoutingChooseProvider') }}</option><option v-for="provider in providers" :key="provider.id" :value="provider.id">{{ provider.name || provider.id }}</option></select></label>
@@ -196,7 +198,8 @@ function setAsrProvider(value: string) {
 
       <div class="model-capability-grid">
         <div class="model-capability-column">
-          <article class="model-role-card model-role-card-embedding">
+          <CheckModelSettings :disabled="saving" />
+          <article id="settings-embedding" class="model-role-card model-role-card-embedding">
             <header><NIcon :component="CubeOutline" /><div><h4>{{ t('modelRoleEmbedding') }}</h4><p>{{ t('modelRoleEmbeddingHint') }}</p></div><HelpButton :title="t('embeddingHelpTitle')"><h4>{{ t('embeddingHelpWhatTitle') }}</h4><p>{{ t('embeddingHelpWhatText') }}</p><h4>{{ t('embeddingHelpChooseTitle') }}</h4><p>{{ t('embeddingHelpChooseBefore') }} <code>bge-m3</code>{{ t('embeddingHelpChooseAfter') }} <code>text-embedding-3-small</code>, <code>gte-large</code>, <code>nomic-embed-text</code>{{ t('embeddingHelpChooseSuffix') }}</p><h4>{{ t('embeddingHelpConfigTitle') }}</h4><p>{{ t('embeddingHelpCentralized') }}</p><h4>{{ t('test') }}</h4><p>{{ t('embeddingHelpTest') }}</p></HelpButton></header>
             <label class="model-role-enabled"><span>{{ t('vectorMemory') }}</span><NSwitch :value="!!store.config.embedding_enabled" :disabled="saving" @update:value="emit('toggle-and-save', 'embedding_enabled', $event)" /></label>
             <label><span>{{ t('providerName') }}</span><select :value="store.config.embedding_provider_ref || ''" :disabled="!store.config.embedding_enabled" @change="setRoleProvider('embedding_provider_ref', 'embedding_model', eventValue($event), 'embedding')"><option value="">{{ t('modelRoutingChooseProvider') }}</option><option v-for="provider in providers" :key="provider.id" :value="provider.id">{{ provider.name || provider.id }}</option></select></label>
@@ -212,7 +215,7 @@ function setAsrProvider(value: string) {
           </article>
         </div>
         <div class="model-capability-column">
-          <article class="model-role-card">
+          <article id="settings-imagegen" class="model-role-card">
             <header><NIcon :component="ImageOutline" /><div><h4>{{ t('modelRoleImagegen') }}</h4><p>{{ t('modelRoleImagegenHint') }}</p></div></header>
             <label class="model-role-enabled"><span>{{ t('enabled') }}</span><NSwitch :value="!!store.config.imagegen_enabled" :disabled="saving" @update:value="emit('toggle-and-save', 'imagegen_enabled', $event)" /></label>
             <label class="model-role-enabled"><span>{{ t('imagegenAutoScene') }}</span><NSwitch :value="!!store.config.imagegen_auto_scene" :disabled="saving || !store.config.imagegen_enabled" @update:value="emit('toggle-and-save', 'imagegen_auto_scene', $event)" /></label>
@@ -226,7 +229,7 @@ function setAsrProvider(value: string) {
             </div>
             <details class="imagegen-advanced-settings">
               <summary>{{ t('imagegenAdvancedSettings') }}</summary>
-              <div class="imagegen-advanced-fields">
+              <div id="settings-imagegen-prompts" class="imagegen-advanced-fields">
                 <label class="model-role-enabled"><span>{{ t('imagegenAutoUseManualPrompt') }}</span><NSwitch :value="!!store.config.imagegen_auto_use_manual_prompt" :disabled="saving || !store.config.imagegen_enabled" @update:value="emit('toggle-and-save', 'imagegen_auto_use_manual_prompt', $event)" /></label>
                 <div class="imagegen-prompt-field"><div class="imagegen-prompt-field-head"><span>{{ t('imagegenManualRules') }}</span><NButton size="tiny" secondary :loading="optimizingField === 'manual_rules'" :disabled="!store.config.imagegen_enabled || !promptFieldValue('manual_rules').trim() || !!optimizingField" @click="optimizePrompt('manual_rules')"><template #icon><NIcon :component="SparklesOutline" /></template>{{ t('imagegenOptimizePrompt') }}</NButton></div><NInput type="textarea" :value="String(store.config.imagegen_manual_rules || '')" :disabled="!store.config.imagegen_enabled" :placeholder="t('imagegenManualRulesPlaceholder')" :autosize="{ minRows: 3, maxRows: 8 }" @update:value="setString('imagegen_manual_rules', $event)" /></div>
                 <div class="imagegen-prompt-field"><div class="imagegen-prompt-field-head"><span>{{ t('imagegenManualPrompt') }}</span><NButton size="tiny" secondary :loading="optimizingField === 'manual_prompt'" :disabled="!store.config.imagegen_enabled || !promptFieldValue('manual_prompt').trim() || !!optimizingField" @click="optimizePrompt('manual_prompt')"><template #icon><NIcon :component="SparklesOutline" /></template>{{ t('imagegenOptimizePrompt') }}</NButton></div><NInput type="textarea" :value="String(store.config.imagegen_manual_prompt || '')" :disabled="!store.config.imagegen_enabled" :placeholder="t('imagegenManualPromptPlaceholder')" :autosize="{ minRows: 3, maxRows: 8 }" @update:value="setString('imagegen_manual_prompt', $event)" /></div>
@@ -256,6 +259,7 @@ function setAsrProvider(value: string) {
         </div>
       </div>
     </div>
+    <GenerationSettings :disabled="saving" />
     <NModal :show="!!optimizerPreview" preset="card" class="imagegen-optimizer-modal" :title="t('imagegenOptimizePreview')" @update:show="!$event && (optimizerPreview = null)">
       <div v-if="optimizerPreview" class="imagegen-optimizer-preview">
         <label><span>{{ t('imagegenOptimizeOriginal') }} ({{ optimizerPreview.source.length }})</span><NInput type="textarea" :value="optimizerPreview.source" readonly :autosize="{ minRows: 4, maxRows: 10 }" /></label>

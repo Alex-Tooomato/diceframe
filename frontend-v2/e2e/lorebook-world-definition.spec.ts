@@ -1,6 +1,40 @@
 import { expect, test } from './fixtures'
 import { accessToken } from './support'
 
+test('new world operations expose and persist the same fields as editing', async ({ page, request }, info) => {
+  const headers = { Authorization: `Bearer ${accessToken()}`, 'X-TRPG-Confirm': 'true' }
+  let worldId = ''
+  try {
+    await page.goto('/#/lorebook?world=default_fantasy')
+    await page.getByTestId('world-actions').click()
+    await page.getByRole('button', { name: '新建世界', exact: true }).click()
+    const creator = page.locator('.lore-world-creator')
+    await expect(creator.getByRole('button', { name: '创建', exact: true })).toBeDisabled()
+    await creator.locator('.world-metadata-editor input').fill(`完整新世界 ${info.project.name}`)
+    await creator.locator('.world-metadata-editor textarea').fill('仅供浏览的简要介绍')
+    await creator.getByTestId('world-setting').fill('完整背景：群岛上的灯塔会移动。')
+    await creator.getByTestId('starter-scene').fill('默认开场：你收到一封来自无人岛的信。')
+    await creator.screenshot({ path: info.outputPath('new-world-full-form.png'), scale: 'css' })
+    expect(await page.evaluate(() => document.documentElement.scrollWidth - innerWidth)).toBeLessThanOrEqual(1)
+    const creating = page.waitForResponse(response => response.url().endsWith('/api/worlds') && response.request().method() === 'POST')
+    await creator.getByRole('button', { name: '创建', exact: true }).click()
+    const created = await (await creating).json()
+    expect(created.ok).toBe(true)
+    worldId = created.world_id
+    await expect(creator).toHaveCount(0)
+    await expect(page.locator('.lore-context-select').first()).toHaveValue(worldId)
+    await expect(page).toHaveURL(url => new URLSearchParams(url.hash.split('?')[1] || '').get('world') === worldId)
+    await page.reload()
+    await page.getByTestId('world-actions').click()
+    await page.getByRole('button', { name: '编辑世界', exact: true }).click()
+    await expect(page.locator('.world-metadata-editor textarea')).toHaveValue('仅供浏览的简要介绍')
+    await expect(page.getByTestId('world-setting')).toHaveValue('完整背景：群岛上的灯塔会移动。')
+    await expect(page.getByTestId('starter-scene')).toHaveValue('默认开场：你收到一封来自无人岛的信。')
+  } finally {
+    if (worldId) expect((await request.delete(`/api/worlds/${encodeURIComponent(worldId)}`, { headers })).ok()).toBe(true)
+  }
+})
+
 test('lorebook world operations edit the full definition and preserve the active game', async ({ page, request }, info) => {
   const headers = { Authorization: `Bearer ${accessToken()}`, 'X-TRPG-Confirm': 'true' }
   const created = await (await request.post('/api/worlds', {

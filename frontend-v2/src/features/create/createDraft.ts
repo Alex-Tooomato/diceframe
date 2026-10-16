@@ -1,4 +1,4 @@
-import type { CharacterSheet, GeneratedRuleResponse, GmStyle } from '@/api/types'
+import type { CharacterSheet, GeneratedRuleResponse, GmStyle, StoryMode } from '@/api/types'
 import { onAccessTokenChange } from '@/api/authSession'
 
 export interface CreateDraftSource {
@@ -19,6 +19,7 @@ export interface CreateDraftSnapshot {
   openRoom: boolean
   narrativePerspective: 'immersive' | 'third_person'
   narrativePerspectiveTouched: boolean
+  storyMode?: StoryMode
   gmStyleFollowWorld: boolean
   gmStyle: GmStyle
   advancementMode: 'milestone' | 'xp'

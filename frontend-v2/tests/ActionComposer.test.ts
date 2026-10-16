@@ -29,7 +29,139 @@ function detail(submitted = true, roundNumber = 3, runId = 'run-1'): GameDetail 
 }
 
 describe('ActionComposer rollback refresh', () => {
+  it('stacks the optional skill above the action in one column inside the input frame', () => {
+    mockedApi.mockResolvedValue({})
+    const wrapper = mount(ActionComposer, { global: { plugins: [i18n] },
+      props: { gameKey: 'web|room|bot', userId: 'player-1', detail: detail(false), player: {
+        user_id: 'player-1', character_name: 'Scout', character_sheet: { skills: [{ name: 'Acrobatics', value: 80 }] },
+      } } })
+    const input = wrapper.get('[data-testid="composer-input"]')
+    expect(input.find('textarea').exists()).toBe(true)
+    expect(input.find('.composer-input-actions > .primary').exists()).toBe(true)
+    const controls = input.get('.composer-input-actions').element.children
+    expect(controls[0]!.classList.contains('action-check-options')).toBe(true)
+    expect(controls[1]!.classList.contains('primary')).toBe(true)
+    expect(wrapper.find('.composer-row > .primary').exists()).toBe(false)
+    wrapper.unmount()
+  })
+  it('submits an explicitly chosen existing skill without trusting a client-side bonus', async () => {
+    mockedApi.mockResolvedValue({})
+    const wrapper = mount(ActionComposer, {
+      global: { plugins: [i18n] },
+      props: { gameKey: 'web|room|bot', userId: 'player-1', detail: detail(false), player: {
+        user_id: 'player-1', character_name: 'Scout', character_sheet: { skills: [{ name: 'Acrobatics', value: 80 }] },
+      } },
+    })
+    await wrapper.get('.action-check-options select').setValue('Acrobatics')
+    await wrapper.get('textarea').setValue('I cross the gap')
+    await wrapper.get('.composer-input-actions > .primary').trigger('click')
+    await flushPromises()
+    const submission = mockedApi.mock.calls.find(([path]) => String(path).endsWith('/action'))
+    expect(JSON.parse(submission![1]!.body as string)).toEqual({ text: 'I cross the gap', selected_skill: 'Acrobatics' })
+    expect((wrapper.get('.action-check-options select').element as HTMLSelectElement).value).toBe('')
+    await wrapper.get('textarea').setValue('I ask the guard a question')
+    await wrapper.get('.composer-input-actions > .primary').trigger('click')
+    await flushPromises()
+    const nextSubmission = mockedApi.mock.calls.filter(([path]) => String(path).endsWith('/action')).at(-1)
+    expect(JSON.parse(nextSubmission![1]!.body as string)).toEqual({ text: 'I ask the guard a question' })
+    wrapper.unmount()
+  })
+
+  it('keeps the selected skill with a failed draft and drops it for a different run or removed skill', async () => {
+    mockedApi.mockRejectedValue(new Error('offline'))
+    const props = { gameKey: 'web|room|bot', userId: 'player-1', detail: detail(false), player: {
+      user_id: 'player-1', character_name: 'Scout', character_sheet: { skills: [{ name: 'Acrobatics', value: 80 }] },
+    } }
+    const wrapper = mount(ActionComposer, { global: { plugins: [i18n] }, props })
+    await wrapper.get('.action-check-options select').setValue('Acrobatics')
+    await wrapper.get('textarea').setValue('I cross the gap')
+    await wrapper.get('.composer-input-actions > .primary').trigger('click')
+    await flushPromises()
+    wrapper.unmount()
+    const restored = mount(ActionComposer, { global: { plugins: [i18n] }, props })
+    expect((restored.get('.action-check-options select').element as HTMLSelectElement).value).toBe('Acrobatics')
+    await restored.setProps({ player: { ...props.player, character_sheet: { skills: [{ name: 'Survival', value: 20 }] } } })
+    expect((restored.get('.action-check-options select').element as HTMLSelectElement).value).toBe('')
+    await restored.get('.action-check-options select').setValue('Survival')
+    await restored.setProps({ detail: detail(false, 3, 'new-run') })
+    expect((restored.get('.action-check-options select').element as HTMLSelectElement).value).toBe('')
+    restored.unmount()
+  })
+
+  it('inherits the table visibility until the player chooses and keeps the input available', async () => {
+    const wrapper = mount(ActionComposer, { global: { plugins: [i18n] }, props: { gameKey: 'web|room|bot', userId: 'player-1', detail: detail(false) } })
+    expect(wrapper.findAll('.quick-actions button')).toHaveLength(4)
+    await wrapper.setProps({ detail: { ...detail(false), quick_actions_enabled: false } })
+    expect(wrapper.find('.quick-actions').exists()).toBe(false)
+    await wrapper.setProps({ detail: { ...detail(false), quick_actions_enabled: false, quick_actions: ['Inspect the lock'] } })
+    expect(wrapper.find('.quick-actions').exists()).toBe(false)
+    expect(wrapper.find('textarea').exists()).toBe(true)
+    await wrapper.get('textarea').setValue('My own action')
+    const toggle = wrapper.get('[data-testid="quick-actions-toggle"]')
+    expect(toggle.attributes('aria-expanded')).toBe('false')
+    await toggle.trigger('click')
+    expect(wrapper.get('.quick-actions').text()).toContain('Inspect the lock')
+    expect((wrapper.get('textarea').element as HTMLTextAreaElement).value).toBe('My own action')
+    await toggle.trigger('click')
+    await wrapper.setProps({ detail: { ...detail(false), quick_actions_enabled: true, quick_actions: ['Inspect the lock'] } })
+    expect(wrapper.find('.quick-actions').exists()).toBe(false)
+    wrapper.unmount()
+  })
+
+  it('remembers personal visibility across reloads and rounds without changing another game or actor', async () => {
+    const props = { gameKey: 'web|room|bot', userId: 'player-1', detail: detail(false) }
+    const wrapper = mount(ActionComposer, { global: { plugins: [i18n] }, props })
+    await wrapper.get('[data-testid="quick-actions-toggle"]').trigger('click')
+    await wrapper.setProps({ detail: detail(false, 8, 'new-run') })
+    expect(wrapper.find('.quick-actions').exists()).toBe(false)
+    wrapper.unmount()
+    const restored = mount(ActionComposer, { global: { plugins: [i18n] }, props })
+    expect(restored.find('.quick-actions').exists()).toBe(false)
+    await restored.setProps({ userId: 'player-2' })
+    expect(restored.find('.quick-actions').exists()).toBe(true)
+    await restored.setProps({ userId: 'player-1', gameKey: 'web|other-room|bot' })
+    expect(restored.find('.quick-actions').exists()).toBe(true)
+    await restored.setProps({ gameKey: props.gameKey })
+    expect(restored.find('.quick-actions').exists()).toBe(false)
+    expect(mockedApi.mock.calls.filter(([, options]) => options?.method === 'POST')).toEqual([])
+    restored.unmount()
+  })
+
+  it('can show suggestions when the table default is hidden even if browser storage is unavailable', async () => {
+    const read = vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => { throw new Error('blocked') })
+    const write = vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => { throw new Error('blocked') })
+    try {
+      const wrapper = mount(ActionComposer, { global: { plugins: [i18n] }, props: {
+        gameKey: 'web|room|bot', userId: 'player-1', detail: { ...detail(false), quick_actions_enabled: false }, disabled: true,
+      } })
+      await wrapper.get('[data-testid="quick-actions-toggle"]').trigger('click')
+      expect(wrapper.findAll('.quick-actions button')).toHaveLength(4)
+      expect(wrapper.get('[data-testid="quick-actions-toggle"]').attributes('disabled')).toBeUndefined()
+      wrapper.unmount()
+    } finally { read.mockRestore(); write.mockRestore() }
+  })
+
+  it('resets the skill after refresh confirms a committed action without erasing an uncertain draft', async () => {
+    mockedApi.mockRejectedValueOnce({ code: 'ROUND_POST_COMMIT_FAILED' })
+    const wrapper = mount(ActionComposer, { global: { plugins: [i18n] }, props: {
+      gameKey: 'web|room|bot', userId: 'player-1', detail: detail(false), player: {
+        user_id: 'player-1', character_name: 'Scout', character_sheet: { skills: [{ name: 'Acrobatics', value: 80 }] },
+      },
+    } })
+    await wrapper.get('.action-check-options select').setValue('Acrobatics')
+    await wrapper.get('textarea').setValue('I cross the gap')
+    await wrapper.get('.primary').trigger('click')
+    await flushPromises()
+    expect((wrapper.get('.action-check-options select').element as HTMLSelectElement).value).toBe('Acrobatics')
+    await wrapper.get('[data-testid="action-recovery-refresh"]').trigger('click')
+    await wrapper.setProps({ recoveryRefreshToken: wrapper.emitted<[string]>('refresh')!.at(-1)![0] })
+    expect((wrapper.get('.action-check-options select').element as HTMLSelectElement).value).toBe('')
+    expect((wrapper.get('textarea').element as HTMLTextAreaElement).value).toBe('')
+    wrapper.unmount()
+  })
+
   beforeEach(() => {
+    localStorage.clear()
     i18n.global.locale.value = 'zh-CN'
     mockedApi.mockReset()
     sessionStorage.clear()

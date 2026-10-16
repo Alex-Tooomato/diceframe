@@ -19,7 +19,7 @@ async function openGame(page: Page, query = '', openGmControls = true, path?: st
 }
 
 test.describe('UI redesign browser acceptance', () => {
-  test('story table has two desktop columns and character tools remain accessible', async ({ page }) => {
+  test('desktop table keeps readable narration beside character and party tools', async ({ page }) => {
     await page.setViewportSize({ width: 1179, height: 746 })
     await openGame(page)
     await expect(page.getByTestId('gm-workspace')).toBeVisible()
@@ -42,7 +42,7 @@ test.describe('UI redesign browser acceptance', () => {
       }
     })
     expect(geometry.left).toBeGreaterThan(200)
-    expect(geometry.width).toBeGreaterThan(800)
+    expect(geometry.width).toBeGreaterThan(geometry.viewport / 2)
     expect(geometry.railPosition).toBe('fixed')
     expect(geometry.railWidth).toBeGreaterThan(0)
     expect(geometry.railWidth).toBeLessThanOrEqual(410)
@@ -93,7 +93,8 @@ test.describe('UI redesign browser acceptance', () => {
     await expect(command).toHaveValue('inspect the gate draft')
 
     await workspace.getByRole('tab', { name: '规则', exact: true }).click()
-    await expect(workspace.getByRole('tabpanel', { name: '规则' })).toContainText('手动投掷')
+    await expect(workspace.getByRole('tabpanel', { name: '规则' }).getByTestId('manual-rolls')).toHaveCount(0)
+    await expect(page.getByTestId('play-party-rail').getByTestId('manual-roll-create')).toHaveCount(1)
     await page.screenshot({ path: testInfo.outputPath('gm-workspace.png'), fullPage: true })
   })
 

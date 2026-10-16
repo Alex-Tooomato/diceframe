@@ -42,6 +42,17 @@ vi.mock('../src/api/plugins', () => ({ pluginApi: { hubPreferences: vi.fn().mock
 vi.mock('../src/api/security', () => ({ securityApi: { status: vi.fn().mockResolvedValue({}), prepare: vi.fn(), activate: vi.fn(), disable: vi.fn(), regenerate: vi.fn() } }))
 
 describe('SettingsView management navigation', () => {
+  it('places a separate Game page directly after General', async () => {
+    const wrapper = shallowMount(SettingsView, { global: { stubs: { Spin: { template: '<div><slot /></div>' }, RouterLink: true } } })
+    await flushPromises()
+    const general = wrapper.get('.settings-nav [data-section="general"]')
+    expect(general.element.nextElementSibling?.getAttribute('data-section')).toBe('game')
+    await wrapper.get('.settings-nav [data-section="game"]').trigger('click')
+    expect(wrapper.get('.settings-game-pane').isVisible()).toBe(true)
+    expect(wrapper.get('#settings-language').isVisible()).toBe(false)
+    expect(mocks.replace).toHaveBeenCalledWith({ query: { section: 'game', focus: undefined } })
+    wrapper.unmount()
+  })
   beforeEach(() => {
     mocks.store.load.mockReset()
     mocks.api.mockClear()
@@ -51,13 +62,13 @@ describe('SettingsView management navigation', () => {
     const wrapper = shallowMount(SettingsView, { global: { stubs: { Spin: { template: '<div><slot /></div>' }, Button: { template: '<button @click="$emit(\'click\')"><slot /></button>', emits: ['click'] }, RouterLink: true } } })
     await flushPromises()
     expect(wrapper.findAll('.token-row strong').map(row => row.text())).toContain('assistantAgentTokens')
-    const saveButton = wrapper.get('.generation-section .advanced-save-row > *')
+    const saveButton = wrapper.get('#settings-agent-budget .advanced-save-row > *')
     await saveButton.trigger('click')
     expect(mocks.store.saveSection).toHaveBeenCalledWith(expect.arrayContaining(['assistant_agent_max_tokens']), [])
     wrapper.unmount()
   })
 
-  it('exposes the shared system language preference in appearance settings', async () => {
+  it('exposes the shared system language preference in general settings', async () => {
     const wrapper = shallowMount(SettingsView, { global: { stubs: { Spin: { template: '<div><slot /></div>' }, RouterLink: true } } })
     expect(wrapper.find('language-preferences-stub').exists()).toBe(true)
     wrapper.unmount()
@@ -67,11 +78,25 @@ describe('SettingsView management navigation', () => {
     const wrapper = shallowMount(SettingsView, { global: { stubs: { ContentPageHeader: true, HelpButton: true, ProviderLibrary: true, ProviderCatalogModal: true, ModelRoutingPane: true, ProviderModelRow: true, ProviderTestSection: true, TestResultCard: true, TtsVoiceProfiles: true, BrandLogo: true } } })
     await flushPromises()
     expect(wrapper.find('.settings-nav-group-label').exists()).toBe(true)
-    expect(wrapper.findAll('.settings-nav .nav-item').length).toBeGreaterThanOrEqual(10)
+    expect(wrapper.findAll('.settings-nav .nav-item').length).toBeGreaterThanOrEqual(9)
     expect(wrapper.find('.settings-nav .nav-item.active').text()).toContain('settingsSectionModels')
     await wrapper.findAll('.settings-nav .nav-item').find(button => button.text().includes('settingsSectionAppearance'))!.trigger('click')
     expect(mocks.replace).toHaveBeenCalledWith({ query: { section: 'appearance', focus: undefined } })
     expect(wrapper.find('.settings-nav .nav-item.active').text()).toContain('settingsSectionAppearance')
+  })
+
+  it('renders language, voice, Agent and maintenance together on one general page', async () => {
+    const wrapper = shallowMount(SettingsView, { global: { stubs: { Spin: { template: '<div><slot /></div>' }, RouterLink: true } } })
+    await flushPromises()
+    await wrapper.get('.settings-nav [data-section="general"]').trigger('click')
+    const pane = wrapper.get('#settings-language').element.closest('.settings-pane')!
+    for (const id of ['settings-tts', 'settings-asr', 'settings-agent', 'settings-agent-budget', 'settings-runtime-logs', 'settings-test-timeout']) {
+      expect(wrapper.get(`#${id}`).isVisible(), id).toBe(true)
+      expect(wrapper.get(`#${id}`).element.closest('.settings-pane'), id).toBe(pane)
+    }
+    for (const id of ['voice', 'agent', 'system']) expect(wrapper.find(`.settings-nav [data-section="${id}"]`).exists()).toBe(false)
+    expect(wrapper.findAll('.settings-nav-group-label').map(label => label.text())).toEqual(['Models and AI', 'Connection and integrations', 'Security and privacy', 'General'])
+    wrapper.unmount()
   })
 
   it('keeps the status overview closed until the user opens it', async () => {

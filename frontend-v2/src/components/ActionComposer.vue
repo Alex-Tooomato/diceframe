@@ -1,12 +1,16 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { NIcon } from 'naive-ui'
-import { MicOutline, StopCircleOutline, CloseOutline } from '@vicons/ionicons5'
+import { MicOutline, StopCircleOutline, CloseOutline, ChevronDownOutline, ChevronUpOutline } from '@vicons/ionicons5'
 import { api, ApiError } from '@/api/client'
-import type { ActionSubmitResponse, GameDetail } from '@/api/types'
+import type { ActionSubmitResponse, GameDetail, Player } from '@/api/types'
 import { useLocale } from '@/composables/useLocale'
 import { appendDictated, asrLanguageFor, initializeAsr, useVoiceInput, voiceInputSupported } from '@/utils/asr'
 import ActionRecoveryBanner from '@/features/play/recovery/ActionRecoveryBanner.vue'
+import ActionCheckOptions from '@/features/play/ActionCheckOptions.vue'
+import { useActionSkill } from '@/features/play/useActionSkill'
+import { useQuickActionVisibility } from '@/features/play/preferences/useQuickActionVisibility'
+import { gamePreferencesCopy } from '@/features/game-preferences/copy'
 import {
   actionRecoveryMessage,
   actionRecoveryConfirmedMessage,
@@ -20,13 +24,17 @@ import {
   type ActionRecoverySnapshot,
 } from '@/features/play/recovery/useActionRecovery'
 
-const props = defineProps<{ gameKey: string; userId: string; detail: GameDetail; disabled?: boolean; recoveryRefreshToken?: string }>()
+const props = defineProps<{ gameKey: string; userId: string; detail: GameDetail; player?: Player; disabled?: boolean; recoveryRefreshToken?: string }>()
 const emit = defineEmits<{
   refresh: [token?: string]
   processing: [value: boolean]
   'recovery-status': [value: { count: number; message: string }]
 }>()
 const { t, locale } = useLocale()
+const c = computed(() => gamePreferencesCopy(locale.value))
+const { visible: suggestionsVisible, toggle: toggleSuggestions } = useQuickActionVisibility(
+  computed(() => props.gameKey), computed(() => props.userId), computed(() => props.detail.quick_actions_enabled !== false),
+)
 
 const text = ref(''), busy = ref(false), notice = ref('')
 const textarea = ref<HTMLTextAreaElement | null>(null)
@@ -41,6 +49,7 @@ const { snapshot, save, read } = useActionRecovery(identity)
 const recovery = computed(() => snapshot.value?.recovery || null)
 const requiresRefresh = computed(() => recovery.value?.kind === 'refresh')
 const identityKey = computed(() => JSON.stringify(identity.value))
+const { skills, selectedSkill, clear: clearSelectedSkill } = useActionSkill(identityKey, computed(() => props.player))
 let submitSerial = 0
 let activeAttempt: { serial: number; identityKey: string } | null = null
 let disposed = false
@@ -125,6 +134,7 @@ watch(() => props.recoveryRefreshToken, value => {
   if (!value || !current || !requiresRefresh.value || value !== recoveryToken()) return
   if (current.code === 'ROUND_POST_COMMIT_FAILED') {
     text.value = ''
+    clearSelectedSkill()
     clearRecovery()
     return
   }
@@ -183,9 +193,10 @@ async function submit() {
   activeAttempt = { serial, identityKey: attemptIdentityKey }
   busy.value = true; notice.value = ''; clearRecovery(attemptIdentityKey); emit('processing', true)
   try {
-    const r = await api<ActionSubmitResponse>(`/games/${encodeURIComponent(props.gameKey)}/action`, { method: 'POST', body: JSON.stringify({ text: action }) })
+    const r = await api<ActionSubmitResponse>(`/games/${encodeURIComponent(props.gameKey)}/action`, { method: 'POST', body: JSON.stringify({ text: action, ...(selectedSkill.value ? { selected_skill: selectedSkill.value } : {}) }) })
     if (disposed || activeAttempt?.serial !== serial || !sameIdentityKey(attemptIdentityKey)) return
     text.value = ''
+    clearSelectedSkill()
     notice.value = r.phase === 'luck' ? t('luckDecisionRequired') : t('actionRecorded')
     emit('refresh')
   } catch (e: unknown) {
@@ -222,9 +233,16 @@ onUnmounted(() => {
         <strong>{{ t('composerTitle') }}</strong>
         <span v-if="hint" class="composer-hint">{{ hint }}</span>
       </div>
-      <slot name="tools" />
+      <div class="composer-tools">
+        <button type="button" class="quick-actions-toggle" data-testid="quick-actions-toggle"
+          :aria-expanded="suggestionsVisible" :aria-label="suggestionsVisible ? c.hideSuggestions : c.showSuggestions"
+          :title="c.personalSuggestionsHint" @click="toggleSuggestions">
+          {{ c.suggestions }}<NIcon :component="suggestionsVisible ? ChevronUpOutline : ChevronDownOutline" />
+        </button>
+        <slot name="tools" />
+      </div>
     </div>
-    <div class="quick-actions" :aria-label="t('quickActions')">
+    <div v-if="suggestionsVisible" class="quick-actions" :aria-label="t('quickActions')">
       <button v-for="action in quickActions" :key="action" :disabled="locked" @click="text = action">{{ action }}</button>
     </div>
     <div v-if="dictationError && !dictationErrorDismissed" class="dictation-status error">
@@ -243,31 +261,82 @@ onUnmounted(() => {
         @focus="focusComposer"
       />
     </div>
-    <div class="composer-row" :class="{ 'has-dictation': micAvailable }">
-      <textarea ref="textarea" v-model="text" :disabled="locked" :placeholder="t('actionPlaceholder')" @keydown.ctrl.enter.prevent="submit()" />
-      <button
-        v-if="micAvailable"
-        type="button"
-        class="dictation-toggle"
-        :class="{ active: recording }"
-        :title="recording ? t('asrStop') : t('asrVoice')"
-        :aria-label="recording ? t('asrStop') : t('asrVoice')"
-        :aria-pressed="recording"
-        :disabled="transcribing || (locked && !recording)"
-        @click="toggleVoice()"
-      >
-        <NIcon :component="recording ? StopCircleOutline : MicOutline" />
-      </button>
-      <button class="primary" @click="submit()" :disabled="locked || !text.trim()">{{ busy ? t('processing') : t('action') }}</button>
+    <div class="composer-row" :class="{ 'has-dictation': micAvailable, 'has-skill': skills.length > 0 }">
+      <div class="composer-input" data-testid="composer-input">
+        <div class="composer-description">
+          <textarea ref="textarea" v-model="text" :disabled="locked" :placeholder="t('actionPlaceholder')" @keydown.ctrl.enter.prevent="submit()" />
+          <button
+            v-if="micAvailable"
+            type="button"
+            class="dictation-toggle"
+            :class="{ active: recording }"
+            :title="recording ? t('asrStop') : t('asrVoice')"
+            :aria-label="recording ? t('asrStop') : t('asrVoice')"
+            :aria-pressed="recording"
+            :disabled="transcribing || (locked && !recording)"
+            @click="toggleVoice()"
+          >
+            <NIcon :component="recording ? StopCircleOutline : MicOutline" />
+          </button>
+        </div>
+        <div class="composer-input-actions">
+          <ActionCheckOptions v-model="selectedSkill" :skills="skills" :disabled="locked" />
+          <button class="primary" @click="submit()" :disabled="locked || !text.trim()">{{ busy ? t('processing') : t('action') }}</button>
+        </div>
+      </div>
     </div>
     <div v-if="notice" class="notice">{{ notice }}</div>
   </div>
 </template>
 
 <style scoped>
-.composer-row.has-dictation {
-  grid-template-columns: minmax(0, 1fr) 44px 92px;
+.composer .composer-head { align-items: center; }
+.composer .composer-title-row { flex: 1; align-items: center; }
+.composer .composer-title-row > strong { flex-shrink: 0; white-space: nowrap; }
+.composer .composer-hint { white-space: nowrap; text-overflow: ellipsis; }
+.composer-tools { display: flex; align-items: center; gap: 6px; flex-shrink: 0; margin-left: auto; }
+.quick-actions-toggle { display: inline-flex; align-items: center; gap: 4px; min-height: 28px; padding: 4px 7px; font-size: 11px; white-space: nowrap; color: var(--df-text-muted); border-color: var(--df-border-soft); background: var(--df-control-bg); }
+.composer { container: action-composer / inline-size; }
+@container action-composer (max-width: 480px) { .composer .composer-hint { display: none; } }
+
+.composer .composer-row {
+  grid-template-columns: minmax(0, 1fr);
+  align-items: stretch;
 }
+
+.composer-input {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 64px;
+  gap: 6px;
+  min-width: 0;
+  padding: 6px;
+  border: 1px solid color-mix(in srgb, var(--df-interactive) 36%, var(--df-border-soft));
+  border-radius: var(--df-radius-md);
+  background: var(--df-control-bg);
+  box-shadow: inset 0 1px 12px color-mix(in srgb, var(--df-canvas) 18%, transparent);
+}
+
+.composer-input:focus-within { border-color: var(--df-interactive); }
+.composer .has-skill .composer-input { grid-template-columns: minmax(0, 1fr) 80px; }
+.composer-description { display: flex; flex-direction: column; min-width: 0; }
+.composer .composer-description > textarea {
+  flex: 1;
+  box-sizing: border-box;
+  width: 100%;
+  height: 88px;
+  min-height: 88px;
+  padding: 6px;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  box-shadow: none;
+  resize: vertical;
+}
+.composer .has-dictation .composer-description > textarea { height: 52px; min-height: 52px; }
+.composer-input-actions { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.composer-input-actions > .primary { flex: 1; width: 100%; min-width: 0; min-height: 38px; padding-inline: 6px; }
+.composer .composer-description .dictation-toggle { flex: none; align-self: flex-start; width: 32px; min-width: 32px; height: 32px; min-height: 32px; margin-top: 4px; }
+.composer-row .action-check-options { flex: none; align-self: stretch; min-width: 0; }
 
 .dictation-toggle {
   display: inline-flex;
@@ -339,13 +408,8 @@ onUnmounted(() => {
   background: color-mix(in srgb, var(--df-danger) 16%, transparent);
 }
 
-@media (max-width: 800px) {
-  .composer-row.has-dictation {
-    grid-template-columns: minmax(0, 1fr) 40px 72px;
-  }
-
-  .dictation-toggle {
-    min-width: 40px;
-  }
+@container action-composer (max-width: 260px) {
+  .composer-input { grid-template-columns: minmax(0, 1fr) 56px; }
+  .composer .has-skill .composer-input { grid-template-columns: minmax(0, 1fr) 72px; }
 }
 </style>

@@ -10,6 +10,7 @@ import Modal from '@/components/ui/Modal.vue'
 import CombatExtensionEditor from '@/components/admin/CombatExtensionEditor.vue'
 import { blockFromDraft, draftFromBlock, emptyDraft, type CombatDraft } from '@/features/admin/combatExtensionDraft'
 import ContentPageHeader from '@/components/content/ContentPageHeader.vue'
+import RuleResourcesEditor from './RuleResourcesEditor.vue'
 
 const toast = useToast()
 const { confirm } = useConfirm()
@@ -51,6 +52,12 @@ const combatResourceOptions = computed(() => (
 
 function errorMessage(err: unknown): string { return err instanceof Error ? err.message : String(err || t('operationFailed')) }
 
+async function mutateRule(path: string, init: RequestInit) {
+  const result = await api<{ ok: boolean; error?: string }>(path, init)
+  if (result.ok !== true) throw new Error(result.error || t('operationFailed'))
+  return result
+}
+
 async function load() {
   error.value = ''; data.value = null
   try { data.value = await api<RulesResponse>('/rules') }
@@ -87,6 +94,7 @@ function buildForm(template: RuleTemplate): RuleForm {
     currency_symbol: '',
     currency_simple_editable: true,
     hp_formula: String(template.hp_formula || ''),
+    special_stats: Array.isArray(template.special_stats) ? template.special_stats.map(stat => ({ ...stat })) : [],
     gm_prompt_appendix: String(template.gm_prompt_appendix || ''),
     attributes: (template.attributes || []).map(toRuleAttr),
   }
@@ -186,6 +194,7 @@ function applyFormToJson(): RuleTemplate {
     }
   }
   template.hp_formula = form.hp_formula || ''
+  template.special_stats = form.special_stats.map(stat => ({ ...stat }))
   template.gm_prompt_appendix = form.gm_prompt_appendix || ''
   template.attributes = form.attributes
     .filter(a => a.key.trim())
@@ -263,16 +272,16 @@ async function saveRule() {
     if (!template.rule_id) throw new Error(t('ruleIdRequired'))
     if (!template.rule_name) throw new Error(t('ruleNameRequired'))
     if (ruleEdit.value.mode === 'copy' || ruleEdit.value.mode === 'new') {
-      await api('/rules', { method: 'POST', body: JSON.stringify({
+      await mutateRule('/rules', { method: 'POST', body: JSON.stringify({
         source_rule_id: ruleEdit.value.source_rule_id,
         rule_id: template.rule_id,
         rule_name: template.rule_name,
         description: template.description || '',
       }) })
-      await api(`/rules/${encodeURIComponent(template.rule_id)}`, { method: 'PUT', body: JSON.stringify(template) })
+      await mutateRule(`/rules/${encodeURIComponent(template.rule_id)}`, { method: 'PUT', body: JSON.stringify(template) })
       toast.success(ruleEdit.value.mode === 'new' ? t('customRuleCreated') : t('customRuleCopiedSaved'))
     } else {
-      await api(`/rules/${encodeURIComponent(ruleEdit.value.id)}`, { method: 'PUT', body: JSON.stringify(template) })
+      await mutateRule(`/rules/${encodeURIComponent(ruleEdit.value.id)}`, { method: 'PUT', body: JSON.stringify(template) })
       toast.success(t('ruleUpdated'))
     }
     ruleEdit.value = null
@@ -284,7 +293,7 @@ async function deleteRule(rule: RuleSummary) {
   const ok = await confirm({ title: t('deleteRuleTitle'), content: t('deleteRuleContent', { name: rule.rule_name || rule.rule_id }), positiveText: t('deleteRuleAction'), type: 'error' })
   if (!ok) return
   try {
-    await api(`/rules/${encodeURIComponent(rule.rule_id)}`, { method: 'DELETE' })
+    await mutateRule(`/rules/${encodeURIComponent(rule.rule_id)}`, { method: 'DELETE' })
     toast.success(t('deleted'))
     await load()
   } catch (e: unknown) { error.value = errorMessage(e) }
@@ -384,6 +393,7 @@ async function deleteRule(rule: RuleSummary) {
           </div>
         </div>
 
+        <RuleResourcesEditor v-model="ruleForm.special_stats" />
         <label>{{ t('gmRulePrompt') }}<textarea rows="5" v-model="ruleForm.gm_prompt_appendix"></textarea></label>
         <CombatExtensionEditor
           v-model="combatDraft"
