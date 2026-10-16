@@ -31,6 +31,8 @@ from __future__ import annotations
 import re
 from typing import Any
 
+from src.engine.world.contracts import RELATION_KINDS
+
 from src.adventures.gates import GateError, validate_gates
 
 ADVENTURE_GRAPH_FORMAT_V2 = "diceframe:adventure-graph-v2"
@@ -170,6 +172,8 @@ def _validate_world_seed(raw: Any) -> dict[str, Any]:
         extra = sorted(set(relation) - {"relation_id", "kind", "from_ref", "to_ref", "visibility", "source_ref"})
         if extra:
             raise AdventureGraphV2Error(f"world_seed relation has unknown field: {extra[0]!r}")
+        if relation["kind"] not in RELATION_KINDS:
+            raise AdventureGraphV2Error(f"world_seed relation kind is invalid: {relation['kind']!r}")
     for fact in facts:
         if not isinstance(fact, dict) or not fact.get("key") or "value" not in fact:
             raise AdventureGraphV2Error("world_seed fact needs key and value")

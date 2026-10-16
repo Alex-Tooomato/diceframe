@@ -248,6 +248,11 @@ class AdventureBundleLoader:
         runtime_validator = adventure_validator_for(str(manifest.required_runtime_id or ""))
         if runtime_validator is not None:
             runtime_validator(entities)
+        # Installation must not depend on the installer's display language.
+        # Validate every declared overlay without applying it to the selected
+        # view, so a non-default locale cannot conceal mechanics overrides.
+        for declared_locale in manifest.supported_locales:
+            self._apply_locale(root, declared_locale, deepcopy(entities))
         self._apply_locale(root, manifest.default_locale, entities)
         if active_locale != manifest.default_locale:
             self._apply_locale(root, active_locale, entities)
