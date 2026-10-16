@@ -74,6 +74,7 @@ class GameLifecycleDependencies:
     # Optional pool used when a newly-created custom world should keep the
     # ruleset's varied default covers for future saves.
     list_default_scene_images: Callable[[str, str], list[dict[str, str]]] | None = None
+    get_game_defaults: Callable[[], dict[str, Any]] = lambda: {}
 
 
 class CreationPhase(str, Enum):

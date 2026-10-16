@@ -1,6 +1,8 @@
 """Seat model routing: persistence, invalid references and in-flight fences."""
 from __future__ import annotations
 
+from legacy_save_fixtures import legacy_table_payload
+
 import copy
 import asyncio
 import json
@@ -303,6 +305,7 @@ async def test_failed_settings_save_restores_the_previous_policy():
 
 def test_v35_migration_materializes_reference_only_policy_and_preserves_future_slot():
     old = copy.deepcopy(table().to_dict())
+    old = legacy_table_payload(old)
     old["instance_schema_version"] = 35
     old["modules"].pop("ai_seats")
     migrated = migrate_game_state_payload(old)

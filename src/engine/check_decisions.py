@@ -13,6 +13,7 @@ from typing import Any
 from src.engine.dice_rules_coc import check_d100_bonus, coc_success_level, project_percentile_dice
 from src.engine.game_state import GameState
 from src.engine.modules import checks, session_stats
+from src.engine import module_hooks
 from src.engine.player_control import control_mode
 
 OPEN = frozenset({"pending", "requested", "offered"})
@@ -46,7 +47,8 @@ def validate_all(inst: Any) -> None:
 
 def prepare(inst: Any, rule: Any) -> None:
     """Offer newly failed ordinary checks; never reopen restored decisions."""
-    if (rule is None or not rule.template.get("pushed_rolls")
+    if (not module_hooks.ask(module_hooks.STATE_READ, inst, module_hooks.PUSH_ENABLED, default=True)
+            or rule is None or not rule.template.get("pushed_rolls")
             or rule.advantage_mechanic.get("type") != "coc_bonus_penalty"):
         return
     checks.require_writable(inst)
@@ -90,6 +92,20 @@ def close(check: dict, *, status: str = "declined", reason: str = "") -> None:
         push["revision"] += 1
 
 
+def close_disabled(inst: Any) -> list[str]:
+    """Accept original results for unfinished choices; never replay resolved rolls."""
+    checks.require_writable(inst)
+    validate_all(inst)
+    closed = []
+    for check in checks.last_checks(inst):
+        push = _state(check)
+        if push is not None and _in_scope(inst, push) and push['status'] in OPEN:
+            close(check, reason='push_disabled_by_gm')
+            closed.append(str(check.get('check_id') or ''))
+    _sync(inst)
+    return closed
+
+
 def _sync(inst: Any) -> None:
     if checks.last_check(inst):
         target = next((c for c in checks.last_checks(inst) if c.get("check_id") == checks.last_check(inst).get("check_id")), None)
@@ -106,6 +122,8 @@ def _text(value: Any) -> str:
 def change(inst: Any, check_id: str, uid: str, operation: str, *, run_id: str,
            round_number: int, expected_revision: int, reason: Any = None,
            consequence: Any = None, rng: Any = None) -> dict:
+    if not module_hooks.ask(module_hooks.STATE_READ, inst, module_hooks.PUSH_ENABLED, default=True):
+        raise ValueError('Push is disabled for this table')
     checks.require_writable(inst)
     session_stats.require_writable(inst)
     validate_all(inst)

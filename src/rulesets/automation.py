@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from src.engine import module_hooks
+
 from collections.abc import Awaitable, Callable
 from copy import deepcopy
 from datetime import datetime, timezone
@@ -168,11 +170,11 @@ def apply_director_automation(
     if not initial_intents:
         return []
     from src.engine import module_hooks
-    from src.engine.modules import narrative_notes, ruleset_runtime
+    from src.engine.modules import ruleset_runtime
 
     # The snapshot below includes the scene; reject an unsupported notes slot
     # before any batch runs so the rollback never has to touch it.
-    narrative_notes.require_writable(instance)
+    module_hooks.preflight(instance, module_hooks.NARRATIVE_VIEW)
     before = {
         "ruleset_state": deepcopy(ruleset_runtime.state(instance)),
         "event_ledger": deepcopy(ruleset_runtime.event_ledger(instance)),
@@ -181,7 +183,7 @@ def apply_director_automation(
         "combat_active": module_hooks.combat_view(instance)["combat_active"],
         "initiative_order": deepcopy(module_hooks.combat_view(instance)["initiative_order"]),
         "initiative_current": module_hooks.combat_view(instance)["initiative_current"],
-        "scene": narrative_notes.scene(instance),
+        "scene": module_hooks.narrative_view(instance)["scene"],
     }
     batches: list[dict[str, Any]] = []
     try:

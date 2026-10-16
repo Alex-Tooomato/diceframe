@@ -44,6 +44,7 @@ class PlayerStateApplier:
         players_update: dict,
         rule=None,
         allowed_player_uids: set | None = None,
+        health_runtime=None,
     ) -> dict[str, frozenset[str]]:
         """应用玩家字段更新，并汇总每个角色本轮真正变化的 live state 域。
 
@@ -64,6 +65,7 @@ class PlayerStateApplier:
                 )
                 continue
             cs = instance.get_character_sheet(uid)
+            hp_before = int(cs.get("hp", 0) or 0)
             hp_change = pud.get("hp_change")
             if isinstance(hp_change, (int, float)):
                 max_hp = cs.get("max_hp", 100)
@@ -165,6 +167,15 @@ class PlayerStateApplier:
                             instance.players[uid].get("character_name", uid),
                             progression_state.round_value(instance), cs.get("hp", 0))
             instance.set_character_sheet(uid, cs)
+            if health_runtime is not None:
+                accepted = health_runtime.apply_narrative_hp_delta(
+                    instance, str(uid), int(cs.get("hp", 0) or 0) - hp_before,
+                )
+                if "hp_change" in pud:
+                    if accepted:
+                        pud["hp_change"] = accepted
+                    else:
+                        pud.pop("hp_change", None)
             if domains:
                 changed_domains[uid] = frozenset(domains)
         return changed_domains

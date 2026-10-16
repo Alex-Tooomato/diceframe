@@ -38,6 +38,8 @@ with a fake LLM client that captures every prompt it is handed.
 
 from __future__ import annotations
 
+from src.engine.modules import game_config
+
 import logging
 from types import SimpleNamespace
 from typing import Any
@@ -54,7 +56,7 @@ from src.commands.ai_player import (
 from src.commands.check_planner import plan_round_checks
 from src.engine.checks import resolve_check_request
 from src.engine.game_instance import GameInstance, GameState
-from src.engine.modules import table_settings
+
 from src.engine.player_control import get_control, set_control
 from src.engine.world_state import apply_world_ops
 from src.rules.rule_system import RuleSystem
@@ -104,7 +106,7 @@ def make_instance(
     instance = GameInstance(game_key=("web", "ai-player", "bot"), rule_id="test")
     instance.state = GameState.ACTIVE_ACTION
     instance.round_number = 1
-    table_settings.replace_solo_mode(instance, solo)
+    game_config.replace_solo_mode(instance, solo)
     for uid in humans:
         # 走真实席位写入路径：控制记录由聚合保证存在。
         instance.put_player(uid, {
@@ -340,7 +342,7 @@ async def test_solo_mode_fills_ai_actions_then_auto_advances() -> None:
     llm = FakePlayerLLM()
     dependencies = make_dependencies(instance, llm_client=llm)
 
-    assert table_settings.solo_mode(instance) is True
+    assert game_config.solo_mode(instance) is True
     result = await submit_action(dependencies, "game", "h1", "我点亮提灯。")
 
     assert result["payload"]["advanced"] is True

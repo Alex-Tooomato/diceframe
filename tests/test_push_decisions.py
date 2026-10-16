@@ -1,3 +1,5 @@
+
+from legacy_save_fixtures import legacy_table_payload
 from src.engine.modules import checks
 """Player consent, Keeper risk and server-only re-rolls for CoC Push."""
 from copy import deepcopy
@@ -132,6 +134,7 @@ def test_unknown_push_schema_blocks_processing_and_migration_never_replays_check
     with pytest.raises(ValueError):
         check_decisions.pending(inst)
     payload = inst.to_dict()
+    payload = legacy_table_payload(payload)
     payload["instance_schema_version"] = 37
     migrated = migrate_game_state_payload(payload)
     assert migrated["instance_schema_version"] == CURRENT_INSTANCE_SCHEMA_VERSION

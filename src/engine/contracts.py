@@ -146,6 +146,8 @@ class RoundLogEntry(TypedDict, total=False):
     round: int
     actions: list[ActionRecord]
     gm_response: str
+    story: NotRequired[dict[str, Any]]
+    swipe_stories: NotRequired[list[dict[str, Any] | None]]
     state_changes: list[str]
     check_results: list[CheckResult]
     round_start_snapshot: dict[str, Any]

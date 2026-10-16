@@ -6,6 +6,8 @@
 
 from __future__ import annotations
 
+from src.engine.modules import game_config
+
 import logging
 from dataclasses import dataclass
 from pathlib import Path
@@ -15,7 +17,8 @@ from src.compat.callbacks import load_world_template as load_world_template_comp
 from src.content.gm_style import render_gm_style_section
 from src.engine.game_instance import GameInstance
 from src.engine.language import DEFAULT_LANGUAGE, gm_language_instruction, localized_text
-from src.engine.modules import ruleset_runtime, table_settings
+from src.engine.modules import ruleset_runtime
+from src.engine import module_hooks
 from src.engine.narrative_perspective import narrative_perspective_instruction
 from src.llm.context_builder import (
     build_context,
@@ -51,11 +54,13 @@ class PromptComposer:
         rules_dir: Path,
         memory_store: MemoryStore | None = None,
         ruleset_registry: RulesetRuntimeRegistry | None = None,
+        context_recent_rounds: int = 0,
     ):
         self.prompts_dir = prompts_dir
         self.rules_dir = rules_dir
         self.memory_store = memory_store
         self.ruleset_registry = ruleset_registry
+        self.context_recent_rounds = context_recent_rounds
         self.auto_storyboard = False
 
     def set_auto_storyboard(self, enabled: bool) -> None:
@@ -165,7 +170,7 @@ class PromptComposer:
                     ctx.rule_appendix = rule.get_gm_prompt_appendix(language)
                     ctx.combat_model = rule.combat_model
                     ctx.dice_system = rule.dice_system
-                    difficulty_text = rule.get_difficulty_instructions(table_settings.difficulty(instance), language)
+                    difficulty_text = rule.get_difficulty_instructions(game_config.difficulty(instance), language)
                     if difficulty_text:
                         ctx.rule_appendix = ctx.rule_appendix + "\n\n" + difficulty_text
                     stat_appendix = rule.resource_tag_appendix(language)
@@ -203,7 +208,7 @@ class PromptComposer:
         style_section = render_gm_style_section(
             world_data,
             language,
-            override=table_settings.gm_style_override(instance),
+            override=module_hooks.narration_preferences(instance)["gm_style_override"],
         )
         if style_section:
             gm_prompt = gm_prompt + "\n\n" + style_section
@@ -294,6 +299,8 @@ class PromptComposer:
                     "keine anderen Statusänderungen vorliegen, darf NONE erst nach der SCENE_PANEL-Zeile stehen."
                 ),
             })
+        for section in module_hooks.read(instance, module_hooks.GM_PROMPT_SECTIONS):
+            gm_prompt += "\n\n" + str(section)
         return gm_prompt
 
     async def build_user_context(
@@ -333,6 +340,7 @@ class PromptComposer:
             world_events_text=world_events_text,
             state_view=state_view,
             authoritative_events_text=authoritative_events_text,
+            context_recent_rounds=self.context_recent_rounds,
         )
 
     async def build_player_safe_context(

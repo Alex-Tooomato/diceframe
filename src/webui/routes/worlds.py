@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 from aiohttp import web
 
 from src.webui.routes._common import (
@@ -17,12 +19,18 @@ async def api_worlds(request: web.Request) -> web.Response:
 
 
 async def api_world_create(request: web.Request) -> web.Response:
+    if (denied := require_content_owner(request)) is not None:
+        return denied
     body = await request.json()
-    return web.json_response(_get_api(request).create_world(
+    if error := _narrative_request_error(body):
+        return web.json_response({"ok": False, "error": error}, status=400)
+    result = _get_api(request).create_world(
         body.get("name", ""),
         body.get("description", ""),
         body.get("language", ""),
-    ))
+        **{field: body[field] for field in ("world_setting", "starter_scene") if field in body},
+    )
+    return web.json_response(result, status=200 if result.get("ok") else 400)
 
 
 async def api_world_clone_from_template(request: web.Request) -> web.Response:
@@ -34,12 +42,9 @@ async def api_world_clone_from_template(request: web.Request) -> web.Response:
     return web.json_response(result, status=200 if result.get("ok") else 404)
 
 
-async def api_world_update(request: web.Request) -> web.Response:
-    if (denied := require_content_owner(request)) is not None:
-        return denied
-    body = await request.json()
+def _narrative_request_error(body: Any) -> str | None:
     if not isinstance(body, dict):
-        return web.json_response({"ok": False, "error": "请求体必须是对象"}, status=400)
+        return "请求体必须是对象"
     for field, limit, label in (
         ("world_setting", 16000, "世界设定"),
         ("starter_scene", 8192, "开场场景"),
@@ -48,9 +53,18 @@ async def api_world_update(request: web.Request) -> web.Response:
             continue
         value = body[field]
         if not isinstance(value, str):
-            return web.json_response({"ok": False, "error": f"{label}必须是文本"}, status=400)
+            return f"{label}必须是文本"
         if len(value) > limit:
-            return web.json_response({"ok": False, "error": f"{label}过长（上限 {limit} 字）"}, status=400)
+            return f"{label}过长（上限 {limit} 字）"
+    return None
+
+
+async def api_world_update(request: web.Request) -> web.Response:
+    if (denied := require_content_owner(request)) is not None:
+        return denied
+    body = await request.json()
+    if error := _narrative_request_error(body):
+        return web.json_response({"ok": False, "error": error}, status=400)
     narrative_kwargs = {
         field: body[field]
         for field in ("world_setting", "starter_scene")

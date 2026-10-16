@@ -103,6 +103,34 @@ class _FakeSession:
         return _FakeResponse()
 
 
+@pytest.mark.asyncio
+async def test_anthropic_forwards_explicit_sampling_without_rewriting_native_budget(monkeypatch):
+    provider = ProviderConfig("native", "https://synthetic.invalid", "test", "native-test", api_format="anthropic")
+    client = LLMClient([provider], "native", generation_options={"temperature": .2, "top_p": .8})
+    session = _FakeSession()
+    async def session_for_test():
+        return session
+    monkeypatch.setattr(client, "_get_session", session_for_test)
+    await client._call_anthropic(provider, "system", "input", .7, 123)
+    assert session.calls[0]["json"]["temperature"] == .2
+    assert session.calls[0]["json"]["top_p"] == .8
+    assert session.calls[0]["json"]["max_tokens"] == 123
+    assert "max_completion_tokens" not in session.calls[0]["json"]
+
+
+@pytest.mark.asyncio
+async def test_anthropic_rejects_unsupported_explicit_penalty_before_http(monkeypatch):
+    provider = ProviderConfig("native", "https://synthetic.invalid", "test", "native-test", api_format="anthropic")
+    client = LLMClient([provider], "native", generation_options={"presence_penalty": .3})
+    session = _FakeSession()
+    async def session_for_test():
+        return session
+    monkeypatch.setattr(client, "_get_session", session_for_test)
+    with pytest.raises(ValueError, match="presence_penalty"):
+        await client._call_anthropic(provider, "system", "input", .7, 123)
+    assert session.calls == []
+
+
 class _EmptyOpenAIResponse(_FakeResponse):
     async def json(self):
         return {

@@ -7,12 +7,17 @@ from aiohttp.test_utils import TestClient, TestServer
 import pytest
 
 from src.webui.routes.auth import ACCESS_PASSWORD_CONFIGURED_KEY
-from src.webui.routes.worlds import api_world_definition, api_world_update
+from src.webui.routes.worlds import api_world_create, api_world_definition, api_world_update
 
 
 class _Api:
     def __init__(self) -> None:
         self.update_calls: list[dict] = []
+        self.create_calls: list[dict] = []
+
+    def create_world(self, *args, **kwargs):
+        self.create_calls.append({"args": args, "kwargs": kwargs})
+        return {"ok": True, "world_id": "new-world"}
 
     def get_world_definition(self, world_id: str, language: str):
         return {
@@ -44,9 +49,28 @@ async def _auth_middleware(request: web.Request, handler):
 def _build_app(api: _Api) -> web.Application:
     app = web.Application(middlewares=[_auth_middleware])
     app["api"] = api
+    app.router.add_post("/api/worlds", api_world_create)
     app.router.add_get("/api/worlds/{world_id}/definition", api_world_definition)
     app.router.add_put("/api/worlds/{world_id}", api_world_update)
     return app
+
+
+@pytest.mark.asyncio
+async def test_world_create_validates_and_forwards_independent_narrative() -> None:
+    api = _Api()
+    async with TestClient(TestServer(_build_app(api))) as client:
+        denied = await client.post("/api/worlds", json={"name": "World"})
+        assert denied.status == 403
+        for payload in ([], {"world_setting": None}, {"starter_scene": "x" * 8193}):
+            invalid = await client.post("/api/worlds", json=payload, headers={"X-Owner": "1"})
+            assert invalid.status == 400
+        assert api.create_calls == []
+        valid = await client.post("/api/worlds", json={
+            "name": "World", "description": "Intro", "language": "en",
+            "world_setting": "Full setting", "starter_scene": "",
+        }, headers={"X-Owner": "1"})
+        assert valid.status == 200
+        assert api.create_calls == [{"args": ("World", "Intro", "en"), "kwargs": {"world_setting": "Full setting", "starter_scene": ""}}]
 
 
 @pytest.mark.asyncio

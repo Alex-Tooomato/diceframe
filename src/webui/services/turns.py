@@ -6,6 +6,8 @@ HTTP routes 只负责读取请求和绑定 SSE 回调；回合状态机、骰子
 
 from __future__ import annotations
 
+from src.engine.modules import game_config
+
 import logging
 from collections.abc import Awaitable, Callable
 from contextlib import nullcontext
@@ -14,7 +16,7 @@ from typing import TYPE_CHECKING, Any, Protocol, TypedDict
 
 from src.commands.round_processor import RoundNotProcessed, RoundProcessingFailure
 from src.engine import check_decisions, progression
-from src.engine.modules import adventure_runtime_state, checks, economy_state, round_safety, ruleset_runtime, session_stats, table_settings
+from src.engine.modules import adventure_runtime_state, checks, economy_state, round_safety, ruleset_runtime, session_stats
 from src.engine.action_gate import (
     ACTOR_DECEASED,
     ECONOMY_DECISION_PENDING,
@@ -818,7 +820,7 @@ async def submit_action(
             None,
         )
         existing_pending_roll = bool(existing_action and existing_action.get("dice_pending"))
-        if table_settings.solo_mode(instance):
+        if game_config.solo_mode(instance):
             action_count = sum(1 for action in instance.action_queue if action.get("user_id") == actor_uid)
             if action_count >= MAX_ACTIONS_PER_TURN:
                 return _result({"error": f"本回合已达行动上限（{MAX_ACTIONS_PER_TURN} 条）"}, 400)

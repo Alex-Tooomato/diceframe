@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
+from src.engine.modules import game_config
+
 import re
 from copy import deepcopy
 from hashlib import sha256
 from typing import Any
 
-from src.engine.modules import ruleset_runtime, table_settings
+from src.engine.modules import ruleset_runtime
 from src.rulesets.bundle import LoadedRulesetBundle
 from src.rulesets.dnd2024.play.contracts import story_encounter_instance_id
 from src.rulesets.events import EventBatchError, apply_event_batch, stable_batch_id
@@ -175,7 +177,7 @@ class Dnd2024CampaignEngine:
         mode = str(automation.get("mode") or "")
         if mode not in AUTOMATION_MODES:
             automation["mode"] = (
-                "auto" if bool(table_settings.solo_mode(instance)) else "assist"
+                "auto" if bool(game_config.solo_mode(instance)) else "assist"
             )
         world_binding = campaign.setdefault(
             "world_binding", deepcopy(self._initial_campaign()["world_binding"]),
@@ -280,7 +282,7 @@ class Dnd2024CampaignEngine:
         tutorial = campaign["tutorial"]
         if (
             is_gm
-            and bool(table_settings.solo_mode(instance))
+            and bool(game_config.solo_mode(instance))
             and session.get("status") == "not_started"
             and tutorial.get("status") in {"not_started", "unavailable"}
         ):
@@ -542,7 +544,7 @@ class Dnd2024CampaignEngine:
         party = campaign.get("party_decision") or {}
         if str(party.get("status") or "") == "open":
             return True
-        if bool(table_settings.solo_mode(instance)) or len(instance.players) <= 1:
+        if bool(game_config.solo_mode(instance)) or len(instance.players) <= 1:
             return False
         tutorial = campaign.get("tutorial") or {}
         if tutorial.get("status") != "active":
@@ -729,7 +731,7 @@ class Dnd2024CampaignEngine:
         } and not is_gm:
             raise CampaignIntentError("only the GM can perform this campaign operation")
         if intent_type == "session_zero.quick_start":
-            if not bool(table_settings.solo_mode(instance)):
+            if not bool(game_config.solo_mode(instance)):
                 raise CampaignIntentError("recommended quick start is only available in solo mode")
             tutorial = state["campaign"]["tutorial"]
             if (

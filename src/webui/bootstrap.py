@@ -17,7 +17,7 @@ from src.docker_launcher.data_versions import (
 )
 from src.ai_providers import resolve_provider
 from src.adventures import sync_adventure_catalog
-from src.common_factory import TRPGSubsystems
+from src.common_factory import TRPGSubsystems, close_model_clients
 from src.hub_client import HubClient
 from src.plugin_host import PluginHost
 from src.template_catalog import sync_template_catalog
@@ -362,8 +362,7 @@ class WebUIBootstrap:
             await subsystems.registry.save_all_active()
         except Exception:
             self.logger.exception("关闭前保存失败")
-        if subsystems.llm_client:
-            await subsystems.llm_client.close()
+        await close_model_clients(subsystems)
         if subsystems.memory_store and subsystems.memory_store.embedding_client:
             await subsystems.memory_store.embedding_client.close()
         subsystems.lorebook_store.close()

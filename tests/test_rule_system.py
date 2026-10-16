@@ -325,3 +325,14 @@ def test_skill_base_value_fallback_for_custom_skill():
         "equipment": [],
     })
     assert errors == []
+
+
+@pytest.mark.parametrize("thresholds", [
+    {"80": 6, "20": 1, "50": 3},
+    {"20": 1, "50": 3, "80": 6},
+])
+def test_skill_bonus_uses_highest_applicable_threshold_independent_of_json_order(thresholds):
+    rule = RuleSystem({"rule_id": "threshold-test", "skill_value_to_bonus": thresholds})
+    assert rule.skill_bonus(90) == 6
+    assert rule.skill_bonus(60) == 3
+    assert rule.skill_bonus(10) == 0

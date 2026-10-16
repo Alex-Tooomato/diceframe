@@ -7,16 +7,17 @@ from dataclasses import dataclass
 from typing import Any, Callable, Protocol
 
 from src.engine import module_hooks
-from src.engine.modules import checks, progression_state, session_stats, table_settings
+from src.engine.modules import checks, progression_state, session_stats
 from src.engine.game_state import GameState
 from src.llm.parser import sanitize_narration
+from src.engine.story import public_story
 
 GameKey = tuple[str, ...]
 
 PUBLIC_LOG_FIELDS = frozenset({
     "round", "actions", "player_actions", "gm_response", "state_changes",
     "check_results", "swipes", "current_swipe", "timestamp",
-    "story_recaps", "scene_image",
+    "story_recaps", "scene_image", "story",
 })
 
 # The image prompts are written by the GM model from GM context and may name
@@ -65,6 +66,12 @@ def get_log(
     page_items = copy.deepcopy(log[-end:-start] if start else log[-end:])
     for entry in page_items:
         entry["gm_response"] = sanitize_narration(entry.get("gm_response", ""))
+        if "story" in entry:
+            story = public_story(inst, entry["story"])
+            if story is None:
+                entry.pop("story", None)
+            else:
+                entry["story"] = story
         swipes = entry.get("swipes")
         if isinstance(swipes, list):
             entry["swipes"] = [
@@ -128,7 +135,7 @@ def get_log(
         "page": page,
         "total_pages": max(1, (total + per_page - 1) // per_page),
         "check_reveals": check_reveals_map,
-        "dice_reveal_mode": table_settings.dice_reveal_mode(inst),
+        "dice_reveal_mode": module_hooks.check_presentation(inst)["dice_reveal_mode"],
     }
 
 

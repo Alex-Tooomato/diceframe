@@ -1,6 +1,8 @@
-﻿"""主游戏流程处理器 —— 回合推进 + LLM 调用 + 结果播报。"""
+"""主游戏流程处理器 —— 回合推进 + LLM 调用 + 结果播报。"""
 
 from __future__ import annotations
+
+from src.engine import module_hooks
 
 import logging
 from pathlib import Path
@@ -35,7 +37,7 @@ from src.commands.state_recap import (
 from src.commands.story_recap import StoryRecapGenerator
 from src.commands.swipe_generator import SwipeGenerator
 from src.engine.language import DEFAULT_LANGUAGE
-from src.engine.modules import narrative_notes
+
 from src.lorebook.retrieval import LoreRetriever
 from src.content_modules.projection import ContentProjectionService
 from src.rulesets.builtin import build_default_ruleset_registry
@@ -62,6 +64,9 @@ class GameHandler:
         brief_max_tokens: int = 4096,
         analysis_max_tokens: int = 4096,
         ruleset_registry: RulesetRuntimeRegistry | None = None,
+        context_recent_rounds: int = 0,
+        check_model_enabled: bool = False,
+        check_llm_client: LLMClient | None = None,
     ):
         self.registry = registry
         self._combat = CombatResolver()
@@ -78,6 +83,7 @@ class GameHandler:
         self.ruleset_registry = ruleset_registry or build_default_ruleset_registry()
         self._prompt = PromptComposer(
             self.prompts_dir, self.rules_dir, self.memory_store, self.ruleset_registry,
+            context_recent_rounds=context_recent_rounds,
         )
         self.worlds_dir = worlds_dir or (Path(__file__).parent.parent.parent / "templates" / "worlds")
         self._plugin_host = None
@@ -119,6 +125,8 @@ class GameHandler:
             narrative_max_tokens,
             summary_max_tokens,
             analysis_max_tokens,
+            check_model_enabled=check_model_enabled,
+            check_llm_client=check_llm_client,
             lore_retriever=self.lore_retriever,
             content_projection=self.content_projection,
         )
@@ -177,6 +185,10 @@ class GameHandler:
         self.lore_retriever.invalidate_world(world_id)
 
     # ---- 新建游戏 ----
+
+    def set_game_defaults_provider(self, provider) -> None:
+        """Composition seam shared by Web and Bot creation; existing saves are untouched."""
+        self._factory.set_defaults_provider(provider)
 
     async def create_game(
         self, game_key: tuple, world_id: str, world_name: str,
@@ -340,7 +352,7 @@ class GameHandler:
         """兼容旧内部调用；实际逻辑已拆到 StateUpdateApplier。"""
         # The applier can write the scene after other state; reject an
         # unsupported notes slot before any of it changes.
-        narrative_notes.require_writable(instance)
+        module_hooks.preflight(instance, module_hooks.NARRATIVE_VIEW)
         self._state_applier.apply_state_update(instance, update)
 
     def load_item_categories(self, instance: GameInstance) -> dict[str, list[str]]:

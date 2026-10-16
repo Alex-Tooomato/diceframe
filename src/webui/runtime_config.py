@@ -28,6 +28,8 @@ from src.migrations.config import (
     GENERATION_DEFAULTS_VERSION,
     migrate_generation_defaults,
 )
+from src.llm.generation_options import validate_generation_options, validate_recent_rounds
+from src.game_preferences import validate_preferences
 from src.network_proxy import (
     effective_proxy_url,
     is_supported_proxy_url,
@@ -230,6 +232,11 @@ class ConfigStore:
         proxy_url = env.get("TRPG_PROXY_URL") or config_proxy_url or env_proxy_url
 
         state: dict[str, Any] = {
+            "llm_generation_options": validate_generation_options(saved.get("llm_generation_options", {})),
+            "context_recent_rounds": validate_recent_rounds(saved.get("context_recent_rounds", 0)),
+            "check_model_enabled": bool(saved.get("check_model_enabled", False)),
+            "check_provider_ref": str(saved.get("check_provider_ref", "")),
+            "check_model": str(saved.get("check_model", "")),
             "generation_defaults_version": GENERATION_DEFAULTS_VERSION,
             "model": model,
             "web_port": port,
@@ -290,6 +297,7 @@ class ConfigStore:
                 saved.get("imagegen_timeout_seconds", 120)
             ),
             "test_timeout_seconds": float(saved.get("test_timeout_seconds", 30)),
+            "game_defaults": validate_preferences(saved.get("game_defaults", {})),
             "economy_auto_reward_enabled": bool(
                 saved.get("economy_auto_reward_enabled", True)
             ),

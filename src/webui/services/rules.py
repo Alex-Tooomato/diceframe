@@ -12,6 +12,7 @@ from typing import Any
 
 from src.rules.rule_system import SUPPORTED_DICE_SYSTEMS, RuleSystem
 from src.rules.loader import RuleBundleLoader
+from src.rules.definition_validation import validate_special_stats
 from src.engine.currency import (
     CurrencySystemError,
     declares_currency_schema,
@@ -314,6 +315,11 @@ def update_custom_rule(
         return {"ok": False, "error": "规则名称不能为空"}
     if not isinstance(template.get("attributes", []), list):
         return {"ok": False, "error": "attributes 必须是数组"}
+    if diagnostics := validate_special_stats(template):
+        return {
+            "ok": False, "code": "INVALID_RULE_TEMPLATE", "diagnostics": diagnostics,
+            "error": "; ".join(f"{item['path']}: {item['message']}" for item in diagnostics),
+        }
     dice_system = str(template.get("dice_system") or "d20").lower()
     if dice_system not in SUPPORTED_DICE_SYSTEMS:
         supported = ", ".join(sorted(SUPPORTED_DICE_SYSTEMS))

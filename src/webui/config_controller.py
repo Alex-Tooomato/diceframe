@@ -16,6 +16,7 @@ import aiohttp
 from aiohttp import web
 
 from src.ai_providers import resolve_provider
+from src.common_factory import close_model_clients
 from src.memory.embedding import EmbeddingClient
 from src.network_proxy import (
     effective_proxy_url,
@@ -69,6 +70,10 @@ class ConfigController:
 
     async def get(self, request: web.Request) -> web.Response:
         public = self.dependencies.public_config()
+        # Defaults can contain private Keeper instructions; anonymous bootstrap
+        # clients and invited seats must not receive the owner profile.
+        if not request.get("owner_authenticated", False) and request.get(ACCESS_PASSWORD_CONFIGURED_KEY) is not False:
+            public.pop("game_defaults", None)
         # The instance id keys a client's content-sync mapping. Only the owner
         # syncs with the library, so anonymous probes do not get a stable
         # identifier for the server.
@@ -255,14 +260,7 @@ class ConfigController:
             and old_subsystems is not None
             and subsystems is not None
         ):
-            if (
-                old_subsystems.llm_client
-                and old_subsystems.llm_client is not subsystems.llm_client
-            ):
-                try:
-                    await old_subsystems.llm_client.close()
-                except Exception:
-                    self.logger.warning("关闭旧模型客户端失败", exc_info=True)
+            await close_model_clients(old_subsystems, keep=subsystems)
             new_embedding = getattr(
                 subsystems.memory_store,
                 "embedding_client",
@@ -304,8 +302,7 @@ class ConfigController:
     ) -> None:
         if candidate is None or candidate is previous:
             return
-        if candidate.llm_client:
-            await candidate.llm_client.close()
+        await close_model_clients(candidate, keep=previous)
         candidate_embedding = getattr(
             candidate.memory_store,
             "embedding_client",

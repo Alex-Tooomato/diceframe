@@ -144,6 +144,20 @@ class AuthoritativeIntentHooks(Protocol):
 
 
 @runtime_checkable
+class NarrativeHealthRuntime(Protocol):
+    """Optional owner for HP changes proposed through generic narration.
+
+    Preflight runs before generic player mutations. Settlement receives the
+    bounded net HP delta, then repairs the legacy projection from authoritative
+    state and returns the delta actually accepted by the ruleset.
+    """
+
+    def preflight_narrative_health(self, instance: Any) -> None: ...
+
+    def apply_narrative_hp_delta(self, instance: Any, user_id: str, delta: int) -> int: ...
+
+
+@runtime_checkable
 class NarrativeStatePolicyRuntime(Protocol):
     """Optional adapter for filtering generic LLM state before it is applied."""
 

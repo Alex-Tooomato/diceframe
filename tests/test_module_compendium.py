@@ -27,9 +27,10 @@ def _make_module(plugin_dir: Path, *, module_id: str, profile: str | None, plugi
         "name": module_id.replace("-", " ").title(),
         "version": "1.0.0",
         "plugin_type": plugin_type,
-        "entrypoint": ["python", "-c", "pass"],
         "contributes": contributes or {},
     }
+    if plugin_type != "content-pack" or profile is None:
+        manifest["entrypoint"] = ["python", "-c", "pass"]
     if profile is not None:
         manifest["content_profile"] = profile
         manifest["content_delivery_mode"] = "catalog"

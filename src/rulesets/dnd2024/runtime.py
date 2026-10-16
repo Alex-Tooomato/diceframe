@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from src.engine import module_hooks
+
 import logging
 from collections.abc import Mapping
 from copy import deepcopy
@@ -888,6 +890,7 @@ class Dnd2024Runtime:
         ).revive_player(instance, str(user_id), hp)
         if not result.get("ok"):
             raise ValueError(str(result.get("error") or "unable to revive character"))
+
         if result.get("applied"):
             updated = deepcopy(instance.get_character_sheet(str(user_id)))
             revision = int(updated.get("ruleset_revision", 0) or 0) + 1
@@ -904,6 +907,15 @@ class Dnd2024Runtime:
             updated["ruleset_revision"] = revision
             updated["ruleset_operation_log"] = operation_log[-32:]
             instance.set_character_sheet(str(user_id), updated)
+
+    @staticmethod
+    def preflight_narrative_health(instance: Any) -> None:
+        ruleset_runtime.require_writable(instance)
+
+    def apply_narrative_hp_delta(self, instance: Any, user_id: str, delta: int) -> int:
+        from .narrative_health import settle_narrative_hp
+        engine = Dnd2024CombatEngine(self.load_bundle(str(instance.language or "en")))
+        return settle_narrative_hp(engine, instance, user_id, delta)
 
     @staticmethod
     def memory_deltas_from_event_batch(
@@ -947,11 +959,11 @@ class Dnd2024Runtime:
     def apply_event_batch(
         self, instance: Any, batch: dict[str, Any],
     ) -> dict[str, Any]:
-        from src.engine.modules import narrative_notes
+
 
         # Campaign steps write the scene after the batch commits; reject an
         # unsupported notes slot before any ruleset state changes.
-        narrative_notes.require_writable(instance)
+        module_hooks.preflight(instance, module_hooks.NARRATIVE_VIEW)
         locale = str(getattr(instance, "language", "") or "")
         bundle = self.load_bundle(locale)
         before_characters = {

@@ -28,7 +28,7 @@ from src.password_hashing import hash_password
 
 logger = logging.getLogger("trpg")
 
-CURRENT_INSTANCE_SCHEMA_VERSION = 44
+CURRENT_INSTANCE_SCHEMA_VERSION = 45
 
 # 内置 freeform_coc 在 Currency Model V2 中把 base_unit 从「美元」升级为
 # 「美分」（1 amount = 1 美分），存量 CoC 存档的所有 canonical 金额必须 ×100
@@ -1175,6 +1175,11 @@ def migrate_game_state_payload(data: Mapping[str, Any]) -> dict[str, Any]:
     if version == 43:
         payload = _migrate_v43_to_v44(payload)
         version = 44
+    if version == 44:
+        from src.migrations.table_preferences import split_table_preferences
+
+        payload = split_table_preferences(payload)
+        version = 45
     payload["instance_schema_version"] = version
     return payload
 

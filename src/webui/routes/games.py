@@ -98,6 +98,12 @@ from src.webui.routes.game_lifecycle_routes import (
     api_switch_world,
     api_create_from_seed,
 )
+from src.webui.routes.storytelling import (
+    api_story_speakers,
+    api_merge_story_speakers,
+    api_set_story_mode,
+    api_set_story_speaker_portrait,
+)
 from src.webui.routes.manual_roll_routes import api_manual_roll_list, api_manual_roll_create, api_manual_roll_resolve, api_manual_roll_cancel
 
 
@@ -117,6 +123,8 @@ def register_games(app: web.Application) -> None:
     register_check_modes(app)
     from src.webui.routes.check_decisions import register as register_check_decisions
     register_check_decisions(app)
+    from src.webui.routes.game_preferences import register as register_game_preferences
+    register_game_preferences(app)
     app.router.add_get("/api/games", api_games)
     app.router.add_post("/api/games/import", api_import_game)
     app.router.add_get("/api/games/{game_key}", api_detail)
@@ -154,6 +162,19 @@ def register_games(app: web.Application) -> None:
     )
     app.router.add_post(
         "/api/games/{game_key}/settings/reward-policy", api_set_reward_policy
+    )
+    app.router.add_post(
+        "/api/games/{game_key}/settings/story-mode", api_set_story_mode
+    )
+    app.router.add_get(
+        "/api/games/{game_key}/story-speakers", api_story_speakers
+    )
+    app.router.add_post(
+        "/api/games/{game_key}/story-speakers/merge", api_merge_story_speakers
+    )
+    app.router.add_put(
+        "/api/games/{game_key}/story-speakers/{speaker_id}/portrait",
+        api_set_story_speaker_portrait,
     )
     app.router.add_post(
         "/api/games/{game_key}/players/{user_id}/away", api_set_player_away

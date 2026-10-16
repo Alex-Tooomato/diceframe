@@ -11,6 +11,9 @@ from typing import Any
 
 import aiohttp
 
+from src.llm.openai_transport import OpenAIChatTransport
+from src.llm.generation_options import apply_anthropic_options, validate_generation_options
+
 logger = logging.getLogger("trpg")
 
 MAX_RETRIES = 3          # 总共尝试次数（含首次）
@@ -115,6 +118,7 @@ class LLMResponse:
     token_budget_initial: int = 0  # 本次调用最初配置的最大输出 token
     token_budget_used: int = 0     # 成功响应实际使用的最大输出 token 档位
     system_notices: list[str] = field(default_factory=list)  # 不属于 GM 正文的系统提示
+    story: dict[str, Any] | None = None  # Validated public presentation, independent of rule effects.
 
 
 @dataclass
@@ -148,6 +152,7 @@ class LLMClient:
         default: str,
         proxy_url: str = "",
         request_timeout_seconds: float = 120,
+        generation_options: dict[str, Any] | None = None,
     ):
         if not providers:
             raise ValueError("至少需要配置一个模型供应商")
@@ -162,6 +167,12 @@ class LLMClient:
         self._native_tool_unsupported: set[str] = set()
         # 强制 tool_choice 被拒但 tool_choice=auto 可用的供应商（如思考模式模型）
         self._native_tool_auto: set[str] = set()
+        self.generation_options = validate_generation_options({} if generation_options is None else generation_options)
+        self._openai_transport = OpenAIChatTransport(self.generation_options)
+
+    def _anthropic_body(self, body: dict[str, Any]) -> dict[str, Any]:
+        apply_anthropic_options(body, self.generation_options)
+        return body
 
     async def _get_session(self) -> aiohttp.ClientSession:
         """获取或懒创建复用的 HTTP session。"""
@@ -363,8 +374,8 @@ class LLMClient:
             body["parallel_tool_calls"] = False
         session = await self._get_session()
         request_kwargs = {"proxy": self.proxy_url} if self.proxy_url else {}
-        async with session.post(
-            url,
+        async with self._openai_transport.post(
+            session, url,
             json=body,
             headers=headers,
             timeout=self.request_timeout,
@@ -454,7 +465,7 @@ class LLMClient:
         request_kwargs = {"proxy": self.proxy_url} if self.proxy_url else {}
         async with session.post(
             _anthropic_messages_url(provider.base_url),
-            json=body,
+            json=self._anthropic_body(body),
             headers=headers,
             timeout=self.request_timeout,
             **request_kwargs,
@@ -722,7 +733,7 @@ class LLMClient:
 
         session = await self._get_session()
         request_kwargs = {"proxy": self.proxy_url} if self.proxy_url else {}
-        async with session.post(url, json=body, headers=headers,
+        async with self._openai_transport.post(session, url, json=body, headers=headers,
                                 timeout=self.request_timeout,
                                 **request_kwargs) as resp:
             if resp.status != 200:
@@ -773,7 +784,7 @@ class LLMClient:
 
         session = await self._get_session()
         request_kwargs = {"proxy": self.proxy_url} if self.proxy_url else {}
-        async with session.post(url, json=body, headers=headers,
+        async with session.post(url, json=self._anthropic_body(body), headers=headers,
                                 timeout=self.request_timeout,
                                 **request_kwargs) as resp:
             if resp.status != 200:
@@ -857,7 +868,7 @@ class LLMClient:
         content_parts: list[str] = []
         finish_reason = "stop"
         total_tokens = 0
-        async with session.post(url, json=body, headers=headers,
+        async with self._openai_transport.post(session, url, json=body, headers=headers,
                                 timeout=self.request_timeout,
                                 **request_kwargs) as resp:
             if resp.status != 200:
@@ -939,7 +950,7 @@ class LLMClient:
         stop_reason = "end_turn"
         input_tokens = 0
         output_tokens = 0
-        async with session.post(url, json=body, headers=headers,
+        async with session.post(url, json=self._anthropic_body(body), headers=headers,
                                 timeout=self.request_timeout,
                                 **request_kwargs) as resp:
             if resp.status != 200:

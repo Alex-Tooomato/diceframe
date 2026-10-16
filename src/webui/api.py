@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from src.engine.modules import economy_state
+
 import asyncio
 import json
 import logging
@@ -16,7 +18,7 @@ from src.engine.game_instance import GameRegistry
 from src.engine import persistence
 from src.webui.services.adventure_materialization import materialize_world_seed
 from src.engine.memory_outbox import pending_memory_deliveries, pending_memory_reversals
-from src.engine.modules import table_settings
+
 from src.engine.participant_view import Viewer
 from src.lorebook.store import LorebookStore
 from src.adventures import AdventureBundleLoader, AdventureResolver
@@ -31,13 +33,15 @@ from src.rulesets.builtin import (
 from src.rulesets.registry import RulesetRuntimeRegistry
 from src.engine.world_template import load_world_template
 from src.content_modules.projection import ContentProjectionService
-from src.webui.services import adventures, asr, avatars, bot_access, bot_extensions, character_cards, characters, content, content_pack_maps, game_controls, game_lifecycle, game_master, game_media, game_packages, game_queries, generated_images, generation, knowledge, kp_questions, logs, lorebooks, map_backgrounds, maps, tavern, turns, worlds, rules, ruleset_advancement, ruleset_builder, ruleset_gameplay, ruleset_rest, plugins, modules, scene_images, speech, system, tunnel, announcements, assistant, hub, legal, manual_rolls, check_reveals, seat_tokens
+from src.webui.services import adventures, asr, avatars, bot_access, bot_extensions, character_cards, characters, content, content_pack_maps, game_controls, game_lifecycle, game_master, game_media, game_packages, game_queries, generated_images, generation, knowledge, kp_questions, logs, lorebooks, map_backgrounds, maps, tavern, turns, worlds, rules, ruleset_advancement, ruleset_builder, ruleset_gameplay, ruleset_rest, plugins, modules, scene_images, speech, system, tunnel, announcements, assistant, hub, legal, manual_rolls, check_reveals, seat_tokens, storytelling
 from src.webui.services import lorebook_usage
 from src.webui.services import combat_extension as combat_extension_service
 from src.webui.services import adventure_runtime
 from src.game_profiles.service import ProfileService, ProfileDependencies
 from src.webui.services.ai_seats import AISeatDependencies, AISeatRuntime, AISeatService
 from src.webui.services.check_decisions import CheckDecisionDependencies, CheckDecisionService
+from src.webui.services.game_preferences import GamePreferenceDependencies, GamePreferenceService
+from src.game_preferences import UNSET, validate_preferences
 from src.webui.services.check_modes import CheckModeDependencies, CheckModeService
 from src.commands.hosted_combat import HostedCombatScheduler
 from src.webui.services import ruleset_characters
@@ -172,6 +176,13 @@ class WebAPI:
         self._check_decisions = CheckDecisionService(CheckDecisionDependencies(
             get_instance=self.get_game_instance, save_instance=self._reg.save,
         ))
+        self._game_preferences = GamePreferenceService(GamePreferenceDependencies(
+            get_instance=self.get_game_instance, save_instance=self._reg.save,
+            load_rule=self._load_rule_for_game, get_runtime=self._load_runtime_for_game,
+            get_defaults=lambda: validate_preferences((getattr(self, '_config_state', {}) or {}).get('game_defaults', {})),
+        ))
+        if callable(getattr(handler, 'set_game_defaults_provider', None)):
+            handler.set_game_defaults_provider(lambda: validate_preferences((getattr(self, '_config_state', {}) or {}).get('game_defaults', {})))
         self._check_modes = CheckModeService(CheckModeDependencies(
             get_instance=lambda key: self._reg.get(_parse_game_key(key)), save_instance=self._reg.save,
             load_rule=self._load_rule_for_game, rulesets=self._ruleset_registry,
@@ -300,6 +311,16 @@ class WebAPI:
             ),
             lorebook=self._lore,
             rebuild_lorebook_index=self._rebuild_lorebook_index,
+        )
+        self._storytelling = storytelling.StorytellingService(
+            storytelling.StorytellingDependencies(
+                parse_game_key=_parse_game_key,
+                get_instance=self._reg.get,
+                save_instance=self._reg.save,
+                validate_portrait=lambda portrait: characters.validate_character_portrait(
+                    self._character_dependencies.assets, portrait,
+                ),
+            )
         )
         self._ruleset_advancement_dependencies = (
             ruleset_advancement.RulesetAdvancementDependencies(
@@ -865,6 +886,7 @@ class WebAPI:
                     instance,
                 ),
                 clean_public_narration=game_queries.clean_public_narration,
+                get_game_defaults=lambda: validate_preferences((getattr(self, '_config_state', {}) or {}).get('game_defaults', {})),
                 resume_after_creation=lambda instance: turns.resume_after_creation(
                     self._turn_dependencies,
                     "|".join(instance.game_key),
@@ -1887,6 +1909,26 @@ class WebAPI:
         uid = inst.gm_uid if viewer.is_gm and inst is not None else viewer.uid
         return await turns.continue_after_decision(self._turn_dependencies, game_key, uid, decision, **kwargs)
 
+    def game_preferences(self, game_key: str, viewer: Any, *, include_defaults: bool = False) -> dict:
+        return self._game_preferences.get(game_key, viewer, include_defaults=include_defaults)
+
+    async def update_game_preferences(self, game_key: str, viewer: Any, values: Any, **kwargs) -> turns.TurnResult:
+        result = await self._game_preferences.update(game_key, viewer, values)
+        if result.get('ok') and result.get('closed_push_decisions'):
+            inst = self.get_game_instance(game_key)
+            try:
+                resumed = await turns.continue_after_decision(self._turn_dependencies, game_key,
+                    inst.gm_uid if inst is not None else viewer.uid, result, **kwargs)
+            except Exception:
+                logger.exception('Preferences saved but round continuation failed: %s', game_key)
+                resumed = {'payload': {'ok': False, 'error_code': 'RESUME_FAILED'}}
+            # Preferences are already durable; a subsequent generation failure
+            # must not make the UI revert the switch.
+            return {'payload': {**result, 'resume': resumed['payload']}, 'status': 200}
+        status = 200 if result.get('ok') else {'GAME_NOT_FOUND': 404, 'GM_ONLY': 403,
+            'REWRITE_IN_PROGRESS': 409, 'STALE_RUN': 409, 'ROUND_PROCESSING': 409, 'SAVE_FAILED': 500}.get(result.get('error_code'), 422)
+        return {'payload': result, 'status': status}
+
     async def advance_turn(self, game_key: str, actor_uid: str, **kwargs) -> turns.TurnResult:
         return await turns.advance_round(
             self._turn_dependencies,
@@ -2090,9 +2132,13 @@ class WebAPI:
                 logger.warning("list_worlds 同步插件世界书失败，已跳过", exc_info=True)
         return worlds.list_worlds(self._world_dependencies)
 
-    def create_world(self, name: str, description: str = "", language: str = "") -> dict[str, Any]:
+    def create_world(
+        self, name: str, description: str = "", language: str = "",
+        *, world_setting: str | None = None, starter_scene: str | None = None,
+    ) -> dict[str, Any]:
         return worlds.create_world(
             self._world_dependencies, name, description, language,
+            world_setting=world_setting, starter_scene=starter_scene,
         )
 
     def update_world(
@@ -2348,6 +2394,20 @@ class WebAPI:
             self._character_dependencies, game_key, npc_id, portrait,
         )
 
+    async def set_story_mode(self, game_key: str, mode: Any) -> dict[str, Any]:
+        return await self._storytelling.set_mode(game_key, mode)
+
+    async def set_story_speaker_portrait(
+        self, game_key: str, speaker_id: str, portrait: Any,
+    ) -> dict[str, Any]:
+        return await self._storytelling.set_portrait(game_key, speaker_id, portrait)
+
+    def list_story_speakers(self, game_key: str) -> dict[str, Any]:
+        return self._storytelling.list_speakers(game_key)
+
+    async def merge_story_speakers(self, game_key: str, source: Any, target: Any) -> dict[str, Any]:
+        return await self._storytelling.merge_speakers(game_key, source, target)
+
     async def resolve_payment(self, game_key: str, payment_id: str, accepted: bool, session_uid: str = "") -> dict[str, Any]:
         return await characters.resolve_payment(
             self._character_dependencies,
@@ -2370,7 +2430,7 @@ class WebAPI:
     def economy_auto_reward_settings(self, instance: Any = None) -> tuple[bool, int]:
         """按局解析奖励自动结算 (enabled, gold_cap)。
 
-        优先级：本局 GM 覆盖（table_settings.economy_reward_policy）→ 规则模板
+        优先级：本局 GM 覆盖（economy_state.reward_policy）→ 规则模板
         economy_defaults（D&D 金币与 COC 美元的量级不同）→ 服务器全局配置
         兜底。规则模板读取失败时按无默认值处理，不影响本局覆盖与全局兜底。
         """
@@ -2387,7 +2447,7 @@ class WebAPI:
         except Exception:
             logger.warning("读取规则模板奖励默认值失败，回退全局配置", exc_info=True)
         return resolve_auto_reward_policy(
-            game_policy=table_settings.economy_reward_policy(instance),
+            game_policy=economy_state.reward_policy(instance),
             rule_template=rule_template,
             global_enabled=global_enabled,
             global_cap=global_cap,
@@ -2404,7 +2464,7 @@ class WebAPI:
         except ValueError as exc:
             return {"ok": False, "error": str(exc)}
         await self.save_game_instance(instance)
-        return {"ok": True, "economy_reward_policy": table_settings.economy_reward_policy(instance)}
+        return {"ok": True, "economy_reward_policy": economy_state.reward_policy(instance)}
 
     async def combat_extension_scheduler_advance(self, game_key: str) -> dict[str, Any]:
         """通用战斗扩展：GM 推进 ATB 时间（gauge 累积至有人就绪）。"""
@@ -3000,10 +3060,11 @@ class WebAPI:
                            adventure_source_kind: str = "",
                            adventure_source_id: str = "",
                            play_mode: str = "",
-                           narrative_perspective: str = "auto",
-                           gm_style_override: dict[str, Any] | None = None,
-                           advancement_mode: str = "milestone",
-                           advancement_authority: str = "ai_gm",
+                           narrative_perspective: Any = UNSET,
+                           story_mode: Any = UNSET,
+                           gm_style_override: Any = UNSET,
+                           advancement_mode: Any = UNSET,
+                           advancement_authority: Any = UNSET,
                            unclaimed_control_default: str = "",
                            world_ref: dict[str, Any] | None = None,
                            book_bindings: list[dict[str, Any]] | None = None) -> dict[str, Any]:
@@ -3021,6 +3082,7 @@ class WebAPI:
             adventure_source_id=adventure_source_id,
             play_mode=play_mode,
             narrative_perspective=narrative_perspective,
+            story_mode=story_mode,
             gm_style_override=gm_style_override,
             advancement_mode=advancement_mode,
             advancement_authority=advancement_authority,
@@ -3045,11 +3107,13 @@ class WebAPI:
                                gm_uid: str = "",
                                language: str = "",
                                scene_image: dict[str, Any] | None = None,
-                               narrative_perspective: str = "") -> dict[str, Any]:
+                               narrative_perspective: str = "",
+                               story_mode: str = "") -> dict[str, Any]:
         return await self._game_lifecycle.create_from_seed(
             seed_code=seed_code, solo=solo, players=players, gm_uid=gm_uid,
             language=language, scene_image=scene_image,
             narrative_perspective=narrative_perspective,
+            story_mode=story_mode,
         )
 
     async def update_scene_image(

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from src.engine.modules import game_config
+
 import random
 from types import SimpleNamespace
 import pytest
@@ -10,7 +12,7 @@ from src.engine.player_control import set_control
 from src.rulesets.dnd2024.runtime import Dnd2024Runtime
 from src.rulesets.dnd2024.play import resolve_story_encounter_access
 from src.rulesets.automation import apply_director_automation
-from src.engine.modules import ruleset_runtime, table_settings
+from src.engine.modules import ruleset_runtime
 
 
 def _character(runtime: Dnd2024Runtime, preset_id: str, name: str) -> dict:
@@ -119,7 +121,7 @@ def test_session_zero_requires_every_player_and_revisions_reset_consent() -> Non
 
 def test_solo_quick_start_uses_safe_defaults_and_enters_first_tutorial_step() -> None:
     runtime, instance = _instance(adventure=True)
-    table_settings.replace_solo_mode(instance, True)
+    game_config.replace_solo_mode(instance, True)
     actions = runtime.available_intents(instance, "gm")
 
     assert "session_zero.quick_start" in {item["type"] for item in actions}
@@ -139,7 +141,7 @@ def test_solo_quick_start_uses_safe_defaults_and_enters_first_tutorial_step() ->
 
 def test_automation_mode_is_persisted_and_only_the_gm_can_change_it() -> None:
     runtime, instance = _instance(multiplayer=True)
-    table_settings.replace_solo_mode(instance, False)
+    game_config.replace_solo_mode(instance, False)
     _agreement(runtime, instance)
 
     campaign = runtime.gameplay_view(instance, "ally", False)["campaign"]
@@ -171,7 +173,7 @@ def test_automation_mode_is_persisted_and_only_the_gm_can_change_it() -> None:
 
 def test_auto_mode_starts_only_the_canonical_story_encounter() -> None:
     runtime, instance = _instance(adventure=True)
-    table_settings.replace_solo_mode(instance, True)
+    game_config.replace_solo_mode(instance, True)
     _agreement(runtime, instance)
     _submit(runtime, instance, "tutorial.start", adventure_id="lanterns_of_greymoor")
     _submit(runtime, instance, "tutorial.choose", choice_id="inspect_cold_ash")
@@ -195,7 +197,7 @@ def test_auto_mode_starts_only_the_canonical_story_encounter() -> None:
 @pytest.mark.asyncio
 async def test_auto_mode_maps_free_text_to_a_valid_adventure_choice() -> None:
     runtime, instance = _instance(adventure=True)
-    table_settings.replace_solo_mode(instance, True)
+    game_config.replace_solo_mode(instance, True)
     _submit(runtime, instance, "session_zero.quick_start")
     instance.action_queue = [{"user_id": "gm", "text": "I inspect the cold ash closely."}]
 
@@ -220,7 +222,7 @@ async def test_auto_mode_maps_free_text_to_a_valid_adventure_choice() -> None:
 
 def test_active_adventure_step_owns_scene_while_free_play_keeps_legacy_scene_tags() -> None:
     runtime, adventure = _instance(adventure=True)
-    table_settings.replace_solo_mode(adventure, True)
+    game_config.replace_solo_mode(adventure, True)
     _submit(runtime, adventure, "session_zero.quick_start")
 
     filtered = runtime.filter_narrative_state_update(
@@ -470,7 +472,7 @@ def test_public_combat_feed_keeps_death_save_hp_and_combat_end_reason() -> None:
 
 def test_auto_mode_can_start_a_valid_free_play_catalog_encounter() -> None:
     runtime, instance = _instance()
-    table_settings.replace_solo_mode(instance, True)
+    game_config.replace_solo_mode(instance, True)
     _submit(runtime, instance, "session_zero.quick_start")
     proposal = {
         "kind": "combat", "mode": "auto", "confidence": 0.95,
@@ -498,7 +500,7 @@ def test_loaded_but_inactive_adventure_does_not_replace_free_play_encounter_cata
 
 def test_campaign_step_grants_one_shot_authoritative_encounter_access() -> None:
     runtime, instance = _instance(adventure=True)
-    table_settings.replace_solo_mode(instance, True)
+    game_config.replace_solo_mode(instance, True)
     _submit(runtime, instance, "session_zero.quick_start")
     _submit(runtime, instance, "tutorial.choose", choice_id="inspect_cold_ash")
     _submit(runtime, instance, "tutorial.choose", choice_id="reassure_mira")
@@ -667,7 +669,7 @@ def test_multiplayer_party_decision_tie_break_is_deterministic_and_gm_can_force(
 
 def test_standard_professional_game_has_no_tutorial_actions() -> None:
     runtime, instance = _instance()
-    table_settings.replace_solo_mode(instance, True)
+    game_config.replace_solo_mode(instance, True)
     _submit(runtime, instance, "session_zero.quick_start")
     gameplay = runtime.gameplay_view(instance, "gm", True)
     assert gameplay["campaign"]["tutorial"]["status"] == "unavailable"

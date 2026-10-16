@@ -63,7 +63,8 @@ async def test_saving_public_base_url_keeps_active_runtime(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_model_runtime_reload_reuses_live_stores_and_closes_old_client(monkeypatch, tmp_path):
+@pytest.mark.parametrize("dedicated", [False, True])
+async def test_model_runtime_reload_reuses_live_stores_and_closes_old_client(monkeypatch, tmp_path, dedicated):
     """通过真实 factory + API facade 验证热重载，而不是伪造 subsystem。"""
     original_state = dict(web_server.STATE)
     runtime_root = tmp_path / "runtime"
@@ -86,11 +87,19 @@ async def test_model_runtime_reload_reuses_live_stores_and_closes_old_client(mon
         "proxy_enabled": False,
         "proxy_url": "",
         "embedding_enabled": False,
+        "check_model_enabled": False,
     })
+    if dedicated:
+        baseline.update({
+            "ai_providers": [{"id": "local", "base_url": "http://localhost:8000/v1", "api_format": "openai", "models": ["old-model", "new-model", "judge", "judge2"]}],
+            "llm_provider_ref": "local", "check_provider_ref": "local",
+            "check_model_enabled": True, "check_model": "judge",
+        })
     web_server.STATE.clear()
     web_server.STATE.update(baseline)
     old_runtime = web_server._build_subsystems(config=baseline)
     old_session = await old_runtime.llm_client._get_session()
+    check_session = await old_runtime.check_llm_client._get_session() if dedicated else None
     app = {
         "subsystems": old_runtime,
         "api": web_server._make_api(old_runtime, config=baseline),
@@ -99,7 +108,7 @@ async def test_model_runtime_reload_reuses_live_stores_and_closes_old_client(mon
 
     try:
         response = await web_server.api_config_post(
-            _ConfigRequest({"model": "new-model"}, app)
+            _ConfigRequest({"model": "new-model", **({"check_model": "judge2", "context_recent_rounds": 12, "llm_generation_options": {"temperature": .4}} if dedicated else {})}, app)
         )
 
         assert response.status == 200
@@ -112,9 +121,16 @@ async def test_model_runtime_reload_reuses_live_stores_and_closes_old_client(mon
         assert new_runtime.llm_client.providers["default"].model_name == "new-model"
         assert app["api"]._reg is old_runtime.registry
         assert old_session.closed is True
+        if dedicated:
+            assert check_session.closed is True
+            assert new_runtime.check_llm_client.providers["check"].model_name == "judge2"
+            assert new_runtime.llm_client.generation_options == {"temperature": .4}
+            assert new_runtime.handler._prompt.context_recent_rounds == 12
     finally:
         active_runtime = app["subsystems"]
         await active_runtime.llm_client.close()
+        if active_runtime.check_llm_client:
+            await active_runtime.check_llm_client.close()
         active_runtime.lorebook_store.close()
         active_runtime.memory_store.close()
         web_server.STATE.clear()

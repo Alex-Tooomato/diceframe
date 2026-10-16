@@ -1,6 +1,8 @@
 """统一检定请求：从玩家行动生成规则无关的 CheckRequest，并完成原始掷骰。"""
 
 from __future__ import annotations
+
+from src.engine.modules import game_config
 from src.engine.modules import progression_state
 
 import json
@@ -22,7 +24,7 @@ from src.engine.dice import (
 )
 from src.engine.game_instance import GameInstance
 from src.engine.language import localized_text, normalize_language
-from src.engine.modules import ruleset_runtime, table_settings
+from src.engine.modules import ruleset_runtime
 from src.engine.modules.check_modes import apply_grant
 from src.rules.rule_system import RuleSystem
 
@@ -747,10 +749,10 @@ def resolve_check_request(
     total = roll_value + modifier
     try:
         raw_dc = int(request["target"]) if request.get("target") is not None else (
-            rule.dc_for_difficulty(table_settings.difficulty(instance), "normal") if rule else 10
+            rule.dc_for_difficulty(game_config.difficulty(instance), "normal") if rule else 10
         )
     except (TypeError, ValueError):
-        raw_dc = rule.dc_for_difficulty(table_settings.difficulty(instance), "normal") if rule else 10
+        raw_dc = rule.dc_for_difficulty(game_config.difficulty(instance), "normal") if rule else 10
     dc = max(1, min(d20_dc_cap(rule), raw_dc))
 
     trusted_attack_dc = (
@@ -804,7 +806,7 @@ def resolve_check_request(
         ])) or None,
         "total": total,
         "dc": dc,
-        "difficulty": table_settings.difficulty(instance),
+        "difficulty": game_config.difficulty(instance),
         "target_source": "server_armor_class" if trusted_attack_dc is not None else "request_dc",
         "opponent_name": opponent_name,
         "opponent_roll": opponent_roll,

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import pytest
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -101,6 +102,31 @@ BUILTIN_TEMPLATE = {
 
 # ---- clone_world_from_template ----
 
+
+@pytest.mark.parametrize("setting,opening", [("独立完整背景", "独立开场"), ("", "")])
+def test_create_world_preserves_explicit_narrative_fields(tmp_path, setting, opening) -> None:
+    api = make_api(tmp_path)
+    result = worlds_service.create_world(
+        api, "新世界", "只是摘要", "en", world_setting=setting, starter_scene=opening,
+    )
+    assert result["ok"] is True
+    world_id = result["world_id"]
+    loaded = worlds_service.get_world_definition(api, world_id)["world"]
+    assert loaded["description"] == "只是摘要"
+    assert loaded["world_setting"] == setting
+    assert loaded["starter_scene"] == opening
+    assert loaded["language"] == "en"
+    assert api.lorebook.get_world(world_id)["description"] == "只是摘要"
+
+
+@pytest.mark.parametrize("field,value", [("world_setting", 1), ("world_setting", "x" * 16001), ("starter_scene", "x" * 8193)])
+def test_create_world_rejects_invalid_narrative_before_creating_any_data(tmp_path, field, value) -> None:
+    api = make_api(tmp_path)
+    result = worlds_service.create_world(api, "新世界", **{field: value})
+    assert result["ok"] is False
+    assert api.lorebook.list_worlds() == []
+    assert list(tmp_path.iterdir()) == []
+
 def test_create_world_materializes_an_editable_user_template(tmp_path) -> None:
     api = make_api(tmp_path)
 
@@ -113,6 +139,7 @@ def test_create_world_materializes_an_editable_user_template(tmp_path) -> None:
     assert data["custom"] is True
     assert data["world_name"] == "手动世界"
     assert data["world_setting"] == "群岛与雾"
+    assert data["starter_scene"] == "群岛与雾"
     assert data["starter_lorebook"] == []
 
     style = worlds_service.update_world_gm_style(api, world_id, {"tone": "诗意"})

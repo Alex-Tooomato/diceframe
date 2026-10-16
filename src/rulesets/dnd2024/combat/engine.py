@@ -11,6 +11,7 @@ from src.engine.player_control import is_ai_controlled
 from src.engine.modules import ruleset_runtime
 from src.rulesets.bundle import LoadedRulesetBundle
 from src.rulesets.dnd2024.character.builder import ability_modifier
+from src.rulesets.dnd2024.character.reconciliation import merge_live_character_projection
 from src.rulesets.dnd2024.combat.catalog import Dnd2024CombatCatalog
 from src.rulesets.dnd2024.content.encounter import expand_encounter_enemies
 from src.rulesets.dnd2024.features import Dnd2024ClassFeatureResolver
@@ -732,7 +733,7 @@ class Dnd2024CombatEngine(
             ruleset_runtime.replace_state(instance, ruleset_state)
             for uid, canonical in updated["characters"].items():
                 existing = deepcopy(instance.get_character_sheet(uid))
-                projection = self._project_character(canonical)
+                projection = merge_live_character_projection(existing, self._project_character(canonical))
                 existing.update(projection)
                 instance.set_character_sheet(uid, existing)
             ruleset_runtime.replace_event_ledger(instance, ledger)

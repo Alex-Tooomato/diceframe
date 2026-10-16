@@ -2,6 +2,10 @@
 
 from __future__ import annotations
 
+from src.engine.modules import game_config
+
+from src.engine import module_hooks
+
 import json
 import logging
 import re
@@ -26,9 +30,7 @@ from src.engine.dice import d20_dc_cap
 from src.engine.economy import MAX_ECONOMY_AMOUNT
 from src.engine.game_instance import GameInstance
 from src.engine.language import localized_text
-from src.engine.modules import (
-    economy_state, narrative_notes, progression_state, ruleset_runtime, table_settings,
-)
+from src.engine.modules import economy_state, progression_state, ruleset_runtime
 from src.engine.modules.check_modes import apply_grant
 from src.engine.world_events import MAX_ADVANCE_MINUTES
 from src.engine.world_legality import (
@@ -456,13 +458,13 @@ def _planner_context(instance: GameInstance, rule: RuleSystem | None) -> str:
         ruleset["max_check_dc"] = d20_dc_cap(rule)
     payload = {
         "round": progression_state.round_value(instance),
-        "scene": str(narrative_notes.scene(instance) or "")[:500],
+        "scene": str(module_hooks.narrative_view(instance)["scene"] or "")[:500],
         "recent_narration": [
             sanitize_narration(str(entry.get("gm_response") or ""))[:1000]
             for entry in instance.log[-2:]
             if entry.get("gm_response")
         ],
-        "difficulty": table_settings.difficulty(instance),
+        "difficulty": game_config.difficulty(instance),
         "ruleset": ruleset,
         "players": players,
         # AI 队友作为可选检定主体：模型只负责选"谁执行/什么检定"，
@@ -724,7 +726,7 @@ def normalize_check_specs(
             target=target if dice_system == "d20" else None,
             modifier=modifier,
             advantage_mode=advantage_mode,
-            baseline_dc=rule.dc_for_difficulty(table_settings.difficulty(instance), "normal") if rule else None,
+            baseline_dc=rule.dc_for_difficulty(game_config.difficulty(instance), "normal") if rule else None,
             dc_cap=d20_dc_cap(rule),
             supports_advantage=rule is None or rule.supports_advantage_mode(advantage),
             dc_reason=str(raw.get("dc_reason") or ""),

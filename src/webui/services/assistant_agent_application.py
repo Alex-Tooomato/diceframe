@@ -1,12 +1,14 @@
 """DF Agent adapters over explicit application services, never a WebAPI locator."""
 from __future__ import annotations
 
+from src.engine import module_hooks
+
 import inspect
 from copy import deepcopy
 from dataclasses import dataclass
 from typing import Any, Callable
 
-from src.engine.modules import narrative_notes, progression_state, session_stats
+from src.engine.modules import progression_state, session_stats
 from src.webui.services._common import is_game_gm
 from src.webui.services.assistant_agent import AgentTool, _digest
 
@@ -61,7 +63,7 @@ def application_tools(deps: AgentApplicationDependencies) -> tuple[AgentTool, ..
             "round_number": progression_state.peek_round_value(instance),
             "last_activity": session_stats.last_activity(instance),
             "players": deepcopy(instance.players),
-            "scene": deepcopy(narrative_notes.scene(instance)),
+            "scene": deepcopy(module_hooks.narrative_view(instance)["scene"]),
         })
 
     def catalog_guard(args, owner):

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from src.engine.modules import game_config
+
 import json
 import logging
 import secrets
@@ -11,10 +13,14 @@ from typing import Any
 
 from src.commands.game_lifecycle import RunInitializationError
 from src.engine.game_instance import GameState
-from src.engine.modules import adventure_runtime_state, content_binding, progression_state, room_access, table_settings
+from src.engine.modules import adventure_runtime_state, content_binding, progression_state, room_access
 from src.content_modules.refs import ContentRef, ContentRefError, parse_content_ref
 from src.engine.language import DEFAULT_LANGUAGE, normalize_language
 from src.engine.narrative_perspective import validate_narrative_perspective
+from src.engine.story import validate_story_mode
+from src.engine import module_hooks
+from src.engine import game_preferences
+from src.game_preferences import UNSET, validate_preferences
 from src.content.gm_style import normalize_gm_style_override
 from src.rulesets.contracts import LiveAdvancementPolicyRuntime
 
@@ -114,16 +120,31 @@ async def create_game(
     adventure_source_kind: str = "",
     adventure_source_id: str = "",
     play_mode: str = "",
-    narrative_perspective: str = "auto",
-    gm_style_override: dict[str, Any] | None = None,
-    advancement_mode: str = "milestone",
-    advancement_authority: str = "ai_gm",
+    narrative_perspective: Any = UNSET,
+    story_mode: Any = UNSET,
+    gm_style_override: Any = UNSET,
+    advancement_mode: Any = UNSET,
+    advancement_authority: Any = UNSET,
     unclaimed_control_default: str = "",
     world_ref: dict[str, Any] | None = None,
     book_bindings: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     if not dependencies.handler or not dependencies.registry:
         return {"ok": False, "error": "系统未就绪"}
+    defaults = validate_preferences(getattr(dependencies, 'get_game_defaults', lambda: {})())
+    narrative_perspective = defaults['narrative_perspective'] if narrative_perspective is UNSET else narrative_perspective
+    story_mode = defaults['story_mode'] if story_mode is UNSET else story_mode
+    gm_style_override = defaults['gm_style_override'] if gm_style_override is UNSET else gm_style_override
+    advancement_mode = defaults['advancement_mode'] if advancement_mode is UNSET else advancement_mode
+    advancement_authority = defaults['advancement_authority'] if advancement_authority is UNSET else advancement_authority
+    try:
+        normalized_story_mode = validate_story_mode(story_mode)
+    except (TypeError, ValueError):
+        return {
+            "ok": False,
+            "error_code": "INVALID_STORY_MODE",
+            "error": "故事模式无效，仅支持 prose 或 dialogue",
+        }
     if config_error := dependencies.llm_configuration_error(language):
         return config_error
     parsed_world_ref: ContentRef | None = None
@@ -342,6 +363,9 @@ async def create_game(
     )
     if content_error is not None:
         return content_error
+    # Story mode is a module-owned preference and must be established before
+    # opening generation so the generation path sees the selected mode.
+    module_hooks.record(instance, module_hooks.STORY_MODE, normalized_story_mode)
     adventure_runtime_state.replace_play_mode(instance, normalized_play_mode)
     # FIX-04 §6.5/§6.6：v2 冒险在同一创建事务里初始化进度并原子物化世界种子；
     # 失败即整体回滚（不留下 partial save / partial world）。
@@ -367,6 +391,7 @@ async def create_game(
         narrative_perspective=normalized_narrative_perspective,
     )
     instance.set_gm_style_override(normalized_gm_style)
+    game_preferences.apply(instance, {key: defaults[key] for key in ('push_enabled', 'quick_actions_enabled', 'dice_reveal_mode', 'luck_timeout_seconds')})
     if isinstance(runtime, LiveAdvancementPolicyRuntime):
         try:
             runtime.configure_live_advancement(
@@ -508,7 +533,8 @@ async def create_game(
         "players": created_players,
         "round_number": progression_state.round_value(instance),
         "state": instance.state.value,
-        "seed_code": table_settings.seed_code(instance),
+        "seed_code": game_config.seed_code(instance),
+        "story_mode": module_hooks.ask(module_hooks.STATE_READ, instance, module_hooks.STORY_MODE, default="prose"),
         "adventure_binding": dict(instance.adventure_binding),
     }
 
@@ -541,7 +567,7 @@ async def reset_game(
         "narration": dependencies.clean_public_narration(
             inst.log[-1].get("gm_response", "") if inst.log else ""
         ),
-        "seed_code": table_settings.seed_code(inst),
+        "seed_code": game_config.seed_code(inst),
     }
 
 
@@ -570,7 +596,7 @@ async def restart_game(
         "narration": dependencies.clean_public_narration(
             inst.log[-1].get("gm_response", "") if inst.log else ""
         ),
-        "seed_code": table_settings.seed_code(inst),
+        "seed_code": game_config.seed_code(inst),
     }
 
 

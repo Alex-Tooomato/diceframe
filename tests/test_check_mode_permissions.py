@@ -1,3 +1,5 @@
+
+from legacy_save_fixtures import legacy_table_payload
 from src.engine.modules import checks, ruleset_runtime
 """Player requests never become mechanical grants; persisted GM decisions do."""
 from copy import deepcopy
@@ -222,6 +224,7 @@ def test_v36_migration_preserves_completed_checks_and_unknown_mode_schema():
     from src.migrations.instance import migrate_game_state_payload
 
     payload = game().to_dict()
+    payload = legacy_table_payload(payload)
     payload["instance_schema_version"] = 36
     payload["modules"].pop("check_modes")
     completed = {"check_id": "old", "advantage_mode": "advantage", "rolls": [3, 17], "roll": 17}

@@ -574,6 +574,9 @@ def test_only_session_stats_owners_assign_fields() -> None:
     # Same names on unrelated response/plugin objects are not session stats.
     unrelated = {
         (SRC / "commands" / "protocol_repair.py", "repaired", "total_tokens"),
+        # Model-response usage accumulated across a format-repair call; it
+        # reaches persisted session totals only through record_llm_usage.
+        (SRC / "commands" / "story_output.py", "response", "total_tokens"),
         (SRC / "plugin_host" / "host.py", "runtime", "started_at"),
     }
     violations: list[str] = []
@@ -721,11 +724,13 @@ TABLE_SETTINGS_FIELDS = frozenset({
     "dice_reveal_mode",
 })
 # The GameInstance table settings facades are gone: writes go through
-# ``table_settings.replace_<field>(...)``. Aggregate methods (configure_*/set_*)
-# and the reset lifecycle own those calls; new-run construction in
-# commands/game_lifecycle.py copies the source run's gm_style_override.
+# Explicit kernel owners and optional preference hooks. Aggregate methods and
+# reset own kernel writes; optional preferences carry themselves via new-run hooks.
 TABLE_SETTINGS_REPLACE_CALLERS = {
-    MODULES / "table_settings.py",
+    MODULES / "game_config.py",
+    MODULES / "narration_preferences.py",
+    MODULES / "check_presentation.py",
+    MODULES / "economy_state.py",
     SRC / "engine" / "game_instance.py",
     SRC / "engine" / "instance_lifecycle.py",
     SRC / "commands" / "game_lifecycle.py",
@@ -734,7 +739,7 @@ TABLE_SETTINGS_REPLACE_CALLERS = {
 
 def _table_settings_property_writes(path: Path, tree: ast.AST) -> list[int]:
     """Direct attribute stores of a retired name (would raise on GameInstance)."""
-    if path == MODULES / "table_settings.py":
+    if path in {MODULES / name for name in ("game_config.py", "narration_preferences.py", "check_presentation.py", "economy_state.py")}:
         return []
     return [
         node.lineno for node in ast.walk(tree)
@@ -752,9 +757,9 @@ def _table_settings_replace_calls(path: Path, tree: ast.AST) -> list[int]:
         if isinstance(node, ast.Call)
         and isinstance(node.func, ast.Attribute)
         and isinstance(node.func.value, ast.Name)
-        and node.func.value.id == "table_settings"
+        and node.func.value.id in {"game_config", "narration_preferences", "check_presentation", "economy_state", "table_settings"}
         and node.func.attr.startswith("replace_")
-        and node.func.attr.removeprefix("replace_") in TABLE_SETTINGS_FIELDS
+        and node.func.attr.removeprefix("replace_") in TABLE_SETTINGS_FIELDS | {"reward_policy"}
     ]
 
 
@@ -780,7 +785,7 @@ def test_table_settings_guard_rejects_external_writes(source) -> None:
     tree = ast.parse(source)
     for path in ("commands/game_lifecycle.py", "engine/game_instance.py", "engine/instance_lifecycle.py"):
         assert _table_settings_property_writes(SRC / path, tree)
-    assert not _table_settings_property_writes(MODULES / "table_settings.py", tree)
+    assert not _table_settings_property_writes(MODULES / "game_config.py", tree)
 
 
 ROOM_ACCESS_SETTERS = {"replace_max_players", "replace_player_access_open", "replace_bot_bind_token"}
@@ -789,9 +794,9 @@ ROOM_ACCESS_CARRY_OVER_WRITERS = {SRC / "commands" / "game_lifecycle.py"}
 
 
 def test_table_settings_guard_rejects_replace_calls_outside_owners() -> None:
-    tree = ast.parse("table_settings.replace_solo_mode(x, True)\n"
-                     "table_settings.replace_economy_reward_policy(x, {})\n"
-                     "table_settings.solo_mode(x)")
+    tree = ast.parse("game_config.replace_solo_mode(x, True)\n"
+                     "economy_state.replace_reward_policy(x, {})\n"
+                     "game_config.solo_mode(x)")
     assert len(_table_settings_replace_calls(SRC / "webui" / "services" / "game_controls.py", tree)) == 2
     for owner in TABLE_SETTINGS_REPLACE_CALLERS:
         assert not _table_settings_replace_calls(owner, tree)

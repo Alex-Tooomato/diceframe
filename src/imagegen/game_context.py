@@ -1,9 +1,11 @@
 """Capture the game projection needed by an asynchronous storyboard job."""
 
+from src.engine import module_hooks
+
 from copy import deepcopy
 from typing import Any
 
-from src.engine.modules import narrative_notes
+
 
 
 def capture_storyboard_context(instance: Any) -> dict[str, Any]:
@@ -13,6 +15,6 @@ def capture_storyboard_context(instance: Any) -> dict[str, Any]:
     before making a model request; this snapshot is never a client response.
     """
     return {
-        "current_scene": str(narrative_notes.scene(instance) or ""),
+        "current_scene": str(module_hooks.narrative_view(instance)["scene"] or ""),
         "players": deepcopy(getattr(instance, "players", {}) or {}),
     }

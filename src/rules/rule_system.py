@@ -524,7 +524,7 @@ class RuleSystem:
             return 0
         value = int(skill_value or 0)
         best = 0
-        for threshold, bonus in table.items():
+        for threshold, bonus in sorted(table.items(), key=lambda item: int(item[0])):
             if value >= int(threshold):
                 best = int(bonus)
         return best

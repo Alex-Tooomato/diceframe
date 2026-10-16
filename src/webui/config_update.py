@@ -6,6 +6,8 @@
 
 from __future__ import annotations
 
+from src.game_preferences import validate_preferences
+
 from dataclasses import dataclass
 from typing import Any
 
@@ -28,13 +30,14 @@ from src.imagegen.contracts import (
 from src.tts.contracts import SUPPORTED_PROVIDER_IDS
 from src.webui.access_password import hash_access_password
 from src.webui.cors import invalid_cors_origins, normalize_cors_origins
+from src.llm.generation_options import validate_generation_options, validate_recent_rounds
 
 SECRET_CONFIG_KEYS = frozenset({
     "access_token", "bot_token", "napcat_token",
 })
 STRING_CONFIG_KEYS = frozenset({
     "model", "embedding_model", "web_cors_origins",
-    "fallback1_model", "fallback2_model",
+    "fallback1_model", "fallback2_model", "check_model",
     "public_base_url", "napcat_host", "napcat_connection_id",
     "tts_model", "tts_default_voice", "tts_gm_voice", "tts_player_voice",
     "asr_model",
@@ -43,6 +46,8 @@ STRING_CONFIG_KEYS = frozenset({
     *PROVIDER_REF_KEYS,
 })
 CONFIG_KEYS = (
+    "game_defaults",
+    "llm_generation_options", "context_recent_rounds", "check_model_enabled", "check_model",
     "model", "web_port", "web_cors_origins", "embedding_enabled",
     "embedding_model", "embedding_max_input",
     "fallback1_enabled", "fallback1_model",
@@ -66,6 +71,7 @@ CONFIG_KEYS = (
     "ai_providers", *PROVIDER_REF_KEYS,
 )
 MODEL_RUNTIME_CONFIG_KEYS = frozenset({
+    "llm_generation_options", "context_recent_rounds", "check_model_enabled", "check_provider_ref", "check_model",
     "model",
     "embedding_enabled", "embedding_model", "embedding_max_input",
     "fallback1_enabled", "fallback1_model",
@@ -117,10 +123,10 @@ def _degrade_speech_engines_lost_provider(candidate: dict[str, Any], refs_before
     ).strip()
     if imagegen_ref_cleared:
         candidate["imagegen_enabled"] = False
-    for capability in ("fallback1", "fallback2", "embedding"):
+    for capability in ("fallback1", "fallback2", "embedding", "check"):
         ref_key = f"{capability}_provider_ref"
         if refs_before.get(ref_key) and not candidate.get(ref_key):
-            candidate[f"{capability}_enabled"] = False
+            candidate["check_model_enabled" if capability == "check" else f"{capability}_enabled"] = False
 BOT_CONFIG_MAP = {
     "qq_bot_enabled": "enabled",
     "napcat_host": "host",
@@ -186,6 +192,20 @@ def prepare_config_update(current: dict[str, Any], body: dict[str, Any]) -> Prep
             if key not in body:
                 continue
             raw = body[key]
+            if key == "game_defaults":
+                candidate[key] = validate_preferences(raw)
+                continue
+            if key == "check_model_enabled":
+                if not isinstance(raw, bool):
+                    return PreparedConfigUpdate(candidate, changed_keys, access_password_changed, "check_model_enabled must be a boolean")
+                candidate[key] = raw
+                continue
+            if key in {"llm_generation_options", "context_recent_rounds"}:
+                try:
+                    candidate[key] = (validate_generation_options(raw) if key == "llm_generation_options" else validate_recent_rounds(raw))
+                except ValueError as exc:
+                    return PreparedConfigUpdate(candidate, changed_keys, access_password_changed, str(exc))
+                continue
             if key in SECRET_CONFIG_KEYS:
                 value = clean_text_value(raw)
                 if value:

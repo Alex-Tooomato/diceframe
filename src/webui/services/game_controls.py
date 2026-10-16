@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+from src.engine.modules import game_config
+from src.engine import module_hooks
+
 import logging
 from dataclasses import dataclass
 from typing import Any, Awaitable, Callable
@@ -10,7 +13,7 @@ from src.engine.checks import build_check_request, roll_check_request
 from src.engine.dice import d20_critical_thresholds, roll
 from src.engine.game_instance import GameState
 from src.engine.health import mark_health_event
-from src.engine.modules import room_access, table_settings
+from src.engine.modules import room_access
 from src.engine.staged_transaction import StagedGameTransaction
 from src.webui.services.check_decisions import decision_payload
 from src.engine.player_control import (
@@ -368,7 +371,7 @@ class GameControlService:
         await self._dependencies.save_instance(instance)
         return {
             "ok": True,
-            "solo_mode": table_settings.solo_mode(instance),
+            "solo_mode": game_config.solo_mode(instance),
             "multiplayer": instance.multiplayer_status(),
         }
 
@@ -385,7 +388,7 @@ class GameControlService:
         await self._dependencies.save_instance(instance)
         return {
             "ok": True,
-            "narrative_perspective": table_settings.narrative_perspective(instance),
+            "narrative_perspective": module_hooks.narration_preferences(instance)["narrative_perspective"],
         }
 
     async def set_gm_style(self, game_key: str, raw: Any) -> dict[str, Any]:
@@ -402,7 +405,7 @@ class GameControlService:
         await self._dependencies.save_instance(instance)
         return {
             "ok": True,
-            "gm_style_override": table_settings.gm_style_override(instance),
+            "gm_style_override": module_hooks.narration_preferences(instance)["gm_style_override"],
         }
 
     async def mark_health_event(

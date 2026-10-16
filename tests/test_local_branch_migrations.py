@@ -5,7 +5,7 @@ import sqlite3
 
 import pytest
 
-from src.migrations.instance import migrate_game_state_payload
+from src.migrations.instance import CURRENT_INSTANCE_SCHEMA_VERSION, migrate_game_state_payload
 from src.migrations import lorebook
 from src.migrations.sqlite import MigrationError, table_columns
 from src.lorebook.store import SCHEMA
@@ -50,7 +50,7 @@ def test_local_save_uses_main_migrations_without_losing_local_policy(version):
     before = deepcopy(original)
     upgraded = migrate_game_state_payload(original)
     assert original == before
-    assert upgraded["instance_schema_version"] == 44
+    assert upgraded["instance_schema_version"] == CURRENT_INSTANCE_SCHEMA_VERSION
     modules = upgraded["modules"]
     assert modules["room_access"]["schema_version"] == 3
     assert "room_password" not in modules["room_access"]
@@ -78,7 +78,7 @@ def test_unknown_local_variant_is_rejected_without_mutating_the_save():
 def test_main_save_also_gets_the_new_reader_fence_without_overwriting_slots():
     original = {"instance_schema_version": 43, "modules": {"ai_seats": {"schema_version": 99}}}
     upgraded = migrate_game_state_payload(original)
-    assert upgraded["instance_schema_version"] == 44
+    assert upgraded["instance_schema_version"] == CURRENT_INSTANCE_SCHEMA_VERSION
     assert upgraded["modules"]["ai_seats"] == original["modules"]["ai_seats"]
     assert upgraded["modules"]["check_modes"]["seats"] == {}
 

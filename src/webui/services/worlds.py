@@ -201,13 +201,41 @@ def list_worlds(dependencies: WorldDependencies) -> dict[str, Any]:
     return {"worlds": worlds, "total": len(worlds)}
 
 
-def create_world(dependencies: WorldDependencies, name: str, description: str = "",
-                 language: str = DEFAULT_LANGUAGE) -> dict[str, Any]:
-    name = (name or "").strip()
+def _narrative_error(world_setting: str | None, starter_scene: str | None) -> str | None:
+    for value, limit, label in (
+        (world_setting, _MAX_WORLD_SETTING_CHARS, "世界设定"),
+        (starter_scene, _MAX_STARTER_SCENE_CHARS, "开场场景"),
+    ):
+        if value is None:
+            continue
+        if not isinstance(value, str):
+            return f"{label}必须是文本"
+        if len(value) > limit:
+            return f"{label}过长（上限 {limit} 字）"
+    return None
+
+
+def create_world(
+    dependencies: WorldDependencies, name: str, description: str = "",
+    language: str = DEFAULT_LANGUAGE, *,
+    world_setting: str | None = None, starter_scene: str | None = None,
+) -> dict[str, Any]:
+    if not isinstance(name, str):
+        return {"ok": False, "error": "世界书名称必须是文本"}
+    name = name.strip()
     if not name:
         return {"ok": False, "error": "世界书名称不能为空"}
+    if not isinstance(description, str):
+        return {"ok": False, "error": "世界描述必须是文本"}
+    if not isinstance(language, str):
+        return {"ok": False, "error": "世界语言必须是文本"}
+    if error := _narrative_error(world_setting, starter_scene):
+        return {"ok": False, "error": error}
     world_id = _new_user_world_id(dependencies, name)
-    return create_imported_world(dependencies, world_id, name, description, language)
+    return create_imported_world(
+        dependencies, world_id, name, description, language,
+        world_setting=world_setting, starter_scene=starter_scene,
+    )
 
 
 def update_world(
@@ -238,16 +266,8 @@ def update_world(
         return {"ok": False, "error": "世界描述必须是文本"}
     if not isinstance(language, str):
         return {"ok": False, "error": "世界语言必须是文本"}
-    if world_setting is not None:
-        if not isinstance(world_setting, str):
-            return {"ok": False, "error": "世界设定必须是文本"}
-        if len(world_setting) > _MAX_WORLD_SETTING_CHARS:
-            return {"ok": False, "error": f"世界设定过长（上限 {_MAX_WORLD_SETTING_CHARS} 字）"}
-    if starter_scene is not None:
-        if not isinstance(starter_scene, str):
-            return {"ok": False, "error": "开场场景必须是文本"}
-        if len(starter_scene) > _MAX_STARTER_SCENE_CHARS:
-            return {"ok": False, "error": f"开场场景过长（上限 {_MAX_STARTER_SCENE_CHARS} 字）"}
+    if error := _narrative_error(world_setting, starter_scene):
+        return {"ok": False, "error": error}
     worlds_dir = dependencies.worlds_dir
     if not worlds_dir:
         return {"ok": False, "error": "世界模板目录未配置"}
@@ -305,7 +325,9 @@ def update_world(
 
 def create_imported_world(dependencies: WorldDependencies, world_id: str, name: str,
                           description: str = "", language: str = DEFAULT_LANGUAGE,
-                          provenance: dict[str, Any] | None = None) -> dict[str, Any]:
+                          provenance: dict[str, Any] | None = None, *,
+                          world_setting: str | None = None,
+                          starter_scene: str | None = None) -> dict[str, Any]:
     """Create a reviewed user world at a stable identity; never overwrite."""
     if not _WORLD_TEMPLATE_ID_RE.fullmatch(world_id) or not world_id.startswith("custom_book_"):
         raise ValueError("imported world requires a canonical user identity")
@@ -317,15 +339,22 @@ def create_imported_world(dependencies: WorldDependencies, world_id: str, name: 
         raise ValueError("world target already exists")
     if provenance is not None and not isinstance(provenance, dict):
         raise ValueError("world import provenance must be an object")
+    if error := _narrative_error(world_setting, starter_scene):
+        raise ValueError(error)
     language = normalize_language(language)
     dependencies.lorebook.create_world(
         world_id, name, description=description or "", language=language,
     )
     try:
-        if provenance is not None and dependencies.worlds_dir:
+        if dependencies.worlds_dir and any(value is not None for value in (provenance, world_setting, starter_scene)):
             template = _user_template_from_lore(dependencies, world_id)
             if template is not None:
-                template["import_source"] = copy.deepcopy(provenance)
+                if provenance is not None:
+                    template["import_source"] = copy.deepcopy(provenance)
+                if world_setting is not None:
+                    template["world_setting"] = world_setting
+                if starter_scene is not None:
+                    template["starter_scene"] = starter_scene
                 _write_json_atomic(dependencies.worlds_dir / f"{world_id}.json", template)
         if _ensure_user_world_template(dependencies, world_id) is None:
             dependencies.lorebook.delete_world(world_id)

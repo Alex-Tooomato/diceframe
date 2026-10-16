@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from src.engine.modules import game_config
+
 import logging
 import time
 from collections.abc import Awaitable, Callable
@@ -41,7 +43,7 @@ from src.engine.memory_outbox import (
 )
 from src.engine.game_instance import GameInstance
 from src.engine import module_hooks
-from src.engine.modules import progression_state, room_access, ruleset_runtime, table_settings
+from src.engine.modules import progression_state, room_access, ruleset_runtime
 from src.engine.player_control import claim_seat, is_human_controlled
 from src.content_modules.projection import ContentProjectionService, entries_for_world
 from src.commands.economy_effects import pending_decision_notice
@@ -138,7 +140,7 @@ def _record_economy_outcome_in_round(
     if (
         str(outcome.get("visibility") or "private") != "party"
         and not is_purchase
-        and not bool(table_settings.solo_mode(instance))
+        and not bool(game_config.solo_mode(instance))
     ):
         recipients = {
             str(outcome.get("payer_uid") or ""),
@@ -907,6 +909,14 @@ def _validated_portrait(
     dependencies: CharacterAssetDependencies,
     portrait: Any,
 ) -> dict[str, str] | None:
+    return validate_character_portrait(dependencies, portrait)
+
+
+def validate_character_portrait(
+    dependencies: CharacterAssetDependencies,
+    portrait: Any,
+) -> dict[str, str] | None:
+    """Validate and normalize a character portrait at the asset boundary."""
     # Existing saves use an empty object as "no explicit portrait". Treat it
     # exactly like null so editing unrelated profile fields remains possible.
     if portrait is None or portrait == {}:

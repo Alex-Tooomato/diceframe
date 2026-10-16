@@ -6,6 +6,8 @@
 
 from __future__ import annotations
 
+from src.engine.modules import game_config
+
 import logging
 from typing import Any
 
@@ -15,7 +17,7 @@ from src.engine.constants import WEAPON_DAMAGE, canonical_item_key
 from src.engine.game_instance import GameInstance
 from src.engine.language import localized_text
 from src.engine import module_hooks
-from src.engine.modules import checks, progression_state, table_settings
+from src.engine.modules import checks, progression_state
 
 logger = logging.getLogger("trpg")
 
@@ -216,7 +218,7 @@ class CombatResolver:
                     weapon=weapon,
                     attr_value=attr_value,
                     combat_model=combat_model,
-                    difficulty=table_settings.difficulty(instance),
+                    difficulty=game_config.difficulty(instance),
                     check_result=check,
                     same_faction=same_faction,
                     attacker_uid=actor_uid,

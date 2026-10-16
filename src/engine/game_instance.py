@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from src.engine.modules import game_config
+
 import asyncio
 import copy
 import logging
@@ -34,18 +36,7 @@ from src.engine.game_state_contracts import (
 )
 from src.engine.language import DEFAULT_LANGUAGE, normalize_language
 from src.engine.module_state import ensure_module_states
-from src.engine.modules import (
-    adventure_runtime_state,
-    checks,
-    economy_state,
-    narrative_notes,
-    progression_state,
-    room_access,
-    round_safety,
-    ruleset_runtime,
-    session_stats,
-    table_settings,
-)
+from src.engine.modules import adventure_runtime_state, checks, economy_state, progression_state, room_access, round_safety, ruleset_runtime, session_stats
 from src.engine.narrative_perspective import validate_narrative_perspective
 from src.engine.player_control import (
     PlayerControlError,
@@ -426,12 +417,13 @@ class GameInstance:
         state: GameState = GameState.WAITING,
     ) -> None:
         """配置新局身份信息；调用方在并发路径中应持有 ``_lock``。"""
+        game_config.require_writable(self)
         self.world_id = world_id
         self.rule_id = rule_id or "freeform_fantasy"
         self.world_name = world_name
         self.group_name = group_name
-        table_settings.replace_seed_code(self, seed_code)
-        table_settings.replace_difficulty(self, difficulty)
+        game_config.replace_seed_code(self, seed_code)
+        game_config.replace_difficulty(self, difficulty)
         self.language = normalize_language(language)
         self.state = state
 
@@ -454,37 +446,51 @@ class GameInstance:
         dice_reveal_mode：纯表现偏好（auto=自动出结果，click=点击共享揭示），
         不改变任何机械判定与推进语义。
         """
+        # Validate every participating owner and value before writing any part
+        # of this configuration transaction.
+        if solo_mode is not None or entry_point is not None:
+            game_config.require_writable(self)
+        if room_password is not None:
+            room_access.require_writable(self)
+        if luck_timeout_seconds is not None or dice_reveal_mode is not None:
+            module_hooks.preflight(self, module_hooks.CHECK_PRESENTATION)
+        if narrative_perspective is not None:
+            module_hooks.preflight(self, module_hooks.NARRATION_PREFERENCES)
+        if luck_timeout_seconds is not None:
+            luck_timeout_seconds = int(luck_timeout_seconds)
+            if not 0 <= luck_timeout_seconds <= 3600:
+                raise ValueError("幸运超时需在 0..3600 秒之间（0=禁用）")
+        if dice_reveal_mode is not None and dice_reveal_mode not in {"auto", "click"}:
+            raise ValueError("骰子揭示方式仅支持 auto 或 click")
+        if economy_reward_policy is not None:
+            from src.engine.economy import normalize_reward_policy
+
+            economy_state.require_writable(self)
+            if not isinstance(economy_reward_policy, dict):
+                raise ValueError("奖励策略无效")
+            if not str(economy_reward_policy.get("mode") or "").strip():
+                economy_reward_policy = {}
+            else:
+                normalized = normalize_reward_policy(economy_reward_policy)
+                if not normalized:
+                    raise ValueError("奖励策略无效（mode 或 auto_reward_cap 不合法）")
+                economy_reward_policy = normalized
         if solo_mode is not None:
-            table_settings.replace_solo_mode(self, bool(solo_mode))
+            game_config.replace_solo_mode(self, bool(solo_mode))
         if entry_point is not None:
-            table_settings.replace_entry_point(self, entry_point)
+            game_config.replace_entry_point(self, entry_point)
         if room_password is not None:
             room_access.set_room_password(self, room_password)
         if gm_uid is not None:
             self.gm_uid = gm_uid
         if luck_timeout_seconds is not None:
-            if not 0 <= int(luck_timeout_seconds) <= 3600:
-                raise ValueError("幸运超时需在 0..3600 秒之间（0=禁用）")
-            table_settings.replace_luck_timeout_seconds(self, int(luck_timeout_seconds))
+            module_hooks.record(self, module_hooks.LUCK_TIMEOUT_SECONDS, int(luck_timeout_seconds))
         if dice_reveal_mode is not None:
-            if dice_reveal_mode not in {"auto", "click"}:
-                raise ValueError("骰子揭示方式仅支持 auto 或 click")
-            table_settings.replace_dice_reveal_mode(self, dice_reveal_mode)
+            module_hooks.record(self, module_hooks.DICE_REVEAL_MODE, dice_reveal_mode)
         if narrative_perspective is not None:
             self.set_narrative_perspective(narrative_perspective)
         if economy_reward_policy is not None:
-            from src.engine.economy import normalize_reward_policy
-
-            if not isinstance(economy_reward_policy, dict):
-                raise ValueError("奖励策略无效")
-            if not str(economy_reward_policy.get("mode") or "").strip():
-                # 显式清空：回退规则模板默认与服务器全局配置。
-                table_settings.replace_economy_reward_policy(self, {})
-            else:
-                normalized = normalize_reward_policy(economy_reward_policy)
-                if not normalized:
-                    raise ValueError("奖励策略无效（mode 或 auto_reward_cap 不合法）")
-                table_settings.replace_economy_reward_policy(self, normalized)
+            economy_state.replace_reward_policy(self, economy_reward_policy)
 
     @staticmethod
     def _normalized_ruleset_binding(binding: dict[str, Any]) -> dict[str, Any] | None:
@@ -580,7 +586,7 @@ class GameInstance:
         if "last_activity" in snapshot:
             session_stats.require_writable(self)
         if "scene" in snapshot:
-            narrative_notes.require_writable(self)
+            module_hooks.preflight(self, module_hooks.NARRATIVE_VIEW)
         if any(key in snapshot for key in (
             "last_check", "last_checks", "round_checks_prepared", "manual_roll_requests",
         )):
@@ -598,7 +604,7 @@ class GameInstance:
         # The combat turn view is derived from the restored ruleset_state; the
         # snapshot's combat_* / initiative_* keys are informational only.
         if "scene" in snapshot and snapshot["scene"] is not None:
-            narrative_notes.replace_scene(self, str(snapshot["scene"]))
+            module_hooks.record(self, module_hooks.NARRATIVE_SCENE, str(snapshot["scene"]))
         if "last_activity" in snapshot:
             session_stats.replace_last_activity(self, str(snapshot["last_activity"]))
         if "log" in snapshot:
@@ -620,22 +626,22 @@ class GameInstance:
         room_access.set_room_password(self, password)
 
     def set_scene(self, scene: str) -> None:
-        narrative_notes.replace_scene(self, scene)
+        module_hooks.record(self, module_hooks.NARRATIVE_SCENE, scene)
 
     def set_world(self, world_id: str, world_name: str) -> None:
         self.world_id = world_id
         self.world_name = world_name
 
     def set_difficulty(self, difficulty: str) -> None:
-        table_settings.replace_difficulty(self, difficulty)
+        game_config.replace_difficulty(self, difficulty)
 
     def set_solo_mode(self, solo_mode: bool) -> None:
-        table_settings.replace_solo_mode(self, bool(solo_mode))
-        if table_settings.solo_mode(self) and self.action_queue and self.state == GameState.ACTIVE_ACTION:
+        game_config.replace_solo_mode(self, bool(solo_mode))
+        if game_config.solo_mode(self) and self.action_queue and self.state == GameState.ACTIVE_ACTION:
             self.ready_players.update(self.alive_players)
 
     def set_narrative_perspective(self, perspective: str) -> None:
-        table_settings.replace_narrative_perspective(self, validate_narrative_perspective(perspective))
+        module_hooks.record(self, module_hooks.NARRATIVE_PERSPECTIVE, validate_narrative_perspective(perspective))
 
     def set_gm_style_override(self, raw: Any) -> None:
         """设置当前对局 GM 叙事风格覆盖。
@@ -646,7 +652,7 @@ class GameInstance:
 
         from src.content.gm_style import normalize_gm_style_override
 
-        table_settings.replace_gm_style_override(self, normalize_gm_style_override(raw))
+        module_hooks.record(self, module_hooks.GM_STYLE_OVERRIDE, normalize_gm_style_override(raw))
 
     def append_log_entry(self, entry: RoundLogEntry) -> None:
         self.log.append(entry)
@@ -680,7 +686,7 @@ class GameInstance:
         return True
 
     def set_summary_narrative(self, narrative: str) -> None:
-        narrative_notes.summary(self)["narrative"] = narrative
+        module_hooks.narrative_view(self)["summary"]["narrative"] = narrative
 
     def set_quick_actions(self, actions: list[str]) -> None:
         module_hooks.record(
@@ -689,10 +695,10 @@ class GameInstance:
         )
 
     def set_key_facts(self, facts: list) -> None:
-        narrative_notes.replace_key_facts(self, list(facts))
+        module_hooks.record(self, module_hooks.NARRATIVE_KEY_FACTS, list(facts))
 
     def add_confirmed_items(self, items: list[str], *, limit: int = 50) -> None:
-        confirmed = narrative_notes.confirmed_items(self)
+        confirmed = module_hooks.narrative_view(self)["confirmed_items"]
         existing = set(confirmed)
         for item in items:
             if item not in existing:
@@ -946,10 +952,10 @@ class GameInstance:
         rest of the party is still deciding.  A value of zero continues to
         disable the timer for asynchronous games.
         """
-        timeout = int(table_settings.luck_timeout_seconds(self) or 0)
+        timeout = int(module_hooks.check_presentation(self)["luck_timeout_seconds"] or 0)
         if timeout <= 0:
             return 0
-        if timeout == 60 and not table_settings.solo_mode(self) and len(self.active_alive_players) > 1:
+        if timeout == 60 and not game_config.solo_mode(self) and len(self.active_alive_players) > 1:
             return 180
         return timeout
 
@@ -1351,6 +1357,7 @@ class GameInstance:
         pre_state_snapshot: dict | None = None,
         state_changes: list[str] | None = None,
         pre_combat_extension_snapshot: dict[str, Any] | None = None,
+        story: dict[str, Any] | None = None,
     ) -> None:
         """判定完成，记录本轮并开启下一轮。
 
@@ -1372,6 +1379,7 @@ class GameInstance:
                 pre_state_snapshot=pre_state_snapshot,
                 state_changes=state_changes,
                 pre_combat_extension_snapshot=pre_combat_extension_snapshot,
+                story=story,
             )
             turn_state.start_round_locked(self)
 
@@ -1380,13 +1388,14 @@ class GameInstance:
         gm_response: str,
         original_round: int,
         state_changes: list[str] | None = None,
+        story: dict[str, Any] | None = None,
     ) -> None:
         """为已有轮次添加 swipe（不推进回合）。"""
         async with self._lock:
             session_stats.require_writable(self)
             economy_state.state(self)
             round_recovery.finish_judgment_with_swipe_locked(
-                self, gm_response, original_round, state_changes=state_changes,
+                self, gm_response, original_round, state_changes=state_changes, story=story,
             )
 
     async def switch_swipe(self, round_num: int, swipe_idx: int) -> bool:
@@ -1432,9 +1441,8 @@ class GameInstance:
             checks.require_writable(self)
             round_safety.require_writable(self)
             ruleset_runtime.require_writable(self)
-            narrative_notes.require_writable(self)
+            module_hooks.preflight(self, module_hooks.NARRATIVE_VIEW)
             adventure_runtime_state.require_writable(self)
-            module_hooks.run(module_hooks.INSTANCE_RESET_PREFLIGHT, self)
             from src.engine.modules import room_access
 
             room_access.require_writable(self)
