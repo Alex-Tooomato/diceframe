@@ -9,9 +9,15 @@ from src.adventures.progress import new_progress
 from src.engine.game_instance import GameInstance
 
 
+E2E_CHOICE_GAME_KEYS = tuple(
+    ('web', f'e2e_choice_{device}', 'web_bot')
+    for device in ('desktop', 'mobile')
+)
+
+
 def write_choice_fixtures(data_dir, seed, write_save):
-    for device in ('desktop', 'mobile'):
-        identity = f'e2e_choice_{device}'
+    for game_key in E2E_CHOICE_GAME_KEYS:
+        identity = game_key[1]
         graph = {'schema_version': 2, 'kind': 'adventure', 'id': identity, 'format': 'diceframe:adventure-graph-v2',
                  'source_ref': f'diceframe-e2e:{identity}', 'automation_level': 'guided',
                  'chapters': [], 'objectives': [], 'milestones': [], 'start_node_ids': ['gate'],
@@ -33,7 +39,7 @@ def write_choice_fixtures(data_dir, seed, write_save):
             target = package / path; target.parent.mkdir(parents=True, exist_ok=True)
             target.write_text(json.dumps(value, ensure_ascii=False), encoding='utf-8')
         instance = GameInstance.from_dict(deepcopy(seed.to_dict()))
-        instance.game_key = ('web', identity, 'web_bot')
+        instance.game_key = game_key
         player = deepcopy(instance.players['e2e-gm']); player['character_name'] = 'Route player'
         instance.put_player('e2e-player', player)
         resolver = AdventureResolver.single_directory(package.parent, source_kind='user')

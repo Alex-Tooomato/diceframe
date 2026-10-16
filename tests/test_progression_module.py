@@ -582,17 +582,23 @@ async def test_current_package_export_import_and_unknown_mode_sse(tmp_path):
 
 
 def test_e2e_seed_script_constructs_and_encodes_all_fixtures(tmp_path):
-    from scripts.prepare_e2e_data import prepare_e2e_data
+    from scripts.prepare_e2e_data import E2E_GAME_KEYS, prepare_e2e_data
 
     prepare_e2e_data(tmp_path)
     saves = list((tmp_path / "saves").rglob("state.json"))
-    assert len(saves) == 16
+    expected_keys = set(E2E_GAME_KEYS)
+    assert len(expected_keys) == len(E2E_GAME_KEYS), "fixture identities must be unique"
+    assert {tuple(path.parent.name.split("#")) for path in saves} == expected_keys
     for path in saves:
         payload = json.loads(path.read_text(encoding="utf-8"))
         assert "round_number" not in payload
         assert payload["instance_schema_version"] == CURRENT_INSTANCE_SCHEMA_VERSION
         restored = GameInstance.from_dict(payload)
+        assert restored.game_key == tuple(path.parent.name.split("#"))
         assert restored.round_number == payload["modules"]["progression"]["round"]
+        # Loading fills optional defaults; the normalized save must then be stable.
+        normalized = frozen(restored)
+        assert GameInstance.from_dict(normalized).to_dict() == normalized
 
 
 def test_all_python_constructor_calls_use_postconstruction_round_assignment():

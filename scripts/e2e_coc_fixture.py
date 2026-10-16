@@ -8,6 +8,13 @@ from src.engine.modules import checks, check_presentation
 from src.rules.rule_system import RuleSystem
 
 
+E2E_COC_GAME_KEYS = {
+    (fixture, viewport): ("web", f"e2e-{fixture}-{viewport}", "web_bot")
+    for viewport in ("desktop", "mobile")
+    for fixture in ("coc", "dice-tray", "dice-tray-feedback", "check-mode", "push", "preferences-push")
+}
+
+
 def write_coc_fixture(data_dir: Path, write_save) -> None:
     for viewport in ("desktop", "mobile"):
         _write_coc_fixture(data_dir, write_save, viewport)
@@ -15,7 +22,7 @@ def write_coc_fixture(data_dir: Path, write_save) -> None:
 
 def _write_coc_fixture(data_dir: Path, write_save, viewport: str) -> None:
     rule = RuleSystem.load(Path(__file__).resolve().parents[1] / "templates/rules/freeform_coc.json")
-    inst = GameInstance(game_key=("web", f"e2e-coc-{viewport}", "web_bot"), state=GameState.ACTIVE_ACTION,
+    inst = GameInstance(game_key=E2E_COC_GAME_KEYS["coc", viewport], state=GameState.ACTIVE_ACTION,
                         rule_id="freeform_coc", world_id="default_fantasy", gm_uid="e2e-gm", language="zh-CN")
     inst.round_number = 2
     check_presentation.replace_dice_reveal_mode(inst, "click")
@@ -36,18 +43,18 @@ def _write_coc_fixture(data_dir: Path, write_save, viewport: str) -> None:
     write_save(data_dir, inst)
     # Each reveal suite gets its own mutable reveal records; an earlier suite
     # must not reveal the result that a later one expects to be sealed.
-    for table in (f"e2e-dice-tray-{viewport}", f"e2e-dice-tray-feedback-{viewport}"):
+    for fixture in ("dice-tray", "dice-tray-feedback"):
         presentation = deepcopy(inst)
-        presentation.game_key = ("web", table, "web_bot")
+        presentation.game_key = E2E_COC_GAME_KEYS[fixture, viewport]
         write_save(data_dir, presentation)
-    modes = GameInstance(game_key=("web", f"e2e-check-mode-{viewport}", "web_bot"), state=GameState.ACTIVE_ACTION,
+    modes = GameInstance(game_key=E2E_COC_GAME_KEYS["check-mode", viewport], state=GameState.ACTIVE_ACTION,
                          rule_id="freeform_coc", world_id="default_fantasy", gm_uid="e2e-gm", language="zh-CN")
     modes.players = inst.players
     modes.round_number = 2
     write_save(data_dir, modes)
     from src.engine import check_decisions
 
-    pushes = GameInstance(game_key=("web", f"e2e-push-{viewport}", "web_bot"), state=GameState.ACTIVE_JUDGMENT,
+    pushes = GameInstance(game_key=E2E_COC_GAME_KEYS["push", viewport], state=GameState.ACTIVE_JUDGMENT,
                           rule_id="freeform_coc", world_id="default_fantasy", gm_uid="e2e-gm", language="zh-CN")
     pushes.players = deepcopy(inst.players)
     pushes.round_number = 2
@@ -62,5 +69,5 @@ def _write_coc_fixture(data_dir: Path, write_save, viewport: str) -> None:
     # Disabling Push resolves pending decisions permanently. Preference tests
     # must not consume the decisions exercised by the player/Keeper journey.
     preferences = deepcopy(pushes)
-    preferences.game_key = ("web", f"e2e-preferences-push-{viewport}", "web_bot")
+    preferences.game_key = E2E_COC_GAME_KEYS["preferences-push", viewport]
     write_save(data_dir, preferences)
