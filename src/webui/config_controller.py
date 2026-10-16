@@ -158,12 +158,14 @@ class ConfigController:
                     subsystems,
                     plugin_host,
                     config=prepared.state,
+                    hub_client=request.app.get("hub_client"),
                 )
             elif api_runtime_changed and old_subsystems is not None:
                 new_api = dependencies.make_api(
                     old_subsystems,
                     plugin_host,
                     config=prepared.state,
+                    hub_client=request.app.get("hub_client"),
                 )
         except Exception as exc:
             if old_subsystems is not None and old_subsystems.memory_store is not None:

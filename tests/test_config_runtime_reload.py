@@ -1,4 +1,5 @@
 from types import SimpleNamespace
+from unittest.mock import AsyncMock
 
 import pytest
 
@@ -100,10 +101,13 @@ async def test_model_runtime_reload_reuses_live_stores_and_closes_old_client(mon
     old_runtime = web_server._build_subsystems(config=baseline)
     old_session = await old_runtime.llm_client._get_session()
     check_session = await old_runtime.check_llm_client._get_session() if dedicated else None
+    hub_config = {"enabled": True, "entry_visible": True, "message": ""}
+    hub = SimpleNamespace(rendezvous_config=AsyncMock(return_value=hub_config))
     app = {
         "subsystems": old_runtime,
-        "api": web_server._make_api(old_runtime, config=baseline),
+        "api": web_server._make_api(old_runtime, config=baseline, hub_client=hub),
         "plugin_host": None,
+        "hub_client": hub,
     }
 
     try:
@@ -121,6 +125,14 @@ async def test_model_runtime_reload_reuses_live_stores_and_closes_old_client(mon
         assert new_runtime.llm_client.providers["default"].model_name == "new-model"
         assert app["api"]._reg is old_runtime.registry
         assert old_session.closed is True
+        assert await app["api"].rendezvous_config() == {"ok": True, **hub_config}
+        budget = 2048 if baseline.get("assistant_agent_max_tokens") != 2048 else 4096
+        api_reload = await web_server.api_config_post(
+            _ConfigRequest({"assistant_agent_max_tokens": budget}, app)
+        )
+        assert api_reload.status == 200
+        assert app["subsystems"] is new_runtime
+        assert await app["api"].rendezvous_config() == {"ok": True, **hub_config}
         if dedicated:
             assert check_session.closed is True
             assert new_runtime.check_llm_client.providers["check"].model_name == "judge2"
@@ -151,7 +163,7 @@ async def test_model_request_timeout_reload_rebuilds_model_runtime(monkeypatch):
 
     monkeypatch.setattr(web_server, "save_config", lambda: None)
     monkeypatch.setattr(web_server, "_build_subsystems", build)
-    monkeypatch.setattr(web_server, "_make_api", lambda runtime, plugin_host=None, config=None: new_api)
+    monkeypatch.setattr(web_server, "_make_api", lambda runtime, plugin_host=None, config=None, hub_client=None: new_api)
     monkeypatch.setitem(web_server.STATE, "proxy_enabled", False)
     monkeypatch.setitem(web_server.STATE, "proxy_url", "")
 
@@ -178,7 +190,7 @@ async def test_api_token_limit_reload_rebuilds_api_without_replacing_subsystems(
         "_build_subsystems",
         lambda **kwargs: pytest.fail("API 生成上限不应重建游戏子系统"),
     )
-    monkeypatch.setattr(web_server, "_make_api", lambda subsystems, plugin_host=None, config=None: new_api)
+    monkeypatch.setattr(web_server, "_make_api", lambda subsystems, plugin_host=None, config=None, hub_client=None: new_api)
     monkeypatch.setitem(web_server.STATE, "proxy_enabled", False)
     monkeypatch.setitem(web_server.STATE, "proxy_url", "")
 
@@ -205,7 +217,7 @@ async def test_tts_config_reload_rebuilds_only_api_facade(monkeypatch):
         lambda **kwargs: pytest.fail("TTS 配置不应重建游戏子系统"),
     )
 
-    def make_api(subsystems, plugin_host=None, config=None):
+    def make_api(subsystems, plugin_host=None, config=None, hub_client=None):
         assert subsystems is runtime
         assert config["tts_provider"] == "openai-compatible"
         assert config["tts_provider_ref"] == "local"
@@ -256,7 +268,7 @@ async def test_imagegen_can_be_enabled_before_provider_and_model_are_selected(
     monkeypatch.setitem(web_server.STATE, "imagegen_base_url", "")
     monkeypatch.setitem(web_server.STATE, "imagegen_model", "")
 
-    def make_api(subsystems, plugin_host=None, config=None):
+    def make_api(subsystems, plugin_host=None, config=None, hub_client=None):
         assert subsystems is runtime
         service = ImageGenerationService(config, tmp_path / "generated-images")
         assert service.enabled is True

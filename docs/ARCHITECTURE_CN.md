@@ -758,6 +758,8 @@ WebUI runtime reload 时，可以：
 
 它避免了“热重载模型配置时游戏实例被清空”。
 
+`HubClient` 的生命周期由应用启动与关闭管理。模型运行时或仅 API 层重建时，配置控制器显式传入应用已持有的 Hub 客户端，保留直连信令和市场访问；保存模型、语音或生成预算不会将 Hub 重置为未启用。
+
 需要注意，`EmbeddingClient` 当前不是 `TRPGSubsystems` 的顶层字段。`common_factory.py` 在候选 runtime 完整构造后把新客户端切到：
 
 ```text
@@ -6172,11 +6174,11 @@ ADR/*                       长期设计决策原因
 
 ## DF Agent 全局应用代理
 
-全局 `AssistantShell` 在 owner 应用壳中挂载，业务路由共享聊天与任务状态，设置 → 外观可关闭；公开/玩家页面不挂载。单一 `AssistantPanel` 支持侧边抽屉与居中大窗口布局，扩大时桌面聊天/任务工作区分栏、窄屏单列，切换不会重建面板或清空本地输入与草稿编辑。原 `/api/assistant/chat` 保留只读契约，新 `/api/assistant/agent/*` 为 owner-only 的执行、审查、确认与恢复接口。
+全局 `AssistantShell` 在 owner 应用壳中挂载，业务路由共享聊天与任务状态，设置 → 通用可关闭；公开/玩家页面不挂载。单一 `AssistantPanel` 支持侧边抽屉与居中大窗口布局，扩大时桌面聊天/任务工作区分栏、窄屏单列，切换不会重建面板或清空本地输入与草稿编辑。原 `/api/assistant/chat` 保留只读契约，新 `/api/assistant/agent/*` 为 owner-only 的执行、审查、确认与恢复接口。
 
-Agent 每次模型输出使用独立 `assistant_agent_max_tokens`（默认 4096），经 ConfigStore / 配置更新边界持久化与热更新，不改变各业务生成工具的预算。系统语言在右上角和设置 → 外观共享同一设备偏好，不改已有游戏的语言。内容库以 canonical Book 标题和 world bindings 分别展示资料册名称及所属世界；同名主册仅加展示标识，不改存储名称或 identity。
+Agent 每次模型输出使用独立 `assistant_agent_max_tokens`（默认 4096），经 ConfigStore / 配置更新边界持久化与热更新，不改变各业务生成工具的预算。系统语言在右上角和设置 → 通用共享同一设备偏好，不改已有游戏的语言。内容库以 canonical Book 标题和 world bindings 分别展示资料册名称及所属世界；同名主册仅加展示标识，不改存储名称或 identity。
 
-悬浮入口的 PointerEvent 拖动与浏览器位置持久化由 `useAssistantLauncherPosition` 负责，视口变化夹紧可见位置，拖动与点击/键盘打开分离；外观设置可将已挂载入口恢复到默认位置。`useAssistantWorkspace` 负责可折叠任务区与浏览器显示偏好，手机默认收起但保留状态提示，单列任务区最多占消息区域 45%；隐藏保留已挂载草稿和待确认计划。`SectionWorkspaceShell` 通过观察应用顶栏高度固定二级导航的停靠位置。模型返回多个已注册非审批查询/草稿工具时由框架顺序执行；含写审批、最终回答或未知工具的批次整批拒绝并纠正，仍保持单项服务器审批。格式重试耗尽返回 `MODEL_RESPONSE_INVALID`，保留既有草稿和会话。
+悬浮入口的 PointerEvent 拖动与浏览器位置持久化由 `useAssistantLauncherPosition` 负责，视口变化夹紧可见位置，拖动与点击/键盘打开分离；通用设置可将已挂载入口恢复到默认位置。`useAssistantWorkspace` 负责可折叠任务区与浏览器显示偏好，手机默认收起但保留状态提示，单列任务区最多占消息区域 45%；隐藏保留已挂载草稿和待确认计划。`SectionWorkspaceShell` 通过观察应用顶栏高度固定二级导航的停靠位置。模型返回多个已注册非审批查询/草稿工具时由框架顺序执行；含写审批、最终回答或未知工具的批次整批拒绝并纠正，仍保持单项服务器审批。格式重试耗尽返回 `MODEL_RESPONSE_INVALID`，保留既有草稿和会话。
 
 `assistant_agent_framework.py` 直接使用 Pydantic AI 的 Agent 执行器、纠错重试、请求预算和延迟审批机制，通过明确适配器复用现有模型服务商传输；`assistant_agent.py` 拥有业务工具适配、会话与服务器确认计划。`assistant_agent_application.py` 和 `assistant_authoring.py` 以明确依赖接入已有内容、游戏、插件和图像服务。LLM 仅提出具名注册工具候选，参数经过 schema 验证，修改由框架延迟、经服务器保存的计划与确认后才执行；最终 authority 仍属各领域服务。
 

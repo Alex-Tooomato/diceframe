@@ -767,6 +767,11 @@ During a WebUI runtime reload, DiceFrame can:
 
 This prevents “hot-reloading model configuration clears active game instances.”
 
+Application startup and cleanup own the `HubClient` lifecycle. Both model-runtime
+and API-only rebuilds explicitly pass the application's existing Hub client to the
+new API facade, preserving rendezvous signaling and marketplace access when model,
+speech or generation-budget settings are saved.
+
 Note that `EmbeddingClient` is currently not a top-level field on `TRPGSubsystems`. After the candidate runtime is fully built, `common_factory.py` switches the new client into:
 
 ```text
@@ -6163,9 +6168,9 @@ Until then, this single document can be used directly as the complete onboarding
 
 ## DF Agent application orchestration
 
-Each Agent model output uses independent `assistant_agent_max_tokens` (default 4096), persisted and hot-reloaded through ConfigStore and the configuration update boundary. Business generation tools keep their own budgets. The header and Appearance settings share one device-local interface language preference; existing game languages do not change. The library displays canonical Book titles separately from bound worlds; a same-named primary book gets a display label without changing its saved name or identity.
+Each Agent model output uses independent `assistant_agent_max_tokens` (default 4096), persisted and hot-reloaded through ConfigStore and the configuration update boundary. Business generation tools keep their own budgets. The header and General settings share one device-local interface language preference; existing game languages do not change. The library displays canonical Book titles separately from bound worlds; a same-named primary book gets a display label without changing its saved name or identity.
 
-The owner application shell mounts a shared `AssistantShell` across business routes; Appearance settings can hide it. Public/player routes do not mount the owner agent. A single `AssistantPanel` switches between a side drawer and a centered larger window, with desktop chat/task columns and a narrow-screen single column. Switching layouts preserves the component, unsent input and local draft edits. The read-only `/api/assistant/chat` contract remains; `/api/assistant/agent/*` adds owner-only execution, review, confirmation and recovery.
+The owner application shell mounts a shared `AssistantShell` across business routes; General settings can hide it. Public/player routes do not mount the owner agent. A single `AssistantPanel` switches between a side drawer and a centered larger window, with desktop chat/task columns and a narrow-screen single column. Switching layouts preserves the component, unsent input and local draft edits. The read-only `/api/assistant/chat` contract remains; `/api/assistant/agent/*` adds owner-only execution, review, confirmation and recovery.
 
 `useAssistantLauncherPosition` owns PointerEvent dragging, browser-local position persistence and viewport clamping, separating a drag from click or keyboard activation; DF Agent settings can reset the mounted launcher to its default position. `useAssistantWorkspace` owns task folding and the browser preference: phones fold by default while retaining a status summary, and a single-column task area occupies at most 45% of the message area. Hiding it preserves mounted drafts and pending approvals. `SectionWorkspaceShell` observes the application header height to anchor sticky secondary navigation. Batches of registered immediate read/draft tools execute sequentially in the framework. Batches containing deferred writes, final output or unknown tools are rejected as a whole and corrected, preserving one server-held approval at a time. Exhausted format retries return `MODEL_RESPONSE_INVALID` while retaining the session and existing drafts.
 
