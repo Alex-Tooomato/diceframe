@@ -493,7 +493,7 @@ onBeforeUnmount(deactivateOverview)
         </div>
       </header>
       <div v-if="visibleGames.length" class="game-grid" :class="{ 'is-list': libraryView === 'list' }">
-        <article v-for="g in visibleGames" :key="g.game_key" class="game-card" :class="{ 'is-selected': selected.includes(g.game_key) }">
+        <article v-for="g in visibleGames" :key="g.game_key" :data-game-key="g.game_key" class="game-card" :class="{ 'is-selected': selected.includes(g.game_key) }">
           <div class="game-card-art" :style="gameSceneStyle(g)" aria-hidden="true">
             <img :src="gameSceneUrl(g)" alt="" loading="lazy" decoding="async">
           </div>

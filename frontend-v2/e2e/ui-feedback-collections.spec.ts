@@ -71,20 +71,21 @@ test('overview save tools stay anchored and recover keyboard focus', async ({ pa
   const featuredEnter = await page.locator('.overview-featured-enter').boundingBox()
   expect(featuredEnter).not.toBeNull()
   expect(featuredEnter!.width).toBeGreaterThanOrEqual(featuredDetails!.width - 32)
-  const featuredAlignment = await page.locator('.overview-featured-copy').evaluate(copy => {
+  const leftAligned = page.viewportSize()!.width <= 800
+  const featuredAlignment = await page.locator('.overview-featured-copy').evaluate((copy, leftAligned) => {
     const title = copy.querySelector<HTMLElement>('h2')?.getBoundingClientRect()
     const details = copy.querySelector<HTMLElement>('.overview-featured-details')?.getBoundingClientRect()
     const enter = copy.querySelector<HTMLElement>('.overview-featured-enter')?.getBoundingClientRect()
     return {
       textAlign: getComputedStyle(copy).textAlign,
-      titleRight: title?.right || 0,
-      detailsRight: details?.right || 0,
-      enterRight: enter?.right || 0,
+      titleEdge: (leftAligned ? title?.left : title?.right) || 0,
+      detailsEdge: (leftAligned ? details?.left : details?.right) || 0,
+      enterEdge: (leftAligned ? enter?.left : enter?.right) || 0,
     }
-  })
-  expect(featuredAlignment.textAlign).toBe('right')
-  assertClose(featuredAlignment.titleRight, featuredAlignment.detailsRight)
-  assertClose(featuredAlignment.detailsRight, featuredAlignment.enterRight)
+  }, leftAligned)
+  expect(featuredAlignment.textAlign).toBe(leftAligned ? 'left' : 'right')
+  assertClose(featuredAlignment.titleEdge, featuredAlignment.detailsEdge)
+  assertClose(featuredAlignment.detailsEdge, featuredAlignment.enterEdge)
   const featuredArtStyle = await page.locator('.overview-featured-art').evaluate(element => ({
     inline: element.getAttribute('style') || '',
     backgroundImage: getComputedStyle(element).backgroundImage,

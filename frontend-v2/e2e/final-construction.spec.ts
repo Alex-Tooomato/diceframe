@@ -56,7 +56,13 @@ test('play tools remain reachable and keep the GM and character surfaces indepen
   await tools.click()
   const panel = page.getByTestId('play-tools-panel')
   await expect(panel).toBeVisible()
-  expect(await panel.getByRole('button').count()).toBe(4)
+  for (const name of ['共享角色卡库', '场景画廊', '帮助', '刷新']) {
+    await expect(panel.getByRole('button', { name, exact: true })).toBeVisible()
+  }
+  const compact = page.viewportSize()!.width <= 800
+  for (const name of ['角色', '场景地图', '队伍']) {
+    await expect(panel.getByRole('button', { name, exact: true })).toHaveCount(compact ? 1 : 0)
+  }
   await panel.getByRole('button', { name: '刷新', exact: true }).click()
   await expect(tools).toHaveAttribute('aria-expanded', 'false')
   await expect(page.getByTestId('timeline')).toBeVisible()

@@ -13,7 +13,8 @@ for (const mode of ['dark', 'light']) test(`character and party toggles share th
     const style = getComputedStyle(element)
     const box = element.getBoundingClientRect()
     return {
-      width: box.width, height: box.height, padding: style.padding,
+      // Translated drawers can introduce sub-millipixel DOMRect rounding noise.
+      width: Number(box.width.toFixed(3)), height: Number(box.height.toFixed(3)), padding: style.padding,
       background: style.backgroundColor, color: style.color,
       border: style.border, radius: style.borderRadius, shadow: style.boxShadow,
       iconSize: getComputedStyle(element.querySelector('.n-icon')!).fontSize,
