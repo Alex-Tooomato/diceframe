@@ -17,6 +17,14 @@ interaction rules together. Do not add another late-imported patch sheet for an
 existing page. Shared controls belong in shared styles; page-specific selectors
 belong with that page. A new feature may have its own owner.
 
+Content and management navigation follow the shared
+[navigation layout contract](../../../docs/ENGINEERING_RULES.md#141-navigation-layout-contract).
+`SectionWorkspaceShell` / `useSectionHeaderOffset` supply the visible header
+offset and secondary navigation height. Sticky page menus consume these values
+and add their own spacing; do not duplicate scroll tracking or hard-code a full
+header height. Verify both navigation groups on desktop and phone, including
+partial/full header hiding, return scrolling and breakpoint changes.
+
 The play page's character and party disclosure buttons share one sizing rule in
 `pages/play.css` and inherit the standard themed button appearance. Keep their
 positioning separate without reintroducing different sizes or fixed colors.
