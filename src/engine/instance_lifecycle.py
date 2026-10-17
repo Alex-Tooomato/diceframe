@@ -71,8 +71,10 @@ def reset_locked(instance: GameInstance, *, keep_seed: bool = True) -> None:
     集合与基线逐句一致。reset 的真实契约由
     ``tests/test_game_instance_reset_characterization.py`` 冻结。
     """
-    from src.engine.modules import adventure_runtime_state, checks, economy_state, round_safety, ruleset_runtime, session_stats
+    from src.engine.modules import adventure_runtime_state, checks, economy_state, round_safety, ruleset_runtime, run_finale, session_stats, skill_growth
 
+    run_finale.reset_preflight(instance)
+    skill_growth.require_writable(instance)
     session_stats.require_writable(instance)
     game_config.require_writable(instance)
     economy_state.require_writable(instance)
@@ -113,6 +115,7 @@ def reset_locked(instance: GameInstance, *, keep_seed: bool = True) -> None:
     checks.clear_round(instance)
     round_safety.clear_snapshots(instance)
     module_hooks.run(module_hooks.INSTANCE_RESET, instance)
+    skill_growth.reset(instance)
     ruleset_runtime.reset(instance, saved_ruleset_runtime)
     instance.adventure_binding = saved_adventure_binding
     instance.state = GameState.CREATED

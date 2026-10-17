@@ -10,7 +10,7 @@
 > - 分支：`main`
 > - Commit：`d2246e0d0d32867e8e090c238b588441bad96a28`
 > - Release：`2.6.1`
-> - 上游 GameInstance persisted schema：`44`；本地实现写入 `45`（本局配置归属拆分）。
+> - 上游 GameInstance persisted schema：`44`；本地实现写入 `46`（45 为本局配置拆分，46 为剧情/成长/结团读写隔离）。
 > - 本地状态归属：`game_config` 为内核配置，`room_access` 与经济账本属于必要内核；`narration_preferences` 和 `check_presentation` 经 hooks 提供可选投影和新 run 偏好继承。44→45 迁移移动旧桌面字段与 `economy.reward_policy`，不换算金额、不改写事务账本；保留不透明扩展字段，拒绝未知或混杂结构。见 [ADR-0007](adr/0007-runtime-state-ownership.md)。
 > - R9-b：`scene` 权威状态存于 `modules.narrative_notes.scene`，该槽升到 v2；39→40 迁移删除旧顶层键，值原样保留。reset 照旧清空；写 scene 的事务（开局、回合处理、swipe、规则批次与 Director 自动化、ruleset 事务回滚、reset）经 `module_hooks.preflight(..., NARRATIVE_VIEW)` 对叙事拥有模块预检。列表、详情、大厅（含密码遮挡）、SSE、recap 与 LLM 视图的 `scene` 不变。
 > - R9-a：`adventure_progress` 与 `play_mode` 权威状态存于 `modules.adventure_runtime` 的 `progress`、`play_mode`；38→39 迁移删除旧顶层键。Adventure 身份仍只在顶层 `adventure_binding`。读档时空或未知的 play_mode 仍按绑定推导；原地 reset 清空 progress、保留 play_mode；新 run（reset/restart/种子）沿用 play_mode 并重新初始化 v2 进度，写入均经模块 owner 并先做预检。
@@ -2342,6 +2342,98 @@ content
 ```
 
 但不输出内部 canonical lore entry ID，避免 `npc_traitor_mary`、`clue_real_murderer_john` 这类 ID 本身泄漏幕后信息。GM 完整上下文仍可保留 canonical ID 用于诊断和一致性。
+
+---
+
+### 15.4.1 当前冒险场景与目标
+
+Adventure v2 的当前剧情上下文由 `src/adventures/scene_context.py` 拥有。WebAPI
+组合层向 GameHandler / PromptComposer 注入应用持有的来源解析器；领域投影核对
+包来源、版本、digest 和世界绑定，读取模块的只读 `progress_snapshot()`，不创建
+缺失槽位、不生成计划、不推进节点。普通回合、开场、恢复叙事与玩家问答复用这条接缝。
+
+GM 视图包含当前节点、相关目标及一跳后继候选；候选不等于已解锁。玩家和 AI
+席位只获得当前公开节点、已知节点相关目标及完成状态，不携带 canonical ID、
+NPC/遭遇引用、transition 条件或 outcome。公开但尚未激活/完成的节点不会因
+`visibility=public` 自动进入模型上下文。个人和队伍问答原有的私密知识隔离继续生效。
+对局 Adventure 查询同时提供 `adventure.scene_objectives`，与模型使用相同投影。
+
+上下文拼接为该块分配最多窗口的 10%、上限 4096 字符，并优先保留目标、裁剪描述；
+开场/恢复的专门叙事请求同样限制该块最多 4096 字符。不增加额外模型调用。
+历史 swipe 通过模块所属的回滚钩子恢复该轮 `pre_adventure_progress`；缺少该进度或角色快照的 v2 历史
+拒绝重新生成，避免把当前分支的未来目标带回过去。包解析失败时玩家获得空投影，GM
+获得不可用提示；正常的绑定/运行准入仍由既有权威路径负责。
+
+v1 经可选 `CurrentSceneRuntime` 由绑定的规则运行时提供当前步骤；D&D 适配器读取副本，
+不向玩家暴露未来步骤。无绑定的自由对局使用下述运行计划；失效的冒险绑定不会回退到自由计划。
+
+### 15.4.2 自由计划、幕间成长与结团
+
+`modules.run_story`（schema 1）拥有当前 run 的轻量计划、revision、当前场景、
+已揭示/完成场景、推进事件、NPC 拒绝告警和停滞计数。GM 手写或请求 AI 原创草稿，
+经显式采用才生效；历史局不会自动生成主线。计划最多 24 个场景，保存来源、主题、
+队伍目标、guided/sandbox 和 strict/open NPC 策略。它不生成正式 Adventure 包，
+不改写世界资料、奖励或绑定冒险的进度。
+
+当前公开场景/目标进入玩家安全上下文；GM 另有出口条件、相邻候选和渐进提示。
+模型的 `plot_update.story_transition` 只是候选（format_version 1、run_id、revision、
+from_id、to_id、evidence_rounds）。GM 确认后，领域层验证当前 run/revision、相邻引用
+及真实已提交日志轮次；叙事正文不能直接推进。严格策略在 NPC 状态应用边界拒绝
+未采用的新实体并留下告警，背景文字仍需 GM 审阅。停滞提示建议替代入口/代价，
+不改变既有骰值。GM 工作台提供同源的实际上下文块和 4096 字符预算诊断。
+
+`modules.skill_growth`（schema 1）拥有成功技能检定勾选、幕间回执及内部随机预留。
+规则必须声明 `growth_system=skill_improvement` 和受支持的 version 1 策略；内置
+轻量 CoC 声明 d100 高于技能或达到 96 时增长 d10、上限 99。属性检定、失败、
+幸运支出转成功、显式不可成长和排除的技能不打勾。同角色同技能仅保留一次待成长，
+使用稳定技能行 ID；歧义名称不猜测合并。旧 `SKILL_GROWTH` 标签没有权威。
+幕间/结团在隔离事务中校验所有目标，再投骰、更新角色并保存回执；再次提交同一
+回执返回原结果。服务先持久化随机预留，失败/取消后的重试按原 check identity
+重现结果，不重掷、不重复增长。历史成长不追扣，旧日志不补猜勾选。
+
+`modules.run_finale`（schema 1）拥有准备工作、不可变结团档案与独立角色交付 outbox。
+准备仅允许空闲的 ACTIVE_ACTION/PAUSED；行动、战斗、手动骰、幸运/Push、经济提案、
+外部效果 outbox 及 runtime 的待办必须先处理。准备保存工作 ID、来源 fingerprint、
+全 run 公开日志和权限过滤后的当前场景；原 GameState 保持不变，但禁止写入。
+尾声/团录可手写，AI 可选；长团按全程公开日志分段归纳，不受增量概览最近十轮限制。
+取材白名单在调用模型前排除私密问答、GM 条件、隐藏快照和未来节点。AI 不填写私有补充。
+生成以 NDJSON 显示真实阶段，需 token 同意，支持取消、断线取消及 600 秒超时。
+模型草稿不自动保存为材料或结算；完成后仍须保存、审阅和明确确认。
+
+材料有乐观 revision，多 GM 窗口不能提交旧审阅。提交将支持的规则结算、角色快照、
+回执与 ENDED 一起持久化；失败恢复原状态。可选 `RunFinaleRuntime` 拥有特定规则审计；
+D&D 仅核查既有升级/奖励，额外 XP/战利品为零；CoC 使用上述幕间成长。系统不猜测
+SAN 或金钱奖励。准备可取消，正式结算不可取消。重启保留冻结/结束状态，不调度活动回合。
+
+结团写屏障和成长回执属于必要内核，UI/hook 移除不撤销其权限或历史重写限制。
+HTTP `run_write_admission` 与实例 authority/state gates 覆盖 Web、同路由 Bot 和直连请求；
+结团服务持有管理写权限。只读 SSE 订阅票据、恢复 GM 身份、签发/认领席位凭据（管理写入，仍串行）与删除房主的记忆条目在冻结/结束档案上仍可用。
+较慢的模型/媒体路由（KP 问答、剧情概览、语音合成与识别、生图与分镜分析）在入口检查可写性，但等待期间不持有 run authority；最终提交步骤自行进入 `authoritative_write()` 并复核 run。
+reset/restart 不覆盖冻结/结束档案。
+普通同步领域 setter 仍由受信任的事务调用，并非外部写入口。成长结算之后不能回滚/swipe
+穿越已结算轮次；未结算勾选和计划经所属快照恢复。
+
+`RunStoryService` 使用显式依赖组合计划、幕间、结团、导出与带入；route 保持薄层。
+前端位于 `features/play/run-story/`，由 GM 工作台场景页和只读游玩页组合。
+成功修改通过不含私有数据的 `run_story_changed` 通知刷新各端；同一回合内的计划、
+准备状态和材料 revision 变化也会重新读取角色对应投影。
+各 owner 经 `gm.workspace.revisions` 提供失效标记，由通用 hook 汇成仅 GM 可见的
+不透明 `gm_workspace_revision`；它也进入 GM 的 SSE 游标，补齐同回合修改、首次订阅
+和重连的读取间隙。玩家游标不含该标记。面板仅随相关版本刷新，延迟旧读不能覆盖
+已保存材料的确认状态；公开材料读取期间先显示已知的冻结状态。
+玩家只能导出公开团录及自己的角色；GM 完整存档 ZIP 另含尾声、团录、私有补充、
+来源、回执、角色 JSON 和 SHA-256 清单，凭据继续经 room_access 清洗。
+角色带入在独立 game/run 中保留结算后的完整角色快照，经 runtime 初始化后逐项核对；
+新邀请、计划、NPC 与秘密不继承。原档案的交付 outbox 让失败重试复用同一新局身份；
+资料册 owner 为新局物化 canonical 选择。普通角色卡库导入仍遵循建卡字段契约，
+不能与完整快照带入视为同一种操作。
+
+实例迁移 45→46 仅设读者隔离边界，不猜历史计划或成长。未来/不支持的模块版本拒绝
+写入；已存储的非对象模块及损坏模块容器在默认槽初始化前被拒绝，不能被静默清空后重新获得写权限。
+准备中的存档跨 run 导入被拒绝，先取消再导入。已结团存档导入后仍只读，
+回执保留原 run 来源；自由计划和历史计划快照在导入边界重绑新 run。
+这不实现 #446 的完整 CoC Adventure runtime，也不保证任意模型正文永不编造。
+决策见 [ADR-0008](adr/0008-run-plans-and-finales.md)，操作见[剧情与结团](zh/run-story-and-finale.md)。
 
 ---
 

@@ -243,6 +243,8 @@ def game_detail(
         "max_players": room_access.max_players(instance),
         "multiplayer": instance.multiplayer_status(),
         "rest_session": public_rest_session(instance),
+        "run_lifecycle": module_hooks.read_value(instance, module_hooks.RUN_LIFECYCLE_VIEW) or {'status': 'playing'},
+        "gm_workspace_revision": module_hooks.gm_workspace_revision(instance) if viewer_is_gm else None,
         "plot_tracker": (
             instance.plot_tracker.to_dict() if instance.plot_tracker else None
         ),

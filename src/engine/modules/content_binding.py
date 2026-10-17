@@ -74,6 +74,18 @@ def book_refs(instance: Any) -> list[dict[str, Any]]:
     return deepcopy(list(_state(instance).get("book_refs") or []))
 
 
+def copy_for_new_game(candidate: Any, source: Any) -> None:
+    """Carry explicit canonical selections, never another game's binding rows."""
+    require_writable(source)
+    require_writable(candidate)
+    ref = world_ref(source)
+    if ref:
+        set_world_ref(candidate, ref)
+    replace_book_refs(candidate, book_refs(source))
+    if _state(source).get('book_selection') == 'explicit':
+        select_books_explicitly(candidate)
+
+
 def select_books_explicitly(instance: Any) -> None:
     """Opt out of automatic world/global inheritance, including an empty set.
 

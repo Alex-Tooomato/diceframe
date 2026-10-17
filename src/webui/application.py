@@ -55,6 +55,7 @@ from src.webui.routes.worlds import register_worlds
 from src.webui.services.security import SecurityTransportService
 from src.webui.session import SessionManager, session_middleware
 from src.webui.update_admission import update_admission
+from src.webui.run_write_admission import run_write_admission
 from src.webui.sse_ticket import SseTicketStore
 
 
@@ -97,6 +98,7 @@ def create_app(dependencies: ApplicationDependencies) -> web.Application:
     application.middlewares.append(abuse_guard_middleware)
     application.middlewares.append(dependencies.auth_middleware)
     application.middlewares.append(error_code_middleware)
+    application.middlewares.append(run_write_admission)
     application.on_response_prepare.append(add_response_security_headers)
     application["_config_reload_lock"] = asyncio.Lock()
     host_data = dependencies.host_data_dir or dependencies.data_dir

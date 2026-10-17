@@ -44,6 +44,8 @@ export function useGame(){
   let reconnectTimer:number|undefined
   let connectVersion=0
   let refreshEpoch=0
+  let activeRefreshes=0
+  let refreshAfterCurrent=false
   let eventCursor=''
   const signatures:Record<string,string> = { detail:'', players:'', log:'', privateMessages:'', tableTalk:'', map:'', loreEntries:'', lore:'' }
   // 登录 owner 在无玩家覆盖时拥有 GM 视图；选择普通玩家预览不继承 owner 的 GM 控件。
@@ -81,6 +83,10 @@ export function useGame(){
 
   function scheduleSilentRefresh() {
     clearRefreshTimer()
+    if (activeRefreshes) {
+      refreshAfterCurrent = true
+      return
+    }
     refreshTimer = window.setTimeout(() => {
       refreshTimer = undefined
       void refresh(true)
@@ -131,6 +137,7 @@ export function useGame(){
     unsubscribePeerEvents?.()
     unsubscribePeerEvents = null
     clearRefreshTimer()
+    refreshAfterCurrent = false
     if (pollTimer) {
       clearInterval(pollTimer)
       pollTimer = undefined
@@ -161,6 +168,7 @@ export function useGame(){
     if(!gameKey)return false
     const viewerId = userId.value
     const epoch = ++refreshEpoch
+    activeRefreshes++
     const current = () => epoch === refreshEpoch && currentGame.value === gameKey && userId.value === viewerId
     if(!silent){loading.value=true; error.value=''}
     try{
@@ -224,7 +232,14 @@ export function useGame(){
       }
       if(!silent || !detail.value) error.value=errorMessage(e)
       return false
-    }finally{if(current())loading.value=false}
+    }finally{
+      activeRefreshes--
+      if(current())loading.value=false
+      if(!activeRefreshes && refreshAfterCurrent && !accessClosed.value){
+        refreshAfterCurrent=false
+        scheduleSilentRefresh()
+      }
+    }
   }
 
   async function connect(){
@@ -320,6 +335,6 @@ export function useGame(){
   // 新回合写入 log 时清掉流式气泡。第一页满员后长度不再增长（旧条目被挤到下一页），
   // 须按最新条目的 round 判断，否则“GM 思考中”在正式输出落地后残留。
   watch(() => log.value[log.value.length - 1]?.round, (next, prev) => { if (next !== prev) { liveNarration.value = ''; liveStory.value = null } })
-  onBeforeUnmount(()=>{connectVersion++;refreshEpoch++;source?.close();unsubscribePeerEvents?.();revokeMapBackgroundAsset(map.value);clearRefreshTimer();if(pollTimer)clearInterval(pollTimer);if(reconnectTimer)clearTimeout(reconnectTimer)})
+  onBeforeUnmount(()=>{connectVersion++;refreshEpoch++;refreshAfterCurrent=false;source?.close();unsubscribePeerEvents?.();revokeMapBackgroundAsset(map.value);clearRefreshTimer();if(pollTimer)clearInterval(pollTimer);if(reconnectTimer)clearTimeout(reconnectTimer)})
   return {currentGame,userId,actorId,detail,players,player,log,privateMessages,tableTalk,map,lore,loreEntries,loading,error,accessClosed,isGm,refresh,connect,retryAccess,selectGame,liveNarration,liveStory,rulesetStateSignal,checkReveals,diceRevealMode}
 }

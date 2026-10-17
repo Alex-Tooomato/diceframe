@@ -27,6 +27,7 @@ from src.adventures import (
     LoadedAdventureBundle,
     is_builtin_adventure_directory,
 )
+from src.adventures.scene_context import project_scene_objectives
 from src.adventures.graph_v2 import (
     ADVENTURE_GRAPH_FORMAT_V2,
     AdventureGraphV2Error,
@@ -899,7 +900,7 @@ def game_adventure_projection(
         for node in projection.get("nodes", [])
         if isinstance(node, dict)
     }
-    progress = adventure_runtime_state.progress(instance)
+    progress = adventure_runtime_state.progress_snapshot(instance)
     progress = progress if isinstance(progress, dict) else {}
     active_nodes = [
         node_id
@@ -922,5 +923,6 @@ def game_adventure_projection(
             "available": True,
             "format": bundle.manifest.format,
             "projection": projection,
+            "scene_objectives": project_scene_objectives(graph, progress, viewer_is_gm=viewer_is_gm),
         },
     }

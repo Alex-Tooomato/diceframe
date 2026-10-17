@@ -13,6 +13,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable, Literal
 
+from src.adventures.scene_context import SceneContextProvider, format_scene_context
 from src.compat.callbacks import load_world_template as load_world_template_compat
 from src.content.gm_style import render_gm_style_section
 from src.engine.game_instance import GameInstance
@@ -62,6 +63,20 @@ class PromptComposer:
         self.ruleset_registry = ruleset_registry
         self.context_recent_rounds = context_recent_rounds
         self.auto_storyboard = False
+        self._scene_context_provider: SceneContextProvider | None = None
+
+    def set_scene_context_provider(self, provider: SceneContextProvider | None) -> None:
+        self._scene_context_provider = provider
+
+    def scene_objective_view(self, instance: GameInstance, *, viewer_is_gm: bool) -> dict:
+        if self._scene_context_provider is None:
+            return {}
+        return self._scene_context_provider(instance, viewer_is_gm=viewer_is_gm)
+
+    def scene_context_text(self, instance: GameInstance) -> str:
+        return format_scene_context(
+            self.scene_objective_view(instance, viewer_is_gm=True), instance.language, max_chars=4096,
+        )
 
     def set_auto_storyboard(self, enabled: bool) -> None:
         self.auto_storyboard = bool(enabled)
@@ -341,6 +356,7 @@ class PromptComposer:
             state_view=state_view,
             authoritative_events_text=authoritative_events_text,
             context_recent_rounds=self.context_recent_rounds,
+            scene_objective_view=self.scene_objective_view(instance, viewer_is_gm=True),
         )
 
     async def build_player_safe_context(
@@ -364,4 +380,5 @@ class PromptComposer:
             provider_name=provider_name,
             lorebook_budget=world_data.get("lorebook_token_budget", 0) if world_data else 0,
             visibility=visibility,
+            scene_objective_view=self.scene_objective_view(instance, viewer_is_gm=False),
         )

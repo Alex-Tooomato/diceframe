@@ -36,7 +36,7 @@ from src.engine.game_state_contracts import (
 )
 from src.engine.language import DEFAULT_LANGUAGE, normalize_language
 from src.engine.module_state import ensure_module_states
-from src.engine.modules import adventure_runtime_state, checks, economy_state, progression_state, room_access, round_safety, ruleset_runtime, session_stats
+from src.engine.modules import adventure_runtime_state, checks, economy_state, progression_state, room_access, round_safety, ruleset_runtime, run_finale, session_stats, skill_growth
 from src.engine.narrative_perspective import validate_narrative_perspective
 from src.engine.player_control import (
     PlayerControlError,
@@ -285,8 +285,15 @@ class GameInstance:
     def round_number(self, value: int) -> None:
         progression_state.set_round_value(self, value)
 
+    def run_writable(self) -> bool:
+        """Read-only run lifecycle admission, shared by locked legacy writers."""
+        skill_growth.require_writable(self)
+        return self.state != GameState.ENDED and run_finale.writable(self) and bool(module_hooks.ask(
+            module_hooks.AUTHORITATIVE_WRITE_ALLOWED, self, default=True,
+        ))
+
     @asynccontextmanager
-    async def authoritative_write(self) -> AsyncIterator[bool]:
+    async def authoritative_write(self, *, administrative: bool = False) -> AsyncIterator[bool]:
         """Enter the atomic live-aggregate writer gate.
 
         Writers arriving during a historical rewrite are rejected before any
@@ -295,6 +302,9 @@ class GameInstance:
         """
 
         task = asyncio.current_task()
+        if not administrative and not self.run_writable():
+            yield False
+            return
         if task is not None and self._authority_owner is task:
             self._authority_depth += 1
             try:
@@ -311,7 +321,7 @@ class GameInstance:
         try:
             # A queued writer may resume after a rewrite. At that point the
             # rewrite is committed and the caller must revalidate identity.
-            yield True
+            yield administrative or self.run_writable()
         finally:
             self._authority_depth = 0
             self._authority_owner = None
@@ -321,6 +331,17 @@ class GameInstance:
     async def historical_rewrite(self) -> AsyncIterator[bool]:
         """Own the authority gate for a complete staged historical rewrite."""
 
+        if not self.run_writable():
+            yield False
+            return
+        if self._authority_owner is asyncio.current_task():
+            previous = self._rewrite_in_progress
+            self._rewrite_in_progress = True
+            try:
+                yield True
+            finally:
+                self._rewrite_in_progress = previous
+            return
         if self._authority_lock.locked() and self._rewrite_in_progress:
             yield False
             return
@@ -329,7 +350,7 @@ class GameInstance:
         self._authority_depth = 1
         self._rewrite_in_progress = True
         try:
-            yield True
+            yield self.run_writable()
         finally:
             self._rewrite_in_progress = False
             self._authority_depth = 0
@@ -666,6 +687,8 @@ class GameInstance:
     ) -> bool:
         """Attach a public recap to one real round without creating a fake round."""
         async with self._lock:
+            if not self.run_writable():
+                return False
             target = next((entry for entry in self.log if entry is target_entry), None)
             if target is None:
                 return False
@@ -816,6 +839,8 @@ class GameInstance:
         ``round_recovery.rollback_last_round_locked``。
         """
         async with self._lock:
+            if not self.run_writable():
+                return None
             if self.log:
                 # Reject before history or snapshots can be changed.
                 progression.require_writable(self)
@@ -843,6 +868,8 @@ class GameInstance:
         ``_drop_stale_combat_caches``。
         """
         async with self._lock:
+            if not self.run_writable():
+                return False
             if self.state == GameState.ACTIVE_JUDGMENT:
                 progression.require_writable(self)
                 session_stats.require_writable(self)
@@ -1006,6 +1033,8 @@ class GameInstance:
     async def start_round(self, *, expected_run_id: str = "") -> None:
         """开启新一轮行动阶段；可选 run fence 在状态锁内检查。"""
         async with self._lock:
+            if not self.run_writable():
+                return None
             if expected_run_id and check_run_unchanged(
                 self, GateRequest(actor_uid="", source=SOURCE_HUMAN, expected_run_id=expected_run_id),
             ):
@@ -1214,6 +1243,8 @@ class GameInstance:
         from src.engine.modules import room_access
 
         async with self._lock:
+            if not self.run_writable():
+                return False
             if user_id not in self.players:
                 return False
             room_access.require_writable(self)
@@ -1231,6 +1262,8 @@ class GameInstance:
     async def set_player_away(self, user_id: str, away: bool = True) -> bool:
         """标记玩家暂离/回来。暂离玩家仍在队伍中，但不阻塞多人回合。"""
         async with self._lock:
+            if not self.run_writable():
+                return False
             return self._set_player_away_locked(user_id, away)
 
     def _set_player_away_locked(self, user_id: str, away: bool) -> bool:
@@ -1299,6 +1332,8 @@ class GameInstance:
     async def advance_round(self) -> bool:
         """显式推进回合。未行动的存活玩家标记为已就绪。"""
         async with self._lock:
+            if not self.run_writable():
+                return False
             if not progression.accepts_narrative(self):
                 return False
             from src.engine.economy import has_blocking_economy_decision
@@ -1315,6 +1350,8 @@ class GameInstance:
     async def try_advance(self) -> bool:
         """原子推进：检查条件 + 推进在同一个锁内完成，消除 TOCTOU 竞态。"""
         async with self._lock:
+            if not self.run_writable():
+                return False
             if not progression.accepts_narrative(self):
                 return False
             from src.engine.economy import has_blocking_economy_decision
@@ -1367,6 +1404,8 @@ class GameInstance:
         日志提交与下一轮开启共用状态锁，中间不释放锁或 await。
         """
         async with self._lock:
+            if not self.run_writable():
+                return None
             progression.require_writable(self)
             session_stats.require_writable(self)
             checks.require_writable(self)
@@ -1392,6 +1431,8 @@ class GameInstance:
     ) -> None:
         """为已有轮次添加 swipe（不推进回合）。"""
         async with self._lock:
+            if not self.run_writable():
+                return None
             session_stats.require_writable(self)
             economy_state.state(self)
             round_recovery.finish_judgment_with_swipe_locked(
@@ -1400,23 +1441,32 @@ class GameInstance:
 
     async def switch_swipe(self, round_num: int, swipe_idx: int) -> bool:
         """切换指定轮次的 swipe 展示（实现见 round_recovery；并发语义与基线一致）。"""
-        return round_recovery.switch_swipe(self, round_num, swipe_idx)
+        async with self._lock:
+            if not self.run_writable():
+                return False
+            return round_recovery.switch_swipe(self, round_num, swipe_idx)
 
     # ---------- 状态转换 ------------------------------------
     # 持锁 mutation detail 见 src/engine/instance_lifecycle.py。
 
     async def activate(self) -> None:
         async with self._lock:
+            if not self.run_writable():
+                return None
             progression.require_writable(self)
             session_stats.require_writable(self)
             instance_lifecycle.activate_locked(self)
 
     async def pause(self) -> None:
         async with self._lock:
+            if not self.run_writable():
+                return None
             instance_lifecycle.pause_locked(self)
 
     async def resume(self, *, expected_run_id: str = "") -> None:
         async with self._lock:
+            if not self.run_writable():
+                return None
             if expected_run_id and check_run_unchanged(
                 self, GateRequest(actor_uid="", source=SOURCE_HUMAN, expected_run_id=expected_run_id),
             ):
@@ -1426,6 +1476,8 @@ class GameInstance:
 
     async def end(self) -> None:
         async with self._lock:
+            if not self.run_writable():
+                return None
             instance_lifecycle.end_locked(self)
 
     async def reset(self, keep_seed: bool = True) -> None:

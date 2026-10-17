@@ -59,6 +59,26 @@ def store(tmp_path: Path):
         value.close()
 
 
+def test_carried_game_materializes_its_explicit_refs_without_changing_source_bindings(store):
+    from copy import deepcopy
+    _book(store, 'selected')
+    source = _instance()
+    candidate = _instance('web|next|bot')
+    content_binding.replace_book_refs(candidate, [{
+        'source_kind': 'user', 'source_id': 'selected', 'kind': 'lorebook', 'id': 'selected', 'digest': '',
+    }])
+    content_binding.select_books_explicitly(candidate)
+    store.bind_lorebook({'id': 'source-binding', 'book_id': 'selected', 'scope_kind': 'game', 'scope_id': 'web|room|bot'})
+    before = deepcopy(store.list_bindings())
+    service = GameLorebookService(_deps(store, {}))
+    service.bind_carried_game(candidate)
+    service.bind_carried_game(candidate)
+    resolved = resolve_active_books(candidate, viewer_kind='gm', viewer_uid='', action_actor_uids=[], store=store)
+    assert [ref.book_id for ref in resolved] == ['selected']
+    assert [row for row in store.list_bindings() if row['id'] == 'source-binding'] == before
+    assert len(store.list_bindings()) == 2
+
+
 def test_auto_selection_marks_character_books_locked_and_is_read_only(store):
     _book(store, "global-book")
     _book(store, "world-book")

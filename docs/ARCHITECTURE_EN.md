@@ -10,7 +10,7 @@
 > - Branch: `main`
 > - Commit: `d2246e0d0d32867e8e090c238b588441bad96a28`
 > - Release: `2.6.1`
-> - Upstream GameInstance persisted schema: `44`; this local implementation writes `45` (table ownership split).
+> - Upstream GameInstance persisted schema: `44`; this local implementation writes `46` (45 splits table ownership; 46 fences story/development/finale authority).
 > - Local state ownership: `game_config` is kernel configuration; `room_access` and the economy ledger are mandatory kernel dependencies. `narration_preferences` and `check_presentation` contribute optional projections and new-run preference carry through hooks. Migration 44→45 moves the old table fields and `economy.reward_policy` without rescaling or changing transaction state; opaque extras are retained and unknown/mixed shapes are refused. See [ADR-0007](adr/0007-runtime-state-ownership.md).
 > - R9-b: `scene` authority lives in `modules.narrative_notes.scene`, upgrading that slot to v2; migration 39→40 removes the old top-level key and keeps the value verbatim. Reset still clears it. Transactions that write the scene (run opening, round processing, swipe, ruleset batches and Director automation, ruleset transaction restore, reset) preflight the narrative owner through `module_hooks.preflight(..., NARRATIVE_VIEW)`. The `scene` in list, detail, lobby (including the password gate), SSE, recap and the LLM view is unchanged.
 > - R9-a: `adventure_progress` and `play_mode` have their authority in `modules.adventure_runtime` under `progress` and `play_mode`; migration 38→39 removes the old top-level keys. Adventure identity stays only in top-level `adventure_binding`. An empty or unknown play mode is still derived from the binding on load; in-place reset clears progress and keeps the play mode; a new run (reset/restart/seed) keeps the play mode and re-initializes v2 progress, all through the module owner after a preflight.
@@ -2325,6 +2325,137 @@ content
 ```
 
 but does not expose the internal canonical Lore entry ID. This prevents IDs such as `npc_traitor_mary` or `clue_real_murderer_john` from leaking secret information by themselves. Full GM context may still keep canonical IDs for diagnostics and consistency.
+
+---
+
+### 15.4.1 Current Adventure scenes and objectives
+
+`src/adventures/scene_context.py` owns the Adventure v2 scene projection. The
+WebAPI composition root injects the application-owned resolver into
+GameHandler / PromptComposer. The projection verifies package source, version,
+digest and world binding, and reads the module's non-mutating
+`progress_snapshot()`. It never creates missing slots, generates a plan or
+advances nodes. Regular turns, openings, resume narration and player questions
+share this seam.
+
+The GM view contains active nodes, related objectives and one-hop successor
+candidates; candidates are not asserted to be unlocked. Players and AI seats
+receive only active public nodes, objectives related to known nodes and their
+completion status. Canonical IDs, NPC/encounter references, transition conditions
+and outcomes are omitted. Public visibility alone does not reveal inactive,
+unvisited future nodes to the model. Existing private/party Q&A knowledge
+boundaries remain in force. The game Adventure query exposes the same projection
+as `adventure.scene_objectives`.
+
+The context builder budgets at most 10% of its window, capped at 4096 characters,
+for this block, retaining objectives before optional descriptions. Dedicated
+opening/resume narration requests also cap the block at 4096 characters. No
+additional model call is introduced. Historical swipe uses the owning module's rewind hook to restore the target
+round's `pre_adventure_progress` before projecting; v2 histories without the
+progress or character snapshot cannot be regenerated using later progress. Resolution failures produce
+an empty player projection and an unavailable notice for the GM. Existing binding
+and gameplay authority paths continue to own admission.
+
+v1 uses optional `CurrentSceneRuntime` to project the bound runtime's current
+step. The D&D adapter reads a copy and omits future steps for players. Unbound
+games use the run plan below; a broken Adventure binding never falls back to it.
+
+### 15.4.2 Free-game plans, intermissions and finales
+
+`modules.run_story` (schema 1) owns a per-run plan, revision, current/revealed/
+completed scenes, transitions, rejected-NPC warnings and stalled-round count.
+A GM writes a plan or requests an AI original draft and explicitly adopts it.
+Historical games receive no guessed plan. At most 24 scenes declare theme,
+party goal, guided/sandbox mode and strict/open NPC policy. This is not an
+Adventure package and cannot change world sources, rewards or bound progress.
+
+Players receive only current public scene/objective data. GM context adds exit
+conditions, adjacent candidates and progressive hints. A model-authored
+`plot_update.story_transition` is advisory: format_version 1, run_id, revision,
+from_id, to_id and evidence_rounds. GM confirmation and domain validation of
+run/revision, adjacency and real committed rounds are mandatory. Narration
+cannot commit progress. Strict NPC admission rejects unadopted new state and
+records warnings; prose remains subject to GM review. Stall hints offer routes
+or costs without changing dice results. Diagnostics show the actual scene block
+and its 4096-character budget.
+
+`modules.skill_growth` (schema 1) owns successful-check marks, intermission
+receipts and internal randomness reservations. Rules opt in through
+`growth_system=skill_improvement` and the supported version 1 policy. Built-in
+Lite CoC declares d100 above skill or at least 96, d10 gain, cap 99. Attributes,
+failed checks, luck-spent successes, explicitly non-improvable and excluded
+skills do not mark. Marks deduplicate by actor and stable skill-row identity;
+ambiguous names are not guessed. `SKILL_GROWTH` narrator tags have no authority.
+Settlement validates all targets on an isolated aggregate, then publishes
+updated sheets and a receipt together. Repeated receipts return the original
+result. The service persists randomness before evaluating rolls; failed or
+cancelled persistence retries reproduce the same marked-check result instead
+of rerolling. Historical increases remain and old logs do not create new marks.
+
+`modules.run_finale` (schema 1) owns preparation, an immutable archive and a
+separate character-delivery outbox. Idle ACTIVE_ACTION/PAUSED games may prepare
+after actions, combat, dice, luck/Push, economy proposals, external effects and
+runtime-specific pending work are resolved. Preparation saves an ID, source
+fingerprint, whole-run public transcript and player-safe current scene. The
+original GameState remains, with writes frozen. Materials may be manual or AI
+drafts. Whole-run summarization uses segments rather than the incremental recap's
+last-ten-round limit. Whitelisting precedes model calls: private Q&A, GM
+conditions, hidden snapshots and future nodes never enter public material.
+Private GM notes are separate and never AI-generated here.
+
+NDJSON reports real stages, requires token consent, supports cancellation and
+disconnect cancellation, and times out after 600 seconds. A draft does not save
+materials or settle. GMs save, review and confirm; optimistic material revisions
+reject stale multi-window approval. Settlement publishes supported rule results,
+character snapshots, a receipt and ENDED atomically, rolling back failed saves.
+Optional `RunFinaleRuntime` owns specific-rule audit: D&D adds zero extra XP or
+loot; Lite CoC uses deferred improvement. SAN/money awards are not inferred.
+Preparation can be cancelled; committed settlement cannot. Restart preserves
+freeze/archive state without scheduling another round.
+
+Finale barriers and growth receipts are mandatory kernel authority even when
+presentation hooks are detached. HTTP `run_write_admission` and aggregate
+authority/state gates cover Web, same-route Bot and direct-connect requests.
+The finale service owns administrative writes. Read-only SSE ticket issuance,
+GM identity recovery, seat-credential issue/claim (administrative, still
+serialized) and deleting the owner's memory entries remain available on
+frozen/ended archives. Slow model/media routes (KP questions, recaps, speech,
+transcription, image generation and storyboard analysis) are admitted at entry
+but do not hold run authority while they wait; their short commit step takes
+`authoritative_write()` and re-checks the run. Reset/restart cannot overwrite
+frozen/ended archives.
+Synchronous domain setters remain trusted transaction primitives. Rewind/swipe
+cannot cross settled intermissions; pending marks and plans use owner snapshots.
+
+`RunStoryService` composes explicit dependencies behind thin routes. UI components
+live in `features/play/run-story/`, mounted by the GM scene workspace and read-only
+play surface. A data-free `run_story_changed` event invalidates role-filtered
+views, including same-round plan, preparation and material revision changes.
+Owners contribute invalidation values through `gm.workspace.revisions`; the
+generic hook produces an opaque, GM-only `gm_workspace_revision`. The GM SSE
+cursor includes it to cover same-round changes, subscription gaps and reconnects;
+player cursors exclude it. Panels reload on relevant versions, fence delayed reads
+after writes and show known freeze status while public materials load.
+Players export public recaps and their own character only. GM save
+ZIPs include separate epilogue, recap, private notes, source, receipt, character
+JSON and a SHA-256 manifest, with room_access credential scrubbing retained.
+Carry creates a separate game/run from settled full sheets, verifies runtime
+initialization leaves them unchanged, and issues fresh invitations. Old plans,
+NPCs and secrets do not carry. A durable outbox reuses the same destination on
+retry; the Lorebook owner materializes canonical selections for it. Ordinary
+character-library import still follows its creation-field contract and is not
+equivalent to full-snapshot carry.
+
+Migration 45→46 is a reader fence, not historical plan/mark reconstruction.
+Explicitly damaged module containers are refused before defaults can erase authority.
+Unsupported/future module versions reject writes. Persisted non-object slots
+are rejected before generic defaults can silently discard their authority.
+Preparing saves cannot import
+into another run until cancelled. Ended imports remain read-only and preserve
+receipt provenance. Plan state and historical plan snapshots rebind at import.
+This does not implement #446's full CoC Adventure runtime or guarantee arbitrary
+model prose never invents facts. See [ADR-0008](adr/0008-run-plans-and-finales.md)
+and the [user guide](en/run-story-and-finale.md).
 
 ---
 

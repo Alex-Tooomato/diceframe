@@ -13,6 +13,8 @@ This registry must not import GameInstance or any concrete module.
 from __future__ import annotations
 
 from collections.abc import Callable
+import hashlib
+import json
 from typing import Any
 
 # reset_round_checks: handler(instance) -> None.  Clear round-scoped state.
@@ -53,6 +55,14 @@ REWIND_SOURCE_SWIPE = "swipe"
 # retire live round state.  ``pre_snapshot`` is whatever round processing
 # captured as COMBAT_EXTENSION_SNAPSHOT before applying the state update.
 ROUND_COMMIT = "round.commit"
+# Optional admission policy for narrator NPC state writes. False rejects a new
+# authoritative entity; ordinary background narration remains possible.
+NPC_ADMISSION = "npc.admission"
+# False freezes ordinary run writers; finalization service uses its explicit
+# administrative gate for preparing/cancelling/committing the freeze itself.
+AUTHORITATIVE_WRITE_ALLOWED = "authority.write.allowed"
+# Rule-declared development records from server-settled checks, not LLM tags.
+SETTLED_SKILL_USE = "checks.skill_use.settled"
 # Before a write that may mark or forget a seat: handler(instance) -> None.
 # Raise to refuse; nothing has changed yet.
 SEAT_PREFLIGHT = "seat.preflight"
@@ -127,8 +137,16 @@ DICE_REVEAL_MODE = "dice_reveal_mode"
 LUCK_TIMEOUT_SECONDS = "luck_timeout_seconds"
 PUSH_ENABLED = "push_enabled"
 QUICK_ACTIONS_ENABLED = "quick_actions_enabled"
+RUN_LIFECYCLE_VIEW = "run_lifecycle_view"  # public status/id/revision only
+# handler(instance, revisions) contributes its own GM-only invalidation value.
+# No module's private data is returned to clients by this contract.
+GM_WORKSPACE_REVISIONS = "gm.workspace.revisions"
 
 HOOK_POINTS = frozenset({
+    GM_WORKSPACE_REVISIONS,
+    NPC_ADMISSION,
+    AUTHORITATIVE_WRITE_ALLOWED,
+    SETTLED_SKILL_USE,
     ROUND_RESET, ROUND_PROCESSING_BEGIN, INSTANCE_RESET_PREFLIGHT, INSTANCE_RESET_BEGIN, INSTANCE_RESET,
     INSTANCE_NEW_RUN_PREFLIGHT, INSTANCE_NEW_RUN,
     ROUND_RECOVERY_PREFLIGHT, ROUND_ABORT, ROUND_REWIND_BEGIN, ROUND_REWIND_RESTORE, ROUND_COMMIT,
@@ -234,6 +252,15 @@ def read_value(instance: Any, kind: str) -> dict | None:
     """Dict-valued state of ``kind``; ``None`` when absent or no module keeps it."""
     answer = ask(STATE_READ, instance, kind, default=None)
     return answer if isinstance(answer, dict) else None
+
+
+def gm_workspace_revision(instance: Any) -> str:
+    """Opaque GM-only token for optional same-round workspace resources."""
+    revisions: dict[str, Any] = {}
+    run(GM_WORKSPACE_REVISIONS, instance, revisions)
+    if not revisions:
+        return ''
+    return hashlib.sha256(json.dumps(revisions, sort_keys=True, ensure_ascii=False).encode()).hexdigest()
 
 
 def seat_has_acted(instance: Any, user_id: str) -> bool:

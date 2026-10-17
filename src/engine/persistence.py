@@ -19,7 +19,7 @@ from typing import Any, Callable
 from uuid import uuid4
 
 from src.engine import game_instance
-from src.engine import check_decisions
+from src.engine import check_decisions, module_hooks
 from src.engine.game_instance import GameInstance, GameRegistry, GameState
 from src.engine.health import record_health_event
 from src.engine.module_state import ModuleStateError
@@ -305,6 +305,10 @@ async def recover_all(registry: GameRegistry) -> list[GameInstance]:
                         break
             game_key = tuple(parts[:3])
             instance = await load(registry, game_key)
+            if instance and not instance.run_writable():
+                # Frozen preparation / ended archive stays registered and
+                # readable; never normalize its source phase or schedule it.
+                continue
             if instance and instance.state != GameState.ENDED:
                 kept_luck_pending = (
                     instance.state == GameState.ACTIVE_JUDGMENT

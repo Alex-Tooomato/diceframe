@@ -92,6 +92,16 @@
   },
   "combat_model": "lethal_narrative",
   "growth_system": "skill_improvement",
+  "skill_improvement": {
+    "version": 1,
+    "success": "above_skill_or_96",
+    "gain": "d10",
+    "cap": 99,
+    "excluded_skill_ids": ["cthulhu_mythos"],
+    "identity_aliases": {
+      "cthulhu_mythos": ["cthulhu_mythos", "克苏鲁神话", "Cthulhu Mythos", "クトゥルフ神話", "Cthulhu-Mythos", "Мифы Ктулху", "Mitos de Cthulhu"]
+    }
+  },
   "bonus_dice": true,
   "pushed_rolls": true,
   "hp_formula": "max((con + siz) // 10, 1)",

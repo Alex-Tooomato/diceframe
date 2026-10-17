@@ -16,6 +16,7 @@ Start here when developing or using DiceFrame. The source in the checked-out rev
 | --- | --- | --- |
 | AI and interface settings | [Guide](en/ai-settings.md) | [指南](zh/ai-settings.md) |
 | Content and play, including DF Agent | [Guide](en/content-and-play.md) | [指南](zh/content-and-play.md) |
+| Story plans, skill development and finales | [Guide](en/run-story-and-finale.md) | [指南](zh/run-story-and-finale.md) |
 | Updates and recovery | [Guide](en/updates.md) | [指南](zh/updates.md) |
 | Rules and dice | [Guide](en/rules-and-dice.md) | [指南](zh/rules-and-dice.md) |
 | Direct connections | [Guide](en/direct-connect.md) | [指南](zh/direct-connect.md) |

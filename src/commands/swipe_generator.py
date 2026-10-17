@@ -7,6 +7,7 @@ from collections.abc import Callable
 from copy import deepcopy
 from typing import Any
 
+from src.adventures.graph_v2 import ADVENTURE_GRAPH_FORMAT_V2
 from src.commands.economy_effects import (
     currency_labels_for_rule,
     defer_narrative_effects,
@@ -129,6 +130,8 @@ class SwipeGenerator:
                 break
         if not target_entry:
             return None, None
+        from src.engine.modules import skill_growth
+        skill_growth.rewind_preflight(instance, round_num)
 
         swipes = target_entry.get("swipes", [])
         if len(swipes) >= 5:
@@ -140,7 +143,13 @@ class SwipeGenerator:
             swipes = [target_entry.get("gm_response", "")]
             target_entry["swipes"] = swipes
 
+        progress_snapshot = target_entry.get("pre_adventure_progress")
         snapshot = target_entry.get("pre_state_snapshot", {})
+        if ((instance.adventure_binding or {}).get("format") == ADVENTURE_GRAPH_FORMAT_V2
+                and (not isinstance(progress_snapshot, dict) or not isinstance(snapshot, dict) or not snapshot)):
+            logger.warning("Cannot rewrite v2 adventure without its pre-round snapshots: %s round=%s",
+                           instance.game_key, round_num)
+            return None, None
         if snapshot:
             # ADR 0003 branch cut: rounds after the rewritten target belong to
             # the discarded branch. Their log entries are dropped together

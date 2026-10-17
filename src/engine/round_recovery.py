@@ -29,7 +29,7 @@ from typing import TYPE_CHECKING, Any
 from src.engine import module_hooks, progression
 from src.engine.contracts import RoundLogEntry
 from src.engine.game_state import GameState
-from src.engine.modules import progression_state
+from src.engine.modules import progression_state, skill_growth
 from src.engine.round_snapshots import restore_players, snapshot_players
 from src.engine.world_state import ensure_world_state
 
@@ -57,7 +57,10 @@ def rollback_last_round_locked(instance: GameInstance) -> int | None:
     checks.require_writable(instance)
     round_safety.require_writable(instance)
     adventure_runtime_state.require_writable(instance)
-    last = instance.log.pop()
+    last = instance.log[-1]
+    target = int(last.get('round', progression_state.round_value(instance)) or progression_state.round_value(instance))
+    skill_growth.rewind_preflight(instance, target)
+    instance.log.pop()
     from src.engine.economy import reconcile_rollback_snapshot, reverse_round_economy
 
     rolled_back_round = int(last.get("round", progression_state.round_value(instance)) or progression_state.round_value(instance))

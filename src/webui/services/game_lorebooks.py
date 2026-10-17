@@ -366,6 +366,24 @@ class GameLorebookService:
             })
         return before, canonical, aliases
 
+    def bind_carried_game(self, candidate: Any) -> None:
+        """Idempotently materialize the new game's canonical selections.
+
+        The durable carry outbox owns retry. Only the destination scope is
+        touched; the archived game and per-character sources stay unchanged.
+        """
+        content = self._existing_content_binding(candidate)
+        if content is None:
+            return
+        selected, _, _ = self._selected_catalog(candidate, content.get('book_refs', []))
+        canonical = '|'.join(candidate.game_key)
+        before = self._target_bindings(self.deps.store, {canonical})
+        try:
+            self._replace_game_bindings(candidate, canonical, selected)
+        except Exception:
+            self._restore_game_bindings(candidate, canonical, before)
+            raise
+
     def _restore_game_bindings(self, instance: Any, requested: str, before: list[dict[str, Any]]) -> None:
         canonical = self._canonical_game_key(instance, requested)
         aliases = self._game_aliases(instance, requested, canonical)

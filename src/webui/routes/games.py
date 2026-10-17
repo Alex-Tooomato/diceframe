@@ -117,6 +117,8 @@ async def _read_save_upload(reader) -> bytes:
 
 
 def register_games(app: web.Application) -> None:
+    from src.webui.routes.run_story import register as register_run_story
+    register_run_story(app)
     from src.webui.routes.ai_seats import register as register_ai_seats
     register_ai_seats(app)
     from src.webui.routes.check_modes import register as register_check_modes

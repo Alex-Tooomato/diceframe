@@ -11,6 +11,7 @@ import logging
 
 from src.engine.game_instance import GameInstance
 from src.engine.modules import progression_state
+from src.engine import module_hooks
 
 logger = logging.getLogger("trpg")
 
@@ -20,6 +21,9 @@ class NpcStateApplier:
 
     def apply_npcs(self, instance: GameInstance, npcs_update: dict) -> None:
         for npc_name, nud in npcs_update.items():
+            if not module_hooks.ask(module_hooks.NPC_ADMISSION, instance, npc_name, default=True):
+                logger.warning('Story policy rejected unadopted NPC: %s', npc_name)
+                continue
             if npc_name in instance.npcs:
                 instance.npcs[npc_name].update(nud)
             else:

@@ -23,6 +23,7 @@ import { cardAdoptionLocked, characterCardNeedsConversion, characterCardRuleName
 import GameTimeline from '@/components/GameTimeline.vue'
 import ThemeToggle from '@/components/ThemeToggle.vue'
 import ActionComposer from '@/components/ActionComposer.vue'
+import RunFinalePanel from '@/features/play/run-story/RunFinalePanel.vue'
 import DirectorProposalCard from '@/components/play/DirectorProposalCard.vue'
 import CombatMessageComposer from '@/components/play/CombatMessageComposer.vue'
 import KpQuestionDialog from '@/components/play/KpQuestionDialog.vue'
@@ -397,8 +398,10 @@ const revealChecks = computed(() => game.detail.value?.round_check_results || pe
 const serverJudging = computed(() => game.detail.value?.state === 'active_judgment' && !pendingCheckDecisions.value.length)
 const roundJudgmentStuck = computed(() => game.detail.value?.state === 'active_judgment')
 const showGmThinking = computed(() => gmThinking.value || serverJudging.value)
+const runReadOnly = computed(() => game.detail.value?.state === 'ended' || ['preparing', 'ended'].includes(game.detail.value?.run_lifecycle?.status || ''))
 const sceneTitle = computed(() => game.detail.value?.scene || t('unknownScene'))
 const stateLabel = computed(() => {
+  if (game.detail.value?.run_lifecycle?.status === 'preparing') return t('preparing')
   if (showGmThinking.value) return t('gmThinking')
   if (pendingCheckDecisions.value.length) return postCheckWaiting(locale.value)
   const state = game.detail.value?.state || 'unknown'
@@ -417,6 +420,7 @@ const stateLabel = computed(() => {
 const tableMode = computed(() => game.detail.value?.solo_mode ? t('soloAdventure') : t('multiplayerAdventure'))
 const roleLabel = computed(() => game.isGm.value ? t('gmConsole') : isPlayer.value ? t('playerView') : t('spectatorView'))
 const progressLabel = computed(() => {
+  if (runReadOnly.value) return stateLabel.value
   if (showGmThinking.value) return t('generatingStory')
   const detail = game.detail.value
   if (!detail) return t('syncing')
@@ -433,6 +437,7 @@ const tokenBudgetHint = computed(() => {
   return t('tokenBudgetBumped', { from: bump.from, to: bump.to })
 })
 const tableNotice = computed(() => {
+  if (runReadOnly.value) return ''
   if (showGmThinking.value) return t('gmProcessingNotice')
   if (pendingCheckDecisions.value.some(check => check.push)) return postCheckWaiting(locale.value)
   if (pendingCheckDecisions.value.length) {
@@ -1566,8 +1571,10 @@ function onPlayKeydown(event: KeyboardEvent) {
 
         <TableTalkFeed :exchanges="game.tableTalk.value" />
 
+        <RunFinalePanel v-if="runReadOnly"
+          :game-key="game.currentGame.value" :revision="`${game.detail.value.run_lifecycle?.status}:${game.detail.value.run_lifecycle?.id}:${game.detail.value.run_lifecycle?.revision || 0}`" :lifecycle-status="game.detail.value.run_lifecycle?.status" :is-gm="false" />
         <CombatMessageComposer
-          v-if="rulesetCombatActive && rulesetGameplay"
+          v-else-if="rulesetCombatActive && rulesetGameplay"
           :game-key="game.currentGame.value"
           :gameplay="rulesetGameplay"
           @refresh="refreshRulesetPanels"

@@ -28,7 +28,7 @@ from src.password_hashing import hash_password
 
 logger = logging.getLogger("trpg")
 
-CURRENT_INSTANCE_SCHEMA_VERSION = 45
+CURRENT_INSTANCE_SCHEMA_VERSION = 46
 
 # 内置 freeform_coc 在 Currency Model V2 中把 base_unit 从「美元」升级为
 # 「美分」（1 amount = 1 美分），存量 CoC 存档的所有 canonical 金额必须 ×100
@@ -1180,7 +1180,14 @@ def migrate_game_state_payload(data: Mapping[str, Any]) -> dict[str, Any]:
 
         payload = split_table_preferences(payload)
         version = 45
+    if version == 45:
+        # Reader fence: older readers cannot enforce finale write barriers or
+        # deferred improvement receipts. Missing optional slots remain absent;
+        # never infer a historical plan, mark or reverse earlier skill gains.
+        version = 46
     payload["instance_schema_version"] = version
+    from src.migrations.run_story import validate_slot_envelopes
+    validate_slot_envelopes(payload)
     return payload
 
 
@@ -1198,6 +1205,8 @@ def rebind_imported_game_state_payload(
     """
 
     payload = migrate_game_state_payload(data)
+    from src.migrations.run_story import rebind_story_state
+    rebind_story_state(payload, run_id=run_id)
     payload["game_key"] = list(game_key)
     payload["run_id"] = run_id
     payload["memory_namespace"] = f"{game_key!s}::run:{run_id}"
@@ -1256,6 +1265,9 @@ def normalize_game_state_payload(data: Mapping[str, Any]) -> dict[str, Any]:
     rooms and unplayed multiplayer sessions therefore keep every participant.
     """
     payload = migrate_game_state_payload(data)
+    from src.migrations.run_story import preserves_frozen_roster
+    if preserves_frozen_roster(payload):
+        return payload
     players = payload.get("players")
     log = payload.get("log")
     if not isinstance(players, dict) or len(players) <= 1 or not isinstance(log, list) or not log:

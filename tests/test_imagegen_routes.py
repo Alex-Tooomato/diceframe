@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from contextlib import asynccontextmanager
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -570,6 +571,42 @@ async def test_storyboard_candidate_is_persisted_and_read_after_service_recreati
     assert draft["panels"] == []
     assert draft["candidate"]["panels"] == result["panels"]
     assert draft["candidate"]["requested_panel_count"] is None
+
+
+@pytest.mark.asyncio
+async def test_storyboard_candidate_rejects_entry_replaced_while_waiting_for_authority(tmp_path):
+    """A rollback/swipe replacement must not receive a stale candidate."""
+    instance = _storyboard_instance()
+    old_entry = instance.log[-1]
+    replacement = dict(old_entry)
+    replacement["current_swipe"] = 0
+    replaced = False
+
+    @asynccontextmanager
+    async def authority():
+        nonlocal replaced
+        replaced = True
+        instance.log = [replacement]
+        yield True
+
+    instance.authoritative_write = authority
+    imagegen = _FakeImageGenerationService(tmp_path / "unused.webp")
+    imagegen.auto_storyboard = True
+    service = GeneratedImageService(GeneratedImageDependencies(
+        imagegen=imagegen,
+        get_instance=lambda _key: instance,
+        update_map_background=lambda *_args: None,
+        llm_client=_StoryboardLlm(
+            '{"panels":[{"participants":["alice"],"location":"码头",'
+            '"description":"Alice在雾中守望","evidence_ids":["n1"]}]}'
+        ),
+    ))
+
+    result = await service.analyze_storyboard("web|room|bot", "gm", 3)
+
+    assert replaced
+    assert result == {"ok": False, "error": "目标剧情已变化，请重新分析分镜"}
+    assert "scene_panel_candidate" not in replacement
 
 
 @pytest.mark.asyncio

@@ -10,6 +10,7 @@ import os
 from copy import deepcopy
 from typing import Any, Literal
 
+from src.adventures.scene_context import format_scene_context
 from src.engine import module_hooks
 from src.engine.game_instance import GameInstance
 from src.engine.language import localized_text, normalize_language
@@ -241,6 +242,7 @@ def _shrink_to_window(parts: list[str], sec_idx: dict[str, int], max_total: int)
         ("manual_rolls", False),
         ("authoritative_events", False),
         ("lorebook", False),
+        ("scene_objectives", False),
         ("state", False),
     ):
         idx = sec_idx.get(key)
@@ -593,6 +595,7 @@ async def build_context(
     state_view: dict | None = None,
     authoritative_events_text: str = "",
     context_recent_rounds: int = 0,
+    scene_objective_view: dict[str, Any] | None = None,
 ) -> str:
     """将游戏状态拼接为完整的 LLM 上下文。
 
@@ -630,6 +633,10 @@ async def build_context(
     parts: list[str] = []
     sec_idx: dict[str, int] = {}  # 段名 → parts 索引，供超窗收尾收缩使用
     reserved_system_chars = min(len(gm_prompt_filled), budget_system)
+    scene_text = format_scene_context(scene_objective_view, language, max_chars=min(4096, max_total // 10))
+    if scene_text:
+        parts.append(scene_text)
+        sec_idx["scene_objectives"] = len(parts) - 1
 
     # 1. 游戏状态（LLM 精简视图，含属性修正）
     state = state_view if state_view is not None else instance.to_llm_view()
@@ -1002,6 +1009,7 @@ async def build_player_safe_context(
     provider_name: str = "",
     lorebook_budget: int = 0,
     visibility: Literal["private", "party"] = "private",
+    scene_objective_view: dict[str, Any] | None = None,
 ) -> str:
     """Build a structurally player-safe context for read-only GM questions.
 
@@ -1032,6 +1040,10 @@ async def build_player_safe_context(
     parts: list[str] = []
     sec_idx: dict[str, int] = {}
     reserved_system_chars = min(len(gm_prompt_filled), budget_system)
+    scene_text = format_scene_context(scene_objective_view, language, max_chars=min(4096, max_total // 10))
+    if scene_text:
+        parts.append(scene_text)
+        sec_idx["scene_objectives"] = len(parts) - 1
 
     state_json = json.dumps(
         _player_safe_state(instance, actor_uid, visibility), ensure_ascii=False,
