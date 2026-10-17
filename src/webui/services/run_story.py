@@ -49,7 +49,9 @@ class RunStoryService:
                 growth = skill_growth.view(instance)
                 growth.pop('_before_round', None)
                 growth.pop('entropy', None)
-                result['growth'] = {**growth, 'supported': skill_growth.supported(rule)}
+                growth_status, growth_diagnostic = skill_growth.support_status(rule)
+                result['growth'] = {**growth, 'supported': growth_status == 'supported',
+                                    'status': growth_status, 'diagnostic': growth_diagnostic}
                 result['available_npcs'] = [{'id': key, 'name': str(npc.get('name') or key)} for key, npc in instance.npcs.items()]
                 result['adventure_bound'] = bool(instance.adventure_binding)
                 from src.adventures.scene_context import format_scene_context
@@ -90,6 +92,8 @@ class RunStoryService:
                 run_story.require_writable(instance)
                 rule = self.deps.load_rule(instance)
                 runtime = self.deps.get_runtime(instance)
+                if action in {'intermission', 'commit'}:
+                    skill_growth.require_supported_policy(rule)
                 if action in {'intermission', 'commit'} and skill_growth.supported(rule):
                     if action == 'intermission':
                         problems = run_finale.blockers(instance, runtime)

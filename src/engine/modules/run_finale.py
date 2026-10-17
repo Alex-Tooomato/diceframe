@@ -65,12 +65,53 @@ def writable(instance: Any) -> bool:
     return state.get('job') is None and state.get('archive') is None
 
 
+def _public_actions(instance: Any, entry: dict[str, Any]) -> list[dict[str, str]]:
+    """Project new and legacy action fields into one public transcript.
+
+    Historical saves used ``player_actions`` either as a list or as a
+    ``uid -> text`` mapping.  New saves use ``actions``.  Treat both as input
+    representations, preserve first-seen order, and never expose system/GM
+    directives or action metadata.
+    """
+    candidates: list[tuple[Any, Any]] = []
+    for field in ('actions', 'player_actions'):
+        raw = entry.get(field)
+        if isinstance(raw, dict):
+            candidates.extend(raw.items())
+        elif isinstance(raw, list):
+            for item in raw:
+                if isinstance(item, dict):
+                    candidates.append((item.get('user_id'), item.get('text')))
+                elif isinstance(item, str):
+                    # Legacy list entries without an actor cannot be safely
+                    # attributed; keep the text only when it is not a system
+                    # directive.
+                    candidates.append(('', item))
+    result: list[dict[str, str]] = []
+    seen: set[tuple[str, str]] = set()
+    players = getattr(instance, 'players', {}) or {}
+    for raw_uid, raw_text in candidates:
+        uid = str(raw_uid or '').strip()
+        text = str(raw_text or '').strip()
+        if uid == 'system' or text.lstrip().startswith(('【GM指令】', '[GM Directive]')):
+            continue
+        if uid and uid not in players:
+            continue
+        if not text:
+            continue
+        key = (uid, text)
+        if key in seen:
+            continue
+        seen.add(key)
+        result.append({'user_id': uid, 'text': text})
+    return result
+
+
 def public_source(instance: Any) -> list[dict[str, Any]]:
     # Whitelist source fields BEFORE model calls/export. No plot tracker,
     # private messages, hidden outcomes, entity snapshots or GM plans enter.
     return [{'round': int(e.get('round', 0)), 'text': str(e.get('gm_response') or ''),
-             'actions': [{'user_id': str(a.get('user_id') or ''), 'text': str(a.get('text') or '')}
-                         for a in e.get('actions', []) if isinstance(a, dict) and a.get('user_id') in instance.players]}
+             'actions': _public_actions(instance, e)}
             for e in instance.log if isinstance(e, dict) and e.get('gm_response')]
 
 
@@ -183,6 +224,10 @@ def commit(instance: Any, body: dict, rule: Any, runtime: Any = None) -> dict:
         if state['archive']['id'] != body.get('job_id'):
             raise ValueError('this run already has a different settlement')
         return state['archive']
+    # The kernel owns settlement semantics; callers cannot bypass the
+    # explicit policy diagnostic by invoking commit directly.  Keep the
+    # idempotent archived result above this check so retries remain safe.
+    skill_growth.require_supported_policy(rule)
     state, job = require_job(instance, body.get('job_id'))
     if type(body.get('job_revision')) is not int or body['job_revision'] != job['revision']:
         raise ValueError('reviewed finale materials are stale; reload and review again')

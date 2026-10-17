@@ -43,11 +43,26 @@ def view(instance: Any) -> dict[str, Any]:
     return deepcopy(instance.modules.get(MODULE_NAME) or fresh())
 
 
-def supported(rule: Any) -> bool:
+def support_status(rule: Any) -> tuple[str, str]:
+    """Return the growth contract state without silently disabling it."""
     policy = getattr(rule, 'template', {}).get('skill_improvement') or {}
-    return (getattr(rule, 'growth_system', '') == 'skill_improvement' and policy.get('version') == 1
-            and policy.get('success') == 'above_skill_or_96' and policy.get('gain') == 'd10'
-            and type(policy.get('cap')) is int and 1 <= policy['cap'] <= 100)
+    if getattr(rule, 'growth_system', '') != 'skill_improvement':
+        return 'unsupported', ''
+    if (policy.get('version') == 1 and policy.get('success') == 'above_skill_or_96'
+            and policy.get('gain') == 'd10' and type(policy.get('cap')) is int
+            and 1 <= policy['cap'] <= 100):
+        return 'supported', ''
+    return 'invalid_policy', 'skill_improvement requires a complete version 1 policy (success, gain, and cap)'
+
+
+def supported(rule: Any) -> bool:
+    return support_status(rule)[0] == 'supported'
+
+
+def require_supported_policy(rule: Any) -> None:
+    status, message = support_status(rule)
+    if status == 'invalid_policy':
+        raise ValueError(message)
 
 
 def reserve_entropy(instance: Any) -> None:
