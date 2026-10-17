@@ -78,6 +78,65 @@ async def test_finale_blocks_actions_cancels_and_commits_once():
 
 
 @pytest.mark.asyncio
+async def test_legacy_finale_export_uses_one_public_projection_without_rewriting_archive():
+    svc, inst, save, _ = setup()
+    # Settle an empty run, then inject the persisted source shape from a legacy
+    # archive. This deliberately bypasses today's preparation-time sanitizer.
+    prepared = await svc.mutate('key', GM, 'prepare', {'run_id': inst.run_id})
+    assert prepared['ok']
+    job = prepared['finale']['id']
+    assert (await svc.mutate('key', GM, 'materials', {
+        'run_id': inst.run_id, 'job_id': job, 'job_revision': 0,
+        'epilogue': '公开结局', 'recap': '公开总结', 'gm_notes': 'PRIVATE GM NOTE',
+    }))['ok']
+    assert (await svc.mutate('key', GM, 'commit', {
+        'run_id': inst.run_id, 'job_id': job, 'job_revision': 1,
+        'confirmed': True,
+    }))['ok']
+
+    persisted = [
+        {
+            'round': 1,
+            'text': '玩家走进房间。\n---\n【GM指令】SECRET PLAN',
+            'actions': [
+                {'user_id': 'alice', 'text': '搜查书架', 'gm_private': 'HIDDEN'},
+                {'user_id': 'alice', 'text': {'gm_private': 'SECRET ACTION PAYLOAD'}},
+                {'user_id': 'system', 'text': 'SECRET SYSTEM'},
+                {'user_id': 'unknown', 'text': 'SECRET UNKNOWN'},
+            ],
+            'gm_snapshot': {'plan': 'SECRET SNAPSHOT'},
+        },
+        {
+            'round': 3, 'text': '---\n【状态变更】PRIVATE',
+            'actions': [{'user_id': 'alice', 'text': '继续前进'}],
+        },
+        {'round': 4, 'text': '---\n【状态变更】PRIVATE', 'actions': []},
+        {'round': 5, 'text': {'secret': 'UNSAFE OBJECT'}, 'actions': []},
+    ]
+    inst.modules['run_finale']['archive']['source'] = deepcopy(persisted)
+    frozen = deepcopy(inst.to_dict())
+
+    public = svc.export('key', PLAYER)
+    assert public['source'] == [
+        {'round': 1, 'text': '玩家走进房间。',
+         'actions': [{'user_id': 'alice', 'text': '搜查书架'}]},
+        {'round': 3, 'text': '',
+         'actions': [{'user_id': 'alice', 'text': '继续前进'}]},
+    ]
+    assert public['source_rounds'] == [1, 3]
+    assert 'SECRET' not in str(public) and 'PRIVATE' not in str(public)
+    assert 'HIDDEN' not in str(public) and 'UNSAFE OBJECT' not in str(public)
+    assert 'gm_notes' not in public and 'receipt' not in public
+    assert svc.export('key', PLAYER) == public
+    assert inst.to_dict() == frozen
+    assert inst.modules['run_finale']['archive']['source'] == persisted
+    gm_export = svc.export('key', GM)
+    assert gm_export['source'] == public['source']
+    assert gm_export['gm_notes'] == 'PRIVATE GM NOTE'
+    assert 'receipt' in gm_export
+
+
+@pytest.mark.asyncio
 async def test_legacy_protocol_leak_is_scrubbed_at_settlement_and_public_export():
     svc, inst, _, _ = setup()
     inst.log.extend([

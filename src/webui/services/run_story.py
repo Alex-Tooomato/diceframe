@@ -221,10 +221,11 @@ class RunStoryService:
         archive = run_finale.view(instance)['archive']
         if not archive:
             raise ValueError('the run has not ended')
-        result = run_finale.project(instance, is_gm=False)
+        # Always use the domain's canonical projection, including for archives
+        # settled by an older server. Raw GM package export is separate.
+        result = run_finale.project(instance, is_gm=False, include_public_source=True)
         result['format'] = 'diceframe-run-recap'
         result['format_version'] = 1
-        result['source'] = deepcopy(archive['source'])
         if viewer.is_gm:
             result['gm_notes'] = archive['gm_notes']
             result['receipt'] = deepcopy(archive['receipt'])
