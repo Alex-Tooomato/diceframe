@@ -39,6 +39,8 @@ test('owner and shared player both read the bound adventure projection', async (
   const playerPanel = playerPage.getByTestId('game-adventure-panel')
   await expect(gmPanel).toBeVisible()
   await expect(playerPanel).toBeVisible()
+  await gmPanel.getByTestId('adventure-panel-toggle').click()
+  await playerPanel.getByTestId('adventure-panel-toggle').click()
   // GM 拿到完整图，分享玩家拿到过滤后的公开图。
   await expect(gmPanel).toContainText('E2E Secret Ritual')
   await expect(playerPanel).toContainText('E2E Public Gate')

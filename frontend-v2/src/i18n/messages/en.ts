@@ -127,6 +127,8 @@ export const en = {
   adventureGmEyebrow: 'GM adventure',
   adventurePlayerEyebrow: 'Adventure',
   adventurePanelTitle: 'Adventure board',
+  adventurePanelOpen: 'Open board',
+  adventurePanelClose: 'Close board',
   adventurePanelLoading: 'Loading the bound adventure…',
   adventurePanelNone: 'This game does not have a bound adventure.',
   adventurePanelUnavailable: 'The bound adventure cannot be shown safely.',

@@ -9,7 +9,7 @@
 > - 仓库：`diceframe/diceframe`
 > - 分支：`main`
 > - Commit：`0ad98b3e9a30a9b89334448a1fcddeeb6cb5975e`
-> - Release：`3.0.0-beta.1`
+> - Release：`3.0.0-beta.2`
 > - 上游 GameInstance persisted schema：`46`；当前实现写入 `46`（45 为本局配置拆分，46 为剧情/成长/结团读写隔离）。
 > - 本地状态归属：`game_config` 为内核配置，`room_access` 与经济账本属于必要内核；`narration_preferences` 和 `check_presentation` 经 hooks 提供可选投影和新 run 偏好继承。44→45 迁移移动旧桌面字段与 `economy.reward_policy`，不换算金额、不改写事务账本；保留不透明扩展字段，拒绝未知或混杂结构。见 [ADR-0007](adr/0007-runtime-state-ownership.md)。
 > - R9-b：`scene` 权威状态存于 `modules.narrative_notes.scene`，该槽升到 v2；39→40 迁移删除旧顶层键，值原样保留。reset 照旧清空；写 scene 的事务（开局、回合处理、swipe、规则批次与 Director 自动化、ruleset 事务回滚、reset）经 `module_hooks.preflight(..., NARRATIVE_VIEW)` 对叙事拥有模块预检。列表、详情、大厅（含密码遮挡）、SSE、recap 与 LLM 视图的 `scene` 不变。

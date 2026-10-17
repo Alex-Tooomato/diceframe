@@ -127,6 +127,8 @@ export const zhCN = {
   adventureGmEyebrow: 'GM 冒险',
   adventurePlayerEyebrow: '当前冒险',
   adventurePanelTitle: '冒险面板',
+  adventurePanelOpen: '展开面板',
+  adventurePanelClose: '收起面板',
   adventurePanelLoading: '正在加载已绑定的冒险…',
   adventurePanelNone: '本局未绑定冒险包。',
   adventurePanelUnavailable: '无法安全显示已绑定的冒险。',

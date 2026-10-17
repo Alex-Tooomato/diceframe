@@ -1862,6 +1862,7 @@ body.light .play-main {
 }
 
 .play-main {
+  position: relative;
   gap: 7px;
   padding: 9px 12px;
 }

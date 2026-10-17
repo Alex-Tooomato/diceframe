@@ -51,6 +51,7 @@ const loading = ref(false)
 const error = ref('')
 const adventure = ref<AdventureResponse['adventure']>(null)
 const completingNodeId = ref('')
+const open = ref(false)
 
 const graph = computed(() => adventure.value?.projection || null)
 const chapters = computed(() => graph.value?.chapters || [])
@@ -144,69 +145,93 @@ onMounted(() => { void load() })
 </script>
 
 <template>
-  <section class="adventure-panel panel" data-testid="game-adventure-panel">
+  <section :class="['adventure-panel panel', { 'adventure-panel-open': open }]" data-testid="game-adventure-panel">
     <header>
       <div>
         <span class="eyebrow">{{ isGm ? t('adventureGmEyebrow') : t('adventurePlayerEyebrow') }}</span>
         <h3>{{ t('adventurePanelTitle') }}</h3>
       </div>
-      <button class="text-button" type="button" :disabled="loading" @click="load">{{ t('refresh') }}</button>
+      <div class="adventure-panel-actions">
+        <button class="text-button" type="button" :disabled="loading" @click="load">{{ t('refresh') }}</button>
+        <button
+          class="adventure-panel-toggle"
+          data-testid="adventure-panel-toggle"
+          type="button"
+          :aria-expanded="open"
+          @click="open = !open"
+        >{{ open ? t('adventurePanelClose') : t('adventurePanelOpen') }}</button>
+      </div>
     </header>
-    <p v-if="loading" class="muted">{{ t('adventurePanelLoading') }}</p>
-    <p v-else-if="error" class="error-copy">{{ error }}</p>
-    <p v-else-if="!adventure" class="muted">{{ t('adventurePanelNone') }}</p>
-    <template v-else-if="!adventure.available">
-      <p class="error-copy">{{ t('adventurePanelUnavailable') }}</p>
-      <p class="muted">{{ unavailableReason }}</p>
-      <p class="muted adventure-binding">{{ t('adventureRecoveryRequired', { adventure: adventure.binding?.adventure_id || '', version: adventure.binding?.version || '' }) }}</p>
-      <button class="primary recovery-button" type="button" @click="openModuleRecovery">{{ t('adventureRecoveryOpenModules') }}</button>
-    </template>
-    <template v-else-if="!graph">
-      <p class="muted">{{ t('adventurePanelLegacy') }}</p>
-    </template>
-    <template v-else>
-      <p class="muted adventure-binding">
-        {{ adventure.binding?.adventure_id }} · {{ adventure.binding?.version }}
-      </p>
-      <section v-for="chapter in chapters" :key="chapter.id" class="adventure-chapter">
-        <h4>{{ chapter.name || chapter.id }}</h4>
-        <article v-for="node in nodesFor(chapter.id)" :key="node.id" class="adventure-node">
-          <div class="adventure-node-heading">
-            <strong>{{ nodeLabel(node) }}</strong>
-            <span>{{ nodeKindLabel(node.type) }}</span>
-          </div>
-          <p v-if="node.description">{{ node.description }}</p>
-          <p v-if="node.scene_ref" class="muted">{{ t('adventureSceneRef', { ref: node.scene_ref }) }}</p>
-          <p v-if="node.encounter_ref" class="muted">{{ t('adventureEncounterRef', { ref: node.encounter_ref }) }}</p>
-          <p v-if="node.transitions?.length" class="muted">{{ t('adventureNextNodes', { nodes: linkedNames(node.transitions.map(item => item.to)) }) }}</p>
-          <AdventureNodeActions :node="node" :is-gm="isGm" :active="isActiveNode(node.id)" :busy="loading || Boolean(completingNodeId)" :requests="graph.progress?.choice_requests" :selected="graph.progress?.selected_choices?.[node.id]" @submit="completeNode(node.id, $event)" />
-        </article>
-      </section>
-      <section v-if="ungroupedNodes.length" class="adventure-chapter">
-        <h4>{{ t('adventureUnsortedNodes') }}</h4>
-        <article v-for="node in ungroupedNodes" :key="node.id" class="adventure-node">
-          <div class="adventure-node-heading"><strong>{{ nodeLabel(node) }}</strong><span>{{ nodeKindLabel(node.type) }}</span></div>
-          <p v-if="node.description">{{ node.description }}</p>
-          <AdventureNodeActions :node="node" :is-gm="isGm" :active="isActiveNode(node.id)" :busy="loading || Boolean(completingNodeId)" :requests="graph.progress?.choice_requests" :selected="graph.progress?.selected_choices?.[node.id]" @submit="completeNode(node.id, $event)" />
-        </article>
-      </section>
-      <section v-if="graph.objectives.length || graph.milestones.length" class="adventure-goals">
-        <h4>{{ t('adventureGoals') }}</h4>
-        <p v-for="objective in graph.objectives" :key="objective.id"><strong>{{ objective.name || objective.id }}</strong> — {{ linkedNames(objective.node_ids) }}</p>
-        <p v-for="milestone in graph.milestones" :key="milestone.id"><strong>{{ milestone.name || milestone.id }}</strong> — {{ linkedNames(milestone.node_ids) }}</p>
-      </section>
-    </template>
+    <p v-if="!open" class="muted adventure-panel-summary">
+      <template v-if="loading">{{ t('adventurePanelLoading') }}</template>
+      <template v-else-if="error">{{ error }}</template>
+      <template v-else-if="!adventure">{{ t('adventurePanelNone') }}</template>
+      <template v-else-if="!adventure.available">{{ t('adventurePanelUnavailable') }}</template>
+      <template v-else>{{ adventure.binding?.adventure_id }} · {{ adventure.binding?.version }}</template>
+    </p>
+    <div v-else class="adventure-panel-body">
+      <p v-if="loading" class="muted">{{ t('adventurePanelLoading') }}</p>
+      <p v-else-if="error" class="error-copy">{{ error }}</p>
+      <p v-else-if="!adventure" class="muted">{{ t('adventurePanelNone') }}</p>
+      <template v-else-if="!adventure.available">
+        <p class="error-copy">{{ t('adventurePanelUnavailable') }}</p>
+        <p class="muted">{{ unavailableReason }}</p>
+        <p class="muted adventure-binding">{{ t('adventureRecoveryRequired', { adventure: adventure.binding?.adventure_id || '', version: adventure.binding?.version || '' }) }}</p>
+        <button class="primary recovery-button" type="button" @click="openModuleRecovery">{{ t('adventureRecoveryOpenModules') }}</button>
+      </template>
+      <template v-else-if="!graph">
+        <p class="muted">{{ t('adventurePanelLegacy') }}</p>
+      </template>
+      <template v-else>
+        <p class="muted adventure-binding">
+          {{ adventure.binding?.adventure_id }} · {{ adventure.binding?.version }}
+        </p>
+        <section v-for="chapter in chapters" :key="chapter.id" class="adventure-chapter">
+          <h4>{{ chapter.name || chapter.id }}</h4>
+          <article v-for="node in nodesFor(chapter.id)" :key="node.id" class="adventure-node">
+            <div class="adventure-node-heading">
+              <strong>{{ nodeLabel(node) }}</strong>
+              <span>{{ nodeKindLabel(node.type) }}</span>
+            </div>
+            <p v-if="node.description">{{ node.description }}</p>
+            <p v-if="node.scene_ref" class="muted">{{ t('adventureSceneRef', { ref: node.scene_ref }) }}</p>
+            <p v-if="node.encounter_ref" class="muted">{{ t('adventureEncounterRef', { ref: node.encounter_ref }) }}</p>
+            <p v-if="node.transitions?.length" class="muted">{{ t('adventureNextNodes', { nodes: linkedNames(node.transitions.map(item => item.to)) }) }}</p>
+            <AdventureNodeActions :node="node" :is-gm="isGm" :active="isActiveNode(node.id)" :busy="loading || Boolean(completingNodeId)" :requests="graph.progress?.choice_requests" :selected="graph.progress?.selected_choices?.[node.id]" @submit="completeNode(node.id, $event)" />
+          </article>
+        </section>
+        <section v-if="ungroupedNodes.length" class="adventure-chapter">
+          <h4>{{ t('adventureUnsortedNodes') }}</h4>
+          <article v-for="node in ungroupedNodes" :key="node.id" class="adventure-node">
+            <div class="adventure-node-heading"><strong>{{ nodeLabel(node) }}</strong><span>{{ nodeKindLabel(node.type) }}</span></div>
+            <p v-if="node.description">{{ node.description }}</p>
+            <AdventureNodeActions :node="node" :is-gm="isGm" :active="isActiveNode(node.id)" :busy="loading || Boolean(completingNodeId)" :requests="graph.progress?.choice_requests" :selected="graph.progress?.selected_choices?.[node.id]" @submit="completeNode(node.id, $event)" />
+          </article>
+        </section>
+        <section v-if="graph.objectives.length || graph.milestones.length" class="adventure-goals">
+          <h4>{{ t('adventureGoals') }}</h4>
+          <p v-for="objective in graph.objectives" :key="objective.id"><strong>{{ objective.name || objective.id }}</strong> — {{ linkedNames(objective.node_ids) }}</p>
+          <p v-for="milestone in graph.milestones" :key="milestone.id"><strong>{{ milestone.name || milestone.id }}</strong> — {{ linkedNames(milestone.node_ids) }}</p>
+        </section>
+      </template>
+    </div>
   </section>
 </template>
 
 <style scoped>
-.adventure-panel { display: grid; gap: 12px; margin-bottom: 16px; }
-.adventure-panel header { display: flex; justify-content: space-between; gap: 12px; align-items: start; }
+.adventure-panel { position: relative; display: grid; gap: 8px; margin-bottom: 6px; padding: 8px 12px; }
+.adventure-panel.adventure-panel-open { position: absolute; top: 44px; right: 12px; z-index: 30; width: min(560px, calc(100% - 24px)); max-height: calc(100% - 54px); margin: 0; overflow: auto; box-shadow: 0 18px 42px rgb(0 0 0 / .35); }
+.adventure-panel header { display: flex; justify-content: space-between; gap: 12px; align-items: center; }
+.adventure-panel-actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; justify-content: flex-end; }
 .adventure-panel h3, .adventure-panel h4, .adventure-panel p { margin: 0; }
 .adventure-panel h3 { font-size: 1rem; }
 .adventure-panel h4 { font-size: .86rem; color: var(--text-secondary); }
 .eyebrow { color: var(--primary); font-size: .72rem; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; }
 .text-button { border: 0; background: transparent; color: var(--primary); cursor: pointer; padding: 0; }
+.adventure-panel-toggle { min-height: 30px; padding: 4px 9px; border: 1px solid var(--df-border-soft); border-radius: 6px; color: var(--df-text); background: var(--df-surface-2); cursor: pointer; }
+.adventure-panel-toggle:hover { border-color: var(--primary); color: var(--primary); }
+.adventure-panel-summary { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: .78rem; }
+.adventure-panel-body { display: grid; gap: 12px; min-height: 0; }
 .adventure-binding { font-size: .78rem; overflow-wrap: anywhere; }
 .adventure-chapter, .adventure-goals { display: grid; gap: 8px; }
 .adventure-node { border-left: 2px solid var(--primary); padding-left: 10px; display: grid; gap: 5px; }
@@ -221,5 +246,8 @@ onMounted(() => { void load() })
   .adventure-node { padding-left: 8px; }
   .adventure-node-heading { align-items: flex-start; flex-direction: column; gap: 2px; }
   .recovery-button { width: 100%; min-height: 40px; }
+}
+@media (max-width: 800px) {
+  .adventure-panel.adventure-panel-open { position: fixed; inset: 104px 8px 8px; width: auto; max-height: none; }
 }
 </style>

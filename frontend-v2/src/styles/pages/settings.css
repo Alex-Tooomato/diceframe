@@ -153,13 +153,6 @@ body.light .system-status-card {
   font-size: 14px;
 }
 
-.update-card {
-  padding: 14px;
-  border: 1px solid var(--df-border-soft);
-  border-radius: 8px;
-  background: rgba(111,161,214,.08);
-}
-
 .settings-group-card {
   padding: 0;
 }
@@ -175,24 +168,6 @@ body.light .system-status-card {
 
 .settings-group-card .actions-row {
   margin-top: 4px;
-}
-
-.update-card-head {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 12px;
-}
-
-.update-card h4 {
-  margin: 0 0 6px;
-}
-
-.update-card p {
-  margin: 0;
-  color: var(--df-text-muted);
-  font-size: 13px;
-  line-height: 1.7;
 }
 
 .update-meta {
@@ -1904,15 +1879,22 @@ body.light .reference-settings-page .system-status-card {
   gap: 14px;
 }
 
-.reference-settings-page .about .update-card {
-  grid-column: 1 / -1;
-  padding: 16px 18px;
-  border-color: color-mix(in srgb, var(--df-info) 30%, var(--df-border-soft));
-  background: color-mix(in srgb, var(--df-info) 7%, var(--df-surface-1));
-}
-
 .reference-settings-page .update-meta {
   align-items: center;
+}
+
+.reference-settings-page .update-maintenance-section {
+  border-color: color-mix(in srgb, var(--df-info) 30%, var(--df-border-soft));
+  background: color-mix(in srgb, var(--df-info) 4%, var(--df-surface-1));
+}
+
+.reference-settings-page .update-maintenance-section .advanced-section-head > div {
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.reference-settings-page .update-maintenance-section .update-rollback-row {
+  padding-block: 2px;
 }
 
 .reference-settings-page .update-channel-inline {
@@ -3538,7 +3520,7 @@ button.provider-catalog-row {
   .reference-settings-page .settings-pane.about {
     grid-template-columns: minmax(0, 1fr);
   }
-  .reference-settings-page .about .update-card, .reference-settings-page .sponsor-card {
+  .reference-settings-page .sponsor-card {
     grid-column: 1 / -1;
   }
 }

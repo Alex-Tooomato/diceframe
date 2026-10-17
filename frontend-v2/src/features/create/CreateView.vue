@@ -835,8 +835,8 @@ async function create() {
                     </button>
                   </div>
                   <div v-if="playMode === 'adventure'" class="create-adventure-select-row">
-                    <select v-if="modules.length" v-model="moduleId" :aria-label="t('navModules')">
-                      <option value="">{{ t('navModules') }}</option>
+                    <select v-if="modules.length" v-model="moduleId" :aria-label="gameDefault('内容包来源（可选）', 'Content package source (optional)', 'Inhaltspaketquelle (optional)', 'コンテンツパックの出所（任意）', 'Источник пакета контента (необязательно)')">
+                      <option value="">{{ gameDefault('不使用内容包（内置冒险）', 'No content package (built-in adventures)', 'Kein Inhaltspaket (integrierte Abenteuer)', 'コンテンツパックなし（内蔵冒険）', 'Без пакета контента (встроенные приключения)') }}</option>
                       <option v-for="item in modules" :key="item.id" :value="item.id">{{ item.name }}</option>
                     </select>
                     <select :aria-label="gameDefault('冒险模组', 'Adventure module', 'Abenteuermodul', '冒険モジュール', 'Модуль приключения')" :value="adventureChoice" :disabled="!catalogueReady" @change="chooseAdventure">
