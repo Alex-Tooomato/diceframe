@@ -107,32 +107,47 @@ def _public_actions(instance: Any, entry: dict[str, Any]) -> list[dict[str, str]
     return result
 
 
-def public_source(instance: Any) -> list[dict[str, Any]]:
-    """Project the run log into the public transcript archived at settle time.
+def _project_public_transcript(
+    instance: Any, entries: Any, *, narration_field: str,
+) -> list[dict[str, Any]]:
+    """Canonical public projection for round logs AND persisted finale sources.
 
-    This is the single public projection shared by preparation, AI material
-    generation and download, so it must apply the same narration boundary as
-    live player reads: legacy saves, imports and non-standard writers may
-    still carry protocol tags or internal GM directives in ``gm_response``.
-    Rounds are never renumbered; a round whose narration is fully scrubbed
-    keeps its player actions and is dropped only when nothing public remains.
+    Persisted snapshots are not automatically trusted: old archives may contain
+    raw protocol content or extra internal fields. Only round/text/actions are
+    returned. The original entries are never mutated or silently migrated.
     """
-    # Whitelist source fields BEFORE model calls/export. No plot tracker,
-    # private messages, hidden outcomes, entity snapshots or GM plans enter.
-    # Local import: the LLM package pulls in context_builder -> game_instance,
-    # which imports this module during instance boot.
+    # Local import avoids the parser -> context_builder -> game_instance cycle.
     from src.llm.parser import sanitize_narration
 
-    source: list[dict[str, Any]] = []
-    for entry in instance.log:
-        if not isinstance(entry, dict) or not entry.get('gm_response'):
+    if not isinstance(entries, list):
+        return []
+    result: list[dict[str, Any]] = []
+    for entry in entries:
+        if not isinstance(entry, dict):
             continue
-        text = sanitize_narration(str(entry.get('gm_response') or ''))
+        raw_text = entry.get(narration_field)
+        # Never stringify arbitrary objects into player-visible text.
+        if not isinstance(raw_text, str):
+            continue
+        # Preserve the existing admission rule for live round logs. Archived
+        # sources may legitimately have empty text but public player actions.
+        if narration_field == 'gm_response' and not raw_text:
+            continue
+        try:
+            round_number = int(entry.get('round', 0))
+        except (TypeError, ValueError):
+            continue
+        text = sanitize_narration(raw_text)
         actions = _public_actions(instance, entry)
         if not text and not actions:
             continue
-        source.append({'round': int(entry.get('round', 0)), 'text': text, 'actions': actions})
-    return source
+        result.append({'round': round_number, 'text': text, 'actions': actions})
+    return result
+
+
+def public_source(instance: Any) -> list[dict[str, Any]]:
+    """Public transcript for a new finale, using the canonical projector."""
+    return _project_public_transcript(instance, instance.log, narration_field='gm_response')
 
 
 def fingerprint(instance: Any) -> str:
@@ -272,15 +287,30 @@ def commit(instance: Any, body: dict, rule: Any, runtime: Any = None) -> dict:
     return deepcopy(archive)
 
 
-def project(instance: Any, *, is_gm: bool, uid: str = '') -> dict[str, Any]:
+def project(
+    instance: Any, *, is_gm: bool, uid: str = '', include_public_source: bool = False,
+) -> dict[str, Any]:
+    """Role-aware finale view; public exports explicitly request source rows.
+
+    The canonical projector is also used for already-persisted legacy sources.
+    The default lightweight view does not re-scan large transcripts on every
+    status read, and the privileged GM workspace retains its original view.
+    """
     state = view(instance)
     raw = state['archive'] or state['job']
     if not raw:
         return {'status': 'playing'}
     result = {k: deepcopy(raw[k]) for k in ('id', 'run_id', 'status', 'created_at', 'revision')}
     if state['archive']:
+        source = (
+            _project_public_transcript(instance, raw.get('source'), narration_field='text')
+            if include_public_source else None
+        )
+        rounds = [row['round'] for row in (source if source is not None else raw['source'])]
         result.update(epilogue=raw['epilogue'], recap=raw['recap'], ended_at=raw['ended_at'],
-                      source_rounds=[e['round'] for e in raw['source']])
+                      source_rounds=rounds)
+        if source is not None:
+            result['source'] = source
         if uid in raw['characters']:
             result['character'] = deepcopy(raw['characters'][uid])
     if is_gm:
