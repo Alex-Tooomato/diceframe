@@ -15,6 +15,7 @@ from src.adventures.script_import import parse_script
 from src.adventures.external_import import parse_import
 from src.content_modules.refs import ContentDraft, build_commit_plan, commit_plan_digest, parse_content_ref
 from src.webui.services import adventures
+from src.webui.services.adventures import _user_adventure_root
 
 
 def preview(deps: adventures.AdventureDependencies, payload: bytes, filename: str, language: str) -> dict[str, Any]:
@@ -24,7 +25,7 @@ def preview(deps: adventures.AdventureDependencies, payload: bytes, filename: st
 
 def prepare_text_adventure(deps: adventures.AdventureDependencies, text: str, directory_id: str, language: str) -> dict[str, Any]:
     """Prepare a prose fragment at its reviewed identity, including locale targets."""
-    directory = adventures._validate_directory_id(directory_id)
+    directory = adventures.validate_directory_id(directory_id)
     draft = parse_script(text.encode(), f"{directory}.md", deps.default_runtime_requirement(), language)
     old_id = draft["files"]["adventure.json"]["id"]
     draft["directory_id"] = directory
@@ -42,15 +43,14 @@ def prepare_text_adventure(deps: adventures.AdventureDependencies, text: str, di
 
 def review(deps: adventures.AdventureDependencies, draft: dict[str, Any]) -> dict[str, Any]:
     """Recompute plan for the *edited* draft; temporary validation leaves no content behind."""
-    if deps.adventure_resolver is not None and deps.adventure_resolver.source_for('user') is None:
-        raise ValueError('script import requires an available user Adventure directory')
+    user_root = _user_adventure_root(deps)
     files = deepcopy(draft.get('files'))
     if not isinstance(files, dict):
         raise ValueError('script draft files are required')
     for name in files:
         if not isinstance(name, str) or '\\' in name or ':' in name or any(part.startswith('.') for part in PurePosixPath(name).parts):
             raise ValueError('unsafe script draft file path')
-    directory = adventures._validate_directory_id(draft.get('directory_id'))
+    directory = adventures.validate_directory_id(draft.get('directory_id'))
     manifest = files.get('manifest.json')
     if not isinstance(manifest, dict):
         raise ValueError('script draft manifest is required')
@@ -67,13 +67,14 @@ def review(deps: adventures.AdventureDependencies, draft: dict[str, Any]) -> dic
         raise ValueError('script references must be a bounded array')
     references = [parse_content_ref(ref, default_source=f'adventure:{directory}') for ref in refs]
     warnings = ['scriptDefaultGm', 'scriptMechanicsReference']
+    warnings.extend(code for code in ('storyDraftGmReview', 'storyDraftNpcReferencesOmitted') if code in draft.get('warnings', []))
     if 'scriptUnknownMarker' in draft.get('warnings', []):
         warnings.append('scriptUnknownMarker')
     warnings.extend(code for code in ('externalImportReference', 'externalImportMedia', 'externalImportScriptsOmitted', 'pdfReviewLayout') if code in draft.get('warnings', []))
     blockers: list[str] = []
     try:
         adventures._ensure_identity_available(deps, identity)
-        if (deps.adventure_loader.adventures_dir / directory).exists():
+        if (user_root / directory).exists():
             raise ValueError('adventure directory already exists; choose another identity')
     except ValueError as exc:
         blockers.append(str(exc))

@@ -105,6 +105,7 @@ def _write_world(
     *,
     starter_lorebook: list[dict] | None = None,
     default_rule: str = "freeform_fantasy",
+    adventure_id: str = "",
 ) -> None:
     worlds_dir.mkdir(parents=True, exist_ok=True)
     data = {
@@ -116,6 +117,8 @@ def _write_world(
         "default_rule": default_rule,
         "starter_lorebook": starter_lorebook or [],
     }
+    if adventure_id:
+        data["starter_adventure_id"] = adventure_id
     (worlds_dir / f"{world_id}.json").write_text(
         json.dumps(data, ensure_ascii=False, indent=2),
         encoding="utf-8",
@@ -186,6 +189,7 @@ def web_api(tmp_path):
         handler=handler,
         llm_client=fake_llm,
         worlds_dir=worlds_dir,
+        adventures_dir=data_dir / 'adventures',
     )
     try:
         yield api, lorebook, registry, fake_llm, worlds_dir

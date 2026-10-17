@@ -27,6 +27,16 @@ async function upload(wrapper: ReturnType<typeof mount>) {
 describe('script review and publish interaction', () => {
   beforeEach(() => { i18n.global.locale.value = 'zh-CN'; mocks.api.mockReset(); mocks.api.mockResolvedValue(payload()) })
 
+  it('opens a prepared story plan in the same editable review flow without publishing it', async () => {
+    const wrapper = mount(ScriptImportDialog, { props: { initialPreview: payload() as any }, global: { plugins: [i18n], stubs: { Modal: { template: '<div><slot /></div>' } } } })
+    expect(wrapper.find('[data-testid=graph-name]').exists()).toBe(true)
+    expect(wrapper.get('[data-testid=script-publish]').attributes('disabled')).toBeDefined()
+    expect(mocks.api).not.toHaveBeenCalled()
+    await wrapper.get('[data-testid=script-reviewed]').setValue(true)
+    expect(wrapper.get('[data-testid=script-publish]').attributes('disabled')).toBeUndefined()
+    wrapper.unmount()
+  })
+
   it('requires explicit review and another validation after an edit', async () => {
     const wrapper = mount(ScriptImportDialog, { global: { plugins: [i18n], stubs: { Modal: { template: '<div><slot /></div>' } } } })
     await upload(wrapper)

@@ -2367,13 +2367,34 @@ NPC/遭遇引用、transition 条件或 outcome。公开但尚未激活/完成�
 v1 经可选 `CurrentSceneRuntime` 由绑定的规则运行时提供当前步骤；D&D 适配器读取副本，
 不向玩家暴露未来步骤。无绑定的自由对局使用下述运行计划；失效的冒险绑定不会回退到自由计划。
 
+### 15.4.1.1 通用剧情包
+
+`src/adventures/compatibility.py` 拥有冒险兼容准入。graph v2 可声明独立的
+`core:adventure >= 1` 叙事 profile；它不是角色规则注册。legacy adapter 与
+D&D 均通过 `adventure_formats` 声明 v2，CoC/自定义规则不依赖显示名称分支。
+`narrative_validation.py` 在 loader 边界拒绝未来 profile、v1、规则专属 gate、
+机械遭遇/奖励与伪装成 reference 的机械字段；受限的外部纯文本来源记录可保留。
+具体规则包继续匹配原 runtime/version/format，旧包、绑定、digest 和 migration 不变。
+目录、建局、绑定与 D&D 加载复用同一兼容判定；模组安装仅在 Adventure 要求内识别
+通用 profile，插件 `requires` 仍须解析真实规则运行时。隐式规则内容目录的默认 owner
+没有随新冒险默认值改变。显式 user 目录尚不存在时也保留其 owner，避免写入内置模板。
+
+仅已知的 `adventure.node.complete` 和 `adventure.choice.request` 在通用应用服务执行，
+不要求规则具备战斗意图能力；仍检查成员、GM/actor、阶段、绑定与持锁保存，失败或取消
+恢复世界、进度和经济。其它旧规则结构化意图不放开。前端创建页与内容库复用兼容 helper。
+见 [ADR-0009](adr/0009-universal-adventures.md) 与[作者契约](adventures/UNIVERSAL_ADVENTURES.md)。
+
 ### 15.4.2 自由计划、幕间成长与结团
 
 `modules.run_story`（schema 1）拥有当前 run 的轻量计划、revision、当前场景、
 已揭示/完成场景、推进事件、NPC 拒绝告警和停滞计数。GM 手写或请求 AI 原创草稿，
 经显式采用才生效；历史局不会自动生成主线。计划最多 24 个场景，保存来源、主题、
-队伍目标、guided/sandbox 和 strict/open NPC 策略。它不生成正式 Adventure 包，
-不改写世界资料、奖励或绑定冒险的进度。
+队伍目标、guided/sandbox 和 strict/open NPC 策略。采用本身不发布 Adventure，
+不改写世界资料、奖励或绑定冒险的进度。GM 可经 `story_adventure` 服务显式复制到
+独立的通用冒险草稿；`story_draft` 仅接收校验后的计划字段，复制起点与排他候选分支，
+场景/目标默认 GM-only。转场条件和提示留作描述，公开前须人工移走私密提示。
+不复制日志、NPC 状态、角色、世界、凭据或源 run 标识。草稿走既有 review/digest/commit，
+不自动发布、不回写本局；接口核验 GM、当前 run/revision，预览不广播本局变更。
 
 当前公开场景/目标进入玩家安全上下文；GM 另有出口条件、相邻候选和渐进提示。
 模型的 `plot_update.story_transition` 只是候选（format_version 1、run_id、revision、

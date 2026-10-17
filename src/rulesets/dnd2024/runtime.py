@@ -373,11 +373,9 @@ class Dnd2024Runtime:
         # 重名冲突由 resolve_binding 抛 AdventureSourceConflict → 调用方 fail closed。
         resolution = self._adventure_loader.resolve_binding(binding, locale)
         bundle = resolution.bundle
-        if (
-            bundle.manifest.required_runtime_id != self.runtime_id
-            or bundle.manifest.required_runtime_version > self.runtime_version
-            or bundle.manifest.format not in self.capabilities.adventure_formats
-        ):
+        from src.adventures.compatibility import compatibility_reasons
+        reasons = compatibility_reasons(bundle.manifest, self, str(getattr(instance, 'world_id', '') or ''))
+        if reasons:
             raise ValueError("bound adventure package is incompatible with this rules runtime")
         if (
             bundle.manifest.world_policy == "fixed"

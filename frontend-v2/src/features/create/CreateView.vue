@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { adventureMatchesRule, adventureRequirementLabel } from '@/features/adventures/compatibility'
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { defaultGamePreferences } from '@/features/game-preferences/model'
 import { useRoute, useRouter } from 'vue-router'
@@ -166,14 +167,9 @@ const showAdventurePackages = computed(() => (
 ))
 const adventureSelection = useAdventureSelection({ rule: activeRule, world, language: gameLanguage, mode, supported: supportsAdventurePackages, setRule: id => { rule.value = id } })
 const { moduleId, playMode, selectedKey: adventureChoice, selectedAdventure, availableModuleAdventures, selectPlayMode, initializeLaunch, issue: adventureIssue } = adventureSelection
-const adventureRequiredRule = computed(() => selectedAdventure.value?.required_runtime?.id || '')
 const adventureCompatibleRule = computed(() => {
-  if (!adventureRequiredRule.value) return null
-  const adventureFormat = selectedAdventure.value?.format
-  if (!adventureFormat) return null
-  return rules.value.find(item => item.ruleset_runtime?.id === adventureRequiredRule.value
-    && item.ruleset_runtime.version >= (selectedAdventure.value?.required_runtime?.minimum_version || 1)
-    && Boolean(item.ruleset_runtime.capabilities.adventure_formats?.includes(adventureFormat))) || null
+  const adventure = selectedAdventure.value
+  return adventure ? rules.value.find(rule => adventureMatchesRule(adventure, rule)) || null : null
 })
 const adventureRecommendedWorld = computed(() => selectedAdventure.value?.recommended_world_id || '')
 const adventureWorldRequired = computed(() => selectedAdventure.value?.world_policy === 'fixed')
@@ -182,9 +178,9 @@ const adventureIssueGuide = computed(() => {
   const reasons = new Set(adventure?.incompatibility_reasons || [])
   if (reasons.has('ruleset_runtime_unavailable') || reasons.has('runtime_id_mismatch') || reasons.has('runtime_version_too_old') || reasons.has('adventure_format_unsupported')) {
     return gameDefault(
-      `这个冒险包需要 ${adventure?.required_runtime?.id || '兼容的规则运行时'}，当前规则没有对应的冒险能力。请使用下方兼容规则，或先安装/启用对应规则来源。`,
-      `This adventure package needs ${adventure?.required_runtime?.id || 'a compatible rules runtime'}, but the current ruleset does not provide its adventure capability. Use the compatible rules below, or enable the required rules source first.`,
-      `Dieses Abenteuerpaket benötigt ${adventure?.required_runtime?.id || 'eine kompatible Regel-Laufzeit'}, aber das aktuelle Regelwerk bietet die Abenteuerfähigkeit nicht. Verwende unten ein kompatibles Regelwerk oder aktiviere zuerst die erforderliche Quelle.`,
+      `这个冒险包需要 ${adventure ? adventureRequirementLabel(adventure, locale.value) : '兼容的规则运行时'}，当前规则没有对应的冒险能力。请使用下方兼容规则，或先安装/启用对应规则来源。`,
+      `This adventure package needs ${adventure ? adventureRequirementLabel(adventure, locale.value) : 'a compatible rules runtime'}, but the current ruleset does not provide its adventure capability. Use the compatible rules below, or enable the required rules source first.`,
+      `Dieses Abenteuerpaket benötigt ${adventure ? adventureRequirementLabel(adventure, locale.value) : 'eine kompatible Regel-Laufzeit'}, aber das aktuelle Regelwerk bietet die Abenteuerfähigkeit nicht. Verwende unten ein kompatibles Regelwerk oder aktiviere zuerst die erforderliche Quelle.`,
     )
   }
   if (reasons.has('world_mismatch') || (adventureWorldRequired.value && adventureRecommendedWorld.value && !worlds.value.some(item => worldIdOf(item) === adventureRecommendedWorld.value))) {

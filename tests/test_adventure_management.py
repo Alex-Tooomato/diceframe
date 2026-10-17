@@ -1,12 +1,14 @@
 from __future__ import annotations
 
 from copy import deepcopy
+import json
+from dataclasses import replace
 from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
 
-from src.adventures import AdventureBundleLoader, sync_adventure_catalog
+from src.adventures import AdventureBundleLoader, AdventureResolver, sync_adventure_catalog
 from src.engine.game_instance import GameInstance, GameRegistry
 from src.rulesets.registry import RulesetRuntimeRegistry
 from src.rulesets.builtin import default_adventure_runtime_requirement
@@ -103,9 +105,9 @@ def test_create_adventure_starts_with_a_valid_editable_package(tmp_path: Path) -
     }, "zh-CN")
     assert created["adventure_id"] == "user:fog_harbor_case"
     bundle = api._adventure_loader.resolve("user:fog_harbor_case", "zh-CN")
-    assert bundle.adventure["start_step_id"] == "opening"
-    assert bundle.adventure["steps"][0]["scene_ref"] == "scene:fog_harbor_case_opening"
-    assert bundle.manifest.required_runtime_id == "core:dnd2024"
+    assert bundle.adventure["start_node_ids"] == ["opening"]
+    assert bundle.adventure["nodes"][0]["scene_ref"] == "scene:fog_harbor_case_opening"
+    assert bundle.manifest.required_runtime_id == "core:adventure"
     detail = adventures.adventure_detail(
         api.dependencies, "user:fog_harbor_case", "zh-CN",
     )["adventure"]
@@ -124,6 +126,24 @@ def test_create_adventure_preserves_explicit_runtime_requirement(tmp_path: Path)
     bundle = api._adventure_loader.resolve("user:external_rules_story")
     assert bundle.manifest.required_runtime_id == "example:custom"
     assert bundle.manifest.required_runtime_version == 3
+
+
+def test_new_adventure_declares_only_locales_with_shipped_translations(tmp_path: Path) -> None:
+    api = _api(tmp_path)
+
+    adventures.create_adventure(
+        api.dependencies,
+        {"directory_id": "english_fallback", "name": "English fallback"},
+        "de",
+    )
+
+    root = api._adventure_loader.adventures_dir / "english_fallback"
+    manifest = json.loads((root / "manifest.json").read_text(encoding="utf-8"))
+    locales = {path.name for path in (root / "locales").iterdir() if path.is_dir()}
+    assert manifest["supported_locales"] == ["zh-CN", "en"]
+    assert manifest["default_locale"] == "en"
+    assert locales == {"zh-CN", "en"}
+    assert api._adventure_loader.resolve("user:english_fallback", "de").locale == "en"
 
 
 def test_builtin_and_bound_adventures_are_protected(tmp_path: Path) -> None:
@@ -177,3 +197,40 @@ def test_import_rejects_core_identity_and_archive_traversal(tmp_path: Path) -> N
         adventures.import_adventure(
             api.dependencies, builtin_payload, "forged_core",
         )
+
+
+def _resolver_dependencies(api: SimpleNamespace, *, user_dir: Path | None):
+    resolver = AdventureResolver.from_directories(BUILTIN, user_dir)
+    api.dependencies = replace(
+        api.dependencies,
+        adventure_loader=resolver,
+        adventure_resolver=resolver,
+        builtin_adventures_dir=BUILTIN,
+    )
+    return api.dependencies
+
+
+def test_custom_authoring_rejects_builtin_only_resolver(tmp_path: Path) -> None:
+    api = _api(tmp_path)
+    deps = _resolver_dependencies(api, user_dir=None)
+
+    with pytest.raises(ValueError, match="registered user Adventure source"):
+        adventures.create_adventure(
+            deps, {"directory_id": "user_story", "name": "User story"}, "en",
+        )
+
+
+def test_custom_authoring_initializes_registered_missing_user_source(tmp_path: Path) -> None:
+    api = _api(tmp_path)
+    user_dir = tmp_path / "data" / "user-adventures"
+    deps = _resolver_dependencies(api, user_dir=user_dir)
+    assert not user_dir.exists()
+
+    created = adventures.create_adventure(
+        deps, {"directory_id": "user_story", "name": "User story"}, "en",
+    )
+
+    assert created["adventure_id"] == "user:user_story"
+    assert (user_dir / "user_story" / "manifest.json").is_file()
+    detail = adventures.adventure_detail(deps, "user:user_story", "en")["adventure"]
+    assert detail["custom"] is True

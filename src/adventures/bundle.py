@@ -17,6 +17,8 @@ _REF_RE = re.compile(r"^[a-z0-9][a-z0-9_.-]*:[a-z0-9][a-z0-9_.-]*$")
 _PACKAGE_ID_RE = re.compile(r"^[a-z0-9][a-z0-9_.:-]*$")
 from src.adventures.graph_v2 import ADVENTURE_GRAPH_FORMAT_V2, validate_graph_v2
 from src.adventures.runtime_validation import adventure_validator_for
+from src.adventures.compatibility import NARRATIVE_RUNTIME_ID
+from src.adventures.narrative_validation import validate_narrative_profile
 
 _AUTOMATION_LEVELS = frozenset({"deterministic", "guided", "reference"})
 _ENCOUNTER_DIFFICULTIES = frozenset({"story", "standard", "challenging", "lethal"})
@@ -230,6 +232,11 @@ class AdventureBundleLoader:
         manifest = self._manifest(root)
         active_locale = self._locale(manifest, locale)
         entities, source_paths = self._entities(root)
+        if manifest.required_runtime_id == NARRATIVE_RUNTIME_ID:
+            try:
+                validate_narrative_profile(manifest, entities)
+            except ValueError as exc:
+                raise AdventureBundleError(str(exc)) from exc
         if manifest.format == ADVENTURE_GRAPH_FORMAT_V2:
             # ADV2-00：v2 图契约（多入口 / transitions / objectives / milestones）。
             adventures = entities.get("adventure", {})

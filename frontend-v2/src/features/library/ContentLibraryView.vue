@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { narrativeRuntimeId, adventureRequirementLabel } from '@/features/adventures/compatibility'
 import { computed, onScopeDispose, ref, watch } from 'vue'
 import { RouterLink } from 'vue-router'
 import { NIcon } from 'naive-ui'
@@ -118,6 +119,7 @@ function sourceLabel(item: AdventureSummary): string {
   return sourceKind(item) === 'plugin' ? copy.value.contentPack : sourceKind(item) === 'user' ? copy.value.user : copy.value.builtIn
 }
 function ruleLabel(item: AdventureSummary): string {
+  if (item.required_runtime?.id === narrativeRuntimeId) return adventureRequirementLabel(item, locale.value)
   const rule = matchingAdventureRules(item, rules.value)[0]
   return rule?.rule_name || rule?.rule_id || item.required_runtime?.id || copy.value.unknownRuntime
 }

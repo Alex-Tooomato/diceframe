@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import logging
+import asyncio
 from copy import deepcopy
 from dataclasses import dataclass
 from collections.abc import Callable, Awaitable
@@ -59,10 +60,12 @@ async def execute(deps: AdventureCommandDependencies, instance: Any, body: dict,
             else:
                 result = callback(instance, node_id.strip(), choice_id, actor_uid)
             await deps.save(instance)
-        except Exception as exc:
+        except BaseException as exc:
             instance.world_state = before["world_state"]
             adventure_runtime_state.replace_progress(instance, before["adventure_progress"])
             economy_state.replace_state(instance, before["economy"])
+            if isinstance(exc, asyncio.CancelledError) or not isinstance(exc, Exception):
+                raise
             if isinstance(exc, (ValueError, KeyError, TypeError)):
                 return {'ok': False, 'code': 'ADVENTURE_NODE_REJECTED', 'error': str(exc)}
             logger.exception('Adventure command failed and was restored')

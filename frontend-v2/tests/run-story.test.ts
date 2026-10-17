@@ -11,6 +11,23 @@ const playing = { ok: true, run_id: 'run1', story: {}, finale: { status: 'playin
 
 describe('run story workbench', () => {
   beforeEach(() => { mock.api.mockReset(); mock.api.mockResolvedValue(playing) })
+  it('prepares a reusable plan draft with the current revision and requires separate publication', async () => {
+    mock.api.mockResolvedValue({ ...playing, story: { revision: 7, plan: { theme: 'A story', scenes: [] } } })
+    const wrapper = mount(RunStoryPanel, { props: { gameKey: 'web|story|bot', revision: 1 }, global: { stubs: { ScriptImportDialog: { props: ['initialPreview'], template: '<div data-testid="story-draft-review" />' } } } })
+    await flushPromises()
+    await wrapper.get('[data-testid="story-adventure-id"]').setValue('reusable_story')
+    const preview = { ok: true, draft: { directory_id: 'reusable_story' }, blockers: [], warnings: [], plan_digest: 'digest' }
+    mock.api.mockResolvedValue(preview)
+    await wrapper.get('[data-testid="story-adventure-prepare"]').trigger('click')
+    await flushPromises()
+    expect(mock.api.mock.calls.at(-1)?.[0]).toBe('/games/web%7Cstory%7Cbot/run-story/adventure-draft')
+    expect(JSON.parse(mock.api.mock.calls.at(-1)?.[1].body)).toEqual({ run_id: 'run1', revision: 7, directory_id: 'reusable_story' })
+    expect(wrapper.find('[data-testid="story-draft-review"]').exists()).toBe(true)
+    expect(mock.api.mock.calls.some(call => call[0].includes('/commit'))).toBe(false)
+    await wrapper.setProps({ gameKey: 'web|another|bot' })
+    expect(wrapper.find('[data-testid="story-draft-review"]').exists()).toBe(false)
+    wrapper.unmount()
+  })
   it('keeps a plan draft editable and requires explicit adoption', async () => {
     const wrapper = mount(RunStoryPanel, { props: { gameKey: 'web|story|bot', revision: 1 } })
     await flushPromises()

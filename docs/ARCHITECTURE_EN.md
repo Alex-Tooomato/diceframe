@@ -2360,14 +2360,44 @@ v1 uses optional `CurrentSceneRuntime` to project the bound runtime's current
 step. The D&D adapter reads a copy and omits future steps for players. Unbound
 games use the run plan below; a broken Adventure binding never falls back to it.
 
+### 15.4.1.1 Universal narrative packages
+
+`src/adventures/compatibility.py` owns Adventure admission. Graph v2 can require
+the independent `core:adventure >= 1` narrative profile, not a character ruleset.
+Legacy and D&D advertise v2 through `adventure_formats`; CoC/custom rules need no
+display-name branches. `narrative_validation.py` rejects future profiles, v1,
+rules gates, executable encounters/rewards and mechanical fields disguised as
+reference records. Bounded inert foreign source records remain allowed. Specific
+packages retain exact runtime/version/format and existing bindings/digests.
+Catalogue, creation, binding and D&D loading share admission. Module installation
+recognizes the profile only for Adventure requirements; plugin `requires` still
+needs actual rulesets. Implicit module-catalogue ownership is unchanged. An
+explicit user directory retains ownership before it exists, preventing writes
+into bundled templates.
+
+Only known `adventure.node.complete` and `adventure.choice.request` application
+commands bypass the combat-intent capability requirement. Membership, GM/actor,
+phase, binding and locked persistence checks remain; failures/cancellation restore
+world, progress and economy. Other legacy structured intents remain unavailable.
+Creation/library clients share one compatibility helper. See
+[ADR-0009](adr/0009-universal-adventures.md) and the [contract](adventures/UNIVERSAL_ADVENTURES.md).
+
 ### 15.4.2 Free-game plans, intermissions and finales
 
 `modules.run_story` (schema 1) owns a per-run plan, revision, current/revealed/
 completed scenes, transitions, rejected-NPC warnings and stalled-round count.
 A GM writes a plan or requests an AI original draft and explicitly adopts it.
 Historical games receive no guessed plan. At most 24 scenes declare theme,
-party goal, guided/sandbox mode and strict/open NPC policy. This is not an
-Adventure package and cannot change world sources, rewards or bound progress.
+party goal, guided/sandbox mode and strict/open NPC policy. Adoption is not
+Adventure publication and cannot change world sources, rewards or bound progress.
+The GM may explicitly copy a plan through `story_adventure` into a reusable
+narrative draft. `story_draft` accepts validated authored fields only, preserves
+the authored start and exclusive successor choices, and defaults every copied
+scene/objective to GM-only. Exit conditions/hints stay descriptive and must be
+removed before public disclosure. Logs, live NPCs, characters, world state,
+credentials and source run identifiers are excluded. Existing review/digest/commit
+owns publication. The bridge checks GM/current run/revision, never publishes or
+mutates the source run, and does not broadcast a game-change event.
 
 Players receive only current public scene/objective data. GM context adds exit
 conditions, adjacent candidates and progressive hints. A model-authored

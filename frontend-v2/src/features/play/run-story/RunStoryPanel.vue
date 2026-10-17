@@ -1,7 +1,9 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { useLocale } from '@/composables/useLocale'
-import { changeStory, generateStory, loadStory, storyError as errorMessage, type AiProgress, type RunStoryState, type StoryPlan, type StoryScene } from './api'
+import { changeStory, generateStory, loadStory, prepareStoryAdventure, storyError as errorMessage, type AiProgress, type RunStoryState, type StoryPlan, type StoryScene } from './api'
+import ScriptImportDialog from '@/features/adventures/ScriptImportDialog.vue'
+import type { ScriptPreview } from '@/features/adventures/scriptTypes'
 
 const props = defineProps<{ gameKey: string; revision: number | string }>()
 const emit = defineEmits<{ changed: [] }>()
@@ -10,6 +12,8 @@ const c = (zh: string, en: string) => locale.value === 'zh-CN' ? zh : en
 const state = ref<RunStoryState>(), draft = ref<StoryPlan>(), error = ref(''), busy = ref(false)
 const consent = ref(false), instructions = ref(''), source = ref('gm'), progress = ref<AiProgress>()
 const evidence = ref(''), nextId = ref(''), confirmed = ref(false)
+const adventureId = ref(`story_${crypto.randomUUID().replaceAll('-', '').slice(0, 12)}`)
+const adventurePreview = ref<ScriptPreview>(), publishedAdventure = ref('')
 let controller: AbortController | undefined, generation = 0
 const current = computed(() => state.value?.story.plan?.scenes.find(s => s.id === state.value?.story.current_id))
 const readonly = computed(() => state.value?.finale?.status !== 'playing')
@@ -56,8 +60,21 @@ async function generate() {
   catch (e) { if (!controller.signal.aborted) error.value = errorMessage(e) }
   finally { busy.value = false; progress.value = undefined }
 }
+async function prepareAdventure() {
+  if (busy.value || !state.value?.story.plan) return
+  const key = props.gameKey
+  const revision = state.value.story.revision
+  busy.value = true; error.value = ''; publishedAdventure.value = ''
+  try {
+    const result = await prepareStoryAdventure(key, { run_id: state.value.run_id, revision, directory_id: adventureId.value })
+    if (key !== props.gameKey) return
+    if (!result.ok) throw new Error(result.error || c('无法整理冒险草稿', 'Could not prepare Adventure draft'))
+    adventurePreview.value = result
+  } catch (e) { if (key === props.gameKey) error.value = errorMessage(e) }
+  finally { busy.value = false }
+}
 watch(() => [props.gameKey, props.revision], () => { void load() }, { immediate: true })
-watch(() => props.gameKey, () => { controller?.abort(); draft.value = undefined })
+watch(() => props.gameKey, () => { controller?.abort(); draft.value = undefined; adventurePreview.value = undefined; publishedAdventure.value = '' })
 onBeforeUnmount(() => controller?.abort())
 </script>
 
@@ -94,10 +111,18 @@ onBeforeUnmount(() => controller?.abort())
         <details v-if="!readonly" class="story-ai"><summary>{{ c('AI 起草计划', 'Draft with AI') }}</summary><label>{{ c('补充要求', 'Instructions') }}<textarea v-model="instructions" maxlength="2000" /></label><label class="check"><input v-model="consent" type="checkbox">{{ c('生成会消耗模型 token；取消不能撤回已发生的用量。草稿须另行采用。', 'Generation consumes model tokens. Cancellation cannot undo usage. Review and adopt the draft separately.') }}</label><div class="story-actions"><button :disabled="!consent || busy" @click="generate">{{ c('生成草稿', 'Generate draft') }}</button><button v-if="busy && controller" @click="controller.abort()">{{ c('取消生成', 'Cancel generation') }}</button></div><p v-if="progress" role="status">{{ c('生成阶段：', 'Stage: ') }}{{ progress.stage }} · {{ progress.completed }}/{{ progress.total }}<progress :value="progress.completed" :max="Math.max(1, progress.total)" /></p></details>
         <details v-if="current && !readonly" class="story-transition"><summary>{{ c('确认剧情推进', 'Confirm transition') }}</summary><p>{{ state?.story.exit }}</p><label>{{ c('下一场景', 'Next scene') }}<select v-model="nextId"><option value="">—</option><option v-for="next in state?.story.possible_next_nodes" :key="next.id" :value="next.id">{{ next.name }}</option></select></label><label>{{ c('依据回合（逗号分隔）', 'Evidence rounds (comma separated)') }}<input v-model="evidence" inputmode="numeric"></label><label class="check"><input v-model="confirmed" type="checkbox">{{ c('我已核对回合事实满足转场条件', 'I verified that committed facts meet the exit condition') }}</label><button :disabled="busy || !confirmed || !nextId || !evidence" @click="advance">{{ c('提交推进', 'Commit transition') }}</button></details>
       </template>
+      <details v-if="state?.story.plan && !state.adventure_bound" class="story-editor">
+        <summary>{{ c('整理为冒险包', 'Create reusable Adventure') }}</summary>
+        <p>{{ c('把已采用的计划复制为独立草稿，再编辑、审阅和发布。场景默认仅 GM 可见，保留转场条件和提示；不复制本局进度、人物状态或聊天记录。', 'Copy the adopted plan to an independent draft for editing, review and publication. Scenes start GM-only with exit conditions and hints. Live progress, characters and chat are excluded.') }}</p>
+        <label>{{ c('冒险标识', 'Adventure identity') }}<input v-model="adventureId" data-testid="story-adventure-id" pattern="[a-z0-9][a-z0-9_.-]*" maxlength="80"></label>
+        <button data-testid="story-adventure-prepare" :disabled="busy || !/^[a-z0-9][a-z0-9_.-]*$/.test(adventureId)" @click="prepareAdventure">{{ c('整理并审阅草稿', 'Prepare and review draft') }}</button>
+        <p v-if="publishedAdventure" role="status">{{ c('已保存到冒险库：', 'Saved to Adventures: ') }}{{ publishedAdventure }}</p>
+      </details>
       <details v-if="state?.story.plan"><summary>{{ c('GM 诊断', 'GM diagnostics') }}</summary><p>{{ c('计划版本：', 'Plan revision: ') }}{{ state.story.revision }}</p><p v-for="(warning, index) in state.story.warnings" :key="index" role="alert">{{ warning }}</p><pre v-if="state.story.candidate">{{ state.story.candidate }}</pre><p>{{ c('模型提出的推进仅供审阅，不会自动修改进度。', 'Model proposals are advisory and cannot commit progress.') }}</p></details>
       <details v-if="state?.context_diagnostics?.text"><summary>{{ c('当前剧情上下文', 'Current story context') }}</summary><p>{{ c('剧情块上限：', 'Story-block limit: ') }}{{ state.context_diagnostics.max_chars }} · {{ c('当前字符数：', 'Current characters: ') }}{{ state.context_diagnostics.used_chars }}</p><p>{{ c('实际额度还受模型窗口限制。这里只展示剧情投影，不包含完整 GM 提示词。', 'The model context window may reduce this budget. This view contains only the story projection.') }}</p><pre>{{ state.context_diagnostics.text }}</pre></details>
       <p v-if="error" role="alert">{{ error }} <button @click="load">{{ c('重试', 'Retry') }}</button></p>
     </div>
+    <ScriptImportDialog v-if="adventurePreview" :initial-preview="adventurePreview" @close="adventurePreview = undefined" @published="publishedAdventure = $event; adventurePreview = undefined" />
   </details>
 </template>
 

@@ -82,4 +82,6 @@ restart, role-filtered exports, SHA-256 ZIP manifests and idempotent character
 delivery. Desktop/mobile journeys exercise preparation/cancel/commit/export/
 carry alongside existing play flows. Scripted model tests verify source and
 state boundaries; they do not guarantee arbitrary model prose or replace
-real-provider editorial acceptance. Full CoC Adventure runtime remains #446.
+real-provider editorial acceptance. ADR-0009 adds rule-neutral narrative packages
+and explicit plan-to-draft review; full CoC-specific mechanical automation remains
+outside this implementation.

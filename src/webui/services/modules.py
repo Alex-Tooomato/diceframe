@@ -71,7 +71,7 @@ class ModuleDependencies:
     list_save_metadata: Callable[[], list[dict[str, Any]]] | None = None
     refresh_adventure_sources: Callable[[], None] | None = None
     # 组合根声明的默认 runtime：模块声明了 ruleset_catalogs 但没写 requires 时，
-    # 用它判断 catalog 契约归属（与 Adventure 绑定同一默认，不猜字段）。
+    # 用它判断 catalog 契约归属；不使用独立的通用剧情包默认要求。
     default_runtime_requirement: Callable[[], dict[str, Any]] | None = None
     # FIX-06 §8：ModulesView 的"在线模组"区块复用既有插件市场索引（不新建市场）。
     # 组合根注入 ``PluginHost.marketplace_plugins``（已带 installed / 版本信息）。

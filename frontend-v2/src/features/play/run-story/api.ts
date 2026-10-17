@@ -1,4 +1,5 @@
 import { api, apiBlob } from '@/api/client'
+import type { ScriptPreview } from '@/features/adventures/scriptTypes'
 
 export interface StoryScene { id: string; title: string; kind: string; objective: string; description: string; public: boolean; exit: string; next_ids: string[]; hints: string[] }
 export interface StoryPlan { format_version: number; theme: string; party_goal: string; mode: string; npc_policy: string; core_npcs: string[]; start: string; scenes: StoryScene[] }
@@ -20,6 +21,7 @@ export async function loadStory(key: string): Promise<RunStoryState> {
   return result
 }
 export const changeStory = (key: string, action: string, body: unknown) => api<RunStoryState>(`${endpoint(key)}/${action}`, { method: 'POST', body: JSON.stringify(body) })
+export const prepareStoryAdventure = (key: string, body: unknown) => api<ScriptPreview & { error?: string }>(`${endpoint(key)}/adventure-draft`, { method: 'POST', body: JSON.stringify(body) })
 export const carryGame = (key: string, body: unknown) => api<{ ok: boolean; error?: string; game_key: string }>(`${endpoint(key)}/carry`, { method: 'POST', body: JSON.stringify(body) })
 export interface AiProgress { stage: string; completed: number; total: number }
 export interface StoryDraft { plan?: StoryPlan; source?: string; run_id?: string; revision?: number; epilogue?: string; recap?: string; job_id?: string }

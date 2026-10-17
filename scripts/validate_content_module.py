@@ -33,7 +33,7 @@ if str(ROOT) not in sys.path:
 from src.plugin_host.host import PluginHost  # noqa: E402
 from src.rulesets.builtin import (  # noqa: E402
     build_default_ruleset_registry,
-    default_adventure_runtime_requirement,
+    default_module_runtime_requirement,
 )
 
 
@@ -44,7 +44,7 @@ def _validation_dependencies() -> Any:
 
     return ModuleValidationDependencies(
         ruleset_registry=build_default_ruleset_registry(),
-        default_runtime_requirement=default_adventure_runtime_requirement,
+        default_runtime_requirement=default_module_runtime_requirement,
     )
 
 

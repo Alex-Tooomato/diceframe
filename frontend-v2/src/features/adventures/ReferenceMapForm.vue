@@ -3,6 +3,7 @@ import { computed, reactive } from 'vue'
 import { useLocale } from '@/composables/useLocale'
 import type { ScriptDraft, ScriptRef } from './scriptTypes'
 import { importCopy } from './importCopy'
+import { narrativeRuntimeId } from './compatibility'
 const props = defineProps<{ draft: ScriptDraft }>()
 const emit = defineEmits<{ prose: [index: number] }>()
 const draft = computed(() => props.draft)
@@ -11,7 +12,8 @@ const copy = computed(() => importCopy(locale.value))
 const selections = reactive<Record<number, { resource: string; node: string }>>({})
 const choice = (index: number) => selections[index] ||= { resource: '', node: '' }
 const resources = computed(() => Object.values(props.draft.files).filter(value => value && typeof value === 'object' && ['npc', 'scene', 'map_location', 'encounter_catalog'].includes(value.kind)))
-const matching = (reference: ScriptRef) => resources.value.filter(value => value.kind === reference.kind)
+const matching = (reference: ScriptRef) => resources.value.filter(value => value.kind === reference.kind
+  && !(value.kind === 'encounter_catalog' && (props.draft.files['manifest.json'].required_runtime as { id?: string } | undefined)?.id === narrativeRuntimeId))
 function map(index: number) {
   const selected = choice(index), reference = props.draft.references[index]
   if (!reference || !selected.resource || !selected.node) return
