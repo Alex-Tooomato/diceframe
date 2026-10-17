@@ -12,7 +12,7 @@ from typing import Any, Awaitable, Callable, Protocol
 from src.engine import module_hooks, progression
 from src.engine.language import normalize_language
 from src.engine.module_state import ModuleStateError
-from src.engine.modules import narrative_notes
+
 from src.imagegen import (
     ImageGenerationError,
     ImageGenerationRequest,
@@ -39,7 +39,7 @@ def _scene_text(instance: Any) -> str:
     """Read the canonical scene slot while tolerating legacy test/extension objects."""
 
     try:
-        return str(narrative_notes.scene(instance) or "")
+        return str(module_hooks.narrative_view(instance)["scene"] or "")
     except ModuleStateError:
         return str(getattr(instance, "scene", "") or "")
 

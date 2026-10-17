@@ -498,6 +498,18 @@ class WebAccessControl:
             and parts[4] == "claim"
         ):
             return "lobby"
+        if tail == "profile" and (
+            (request.method == "GET" and len(parts) == 4)
+            or (request.method == "POST" and len(parts) == 5 and parts[4] == "actions")
+        ):
+            return "seat"
+        if tail in {"ai-seats", "check-modes"} and request.method in {"GET", "PUT", "POST"}:
+            return "seat"
+        if (
+            request.method == "POST" and tail == "checks" and len(parts) == 7
+            and parts[5] == "push" and parts[6] in {"request", "offer", "reject", "confirm", "decline"}
+        ):
+            return "seat"
         if request.method == "GET" and tail in {
             "adventure",
             "characters",

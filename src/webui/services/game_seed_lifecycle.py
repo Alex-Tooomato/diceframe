@@ -2,6 +2,10 @@
 
 from __future__ import annotations
 
+from src.engine import game_preferences
+
+from src.engine.modules import game_config
+
 import logging
 import time
 from typing import Any
@@ -9,17 +13,17 @@ from typing import Any
 from src.engine.language import DEFAULT_LANGUAGE, normalize_language
 from src.engine.module_state import ModuleStateError
 from src.engine import module_hooks
-from src.engine.modules import adventure_runtime_state, content_binding, progression_state, table_settings
+from src.engine.modules import adventure_runtime_state, content_binding, progression_state, storytelling
 from src.engine.narrative_perspective import validate_narrative_perspective
 from src.migrations import migrate_instance
-from src.rulesets.contracts import LiveAdvancementPolicyRuntime
-from src.webui.services._common import _GAME_KEY_SEP
+from src.webui.services._common import _GAME_KEY_SEP, resolve_default_scene_image
 from src.webui.services import game_creation_phases
 from src.webui.game_lifecycle_context import (
     CreationPhase,
     CreationTransaction,
     GameLifecycleDependencies,
     _start_created_game,
+    resume_created_ai_table,
 )
 
 logger = logging.getLogger("trpg")
@@ -42,6 +46,7 @@ async def create_from_seed(
     language: str = "",
     scene_image: dict[str, Any] | None = None,
     narrative_perspective: str = "",
+    story_mode: str = "",
 ) -> dict[str, Any]:
     if not dependencies.handler or not dependencies.registry:
         return {"ok": False, "error": "系统未就绪"}
@@ -49,7 +54,7 @@ async def create_from_seed(
         return config_error
     target_inst = None
     for inst in dependencies.registry.list_all():
-        if table_settings.seed_code(inst) == seed_code:
+        if game_config.seed_code(inst) == seed_code:
             target_inst = inst
             break
     if not target_inst:
@@ -64,10 +69,31 @@ async def create_from_seed(
     resolved_language = normalize_language(
         language or getattr(target_inst, "language", DEFAULT_LANGUAGE)
     )
+    try:
+        storytelling.require_writable(target_inst)
+        source_story_preferences = storytelling.preference_snapshot(target_inst)
+        normalized_story_mode = (
+            source_story_preferences["mode"]
+            if story_mode == ""
+            else storytelling.validate_mode(story_mode)
+        )
+    except ModuleStateError as exc:
+        return {
+            "ok": False,
+            "error_code": "UNSUPPORTED_STORYTELLING_SCHEMA",
+            "error": str(exc),
+        }
+    except (TypeError, ValueError) as exc:
+        return {
+            "ok": False,
+            "error_code": "INVALID_STORY_MODE",
+            "error": str(exc) or "故事模式无效，仅支持 prose 或 dialogue",
+        }
+
     rule_id = _instance_rule_id(dependencies, target_inst)
     resolved_narrative_perspective = (
         narrative_perspective
-        or table_settings.narrative_perspective(target_inst)
+        or module_hooks.narration_preferences(target_inst)["narrative_perspective"]
         or "auto"
     )
     try:
@@ -124,13 +150,20 @@ async def create_from_seed(
             "error_code": "INVALID_PROFESSIONAL_CHARACTER",
             "error": str(exc),
         }
+    unique_id = f"{world_id}_{time.time_ns()}"
+    game_key = ("web", unique_id, "web_bot")
     try:
         selected_scene_image = dependencies.materialize_scene_image(
             scene_image
             if scene_image
             else (
-                (module_hooks.read_value(target_inst, module_hooks.SCENE_IMAGE) or {})
-                or dependencies.resolve_default_scene_image(world_id, rule_id)
+                module_hooks.read_value(target_inst, module_hooks.SCENE_IMAGE)
+                or resolve_default_scene_image(
+                    dependencies.resolve_default_scene_image,
+                    world_id,
+                    rule_id,
+                    _GAME_KEY_SEP.join(game_key),
+                )
             )
         )
     except ValueError as exc:
@@ -153,8 +186,11 @@ async def create_from_seed(
     adventure_runtime_state.require_writable(target_inst)
     source_play_mode = str(adventure_runtime_state.play_mode(target_inst) or "")
 
-    unique_id = f"{world_id}_{time.time_ns()}"
-    game_key = ("web", unique_id, "web_bot")
+    try:
+        source_preferences = game_preferences.project(target_inst, runtime)
+        source_preferences.update(narrative_perspective=normalized_narrative_perspective, story_mode=normalized_story_mode)
+    except (ValueError, ModuleStateError) as exc:
+        return {'ok': False, 'error_code': 'UNSUPPORTED_PREFERENCES', 'error': str(exc)}
     transaction = CreationTransaction(dependencies, game_key, world_id)
 
     try:
@@ -164,7 +200,7 @@ async def create_from_seed(
             world_name=world_name,
             group_name="Web端",
             seed_code=seed_code,
-            difficulty=table_settings.difficulty(target_inst),
+            difficulty=game_config.difficulty(target_inst),
             rule_id=rule_id,
             language=resolved_language,
         )
@@ -186,13 +222,9 @@ async def create_from_seed(
         solo_mode=solo,
         narrative_perspective=normalized_narrative_perspective,
     )
-    if isinstance(runtime, LiveAdvancementPolicyRuntime):
-        inherited_policy = runtime.live_advancement_policy(target_inst)
-        runtime.configure_live_advancement(
-            instance,
-            str(inherited_policy.get("mode") or "milestone"),
-            str(inherited_policy.get("authority") or "ai_gm"),
-        )
+    storytelling.restore_preferences(instance, source_story_preferences)
+    storytelling.replace_mode(instance, normalized_story_mode)
+    game_preferences.apply(instance, source_preferences, runtime)
     if not instance.bind_adventure(target_adventure_binding):
         transaction.rollback()
         return {
@@ -266,6 +298,8 @@ async def create_from_seed(
             "error": "保存重开游戏失败，未留下半成品存档，请重试。",
         }
 
+    await resume_created_ai_table(dependencies, instance)
+
     return {
         "ok": True,
         "game_key": _GAME_KEY_SEP.join(game_key),
@@ -275,6 +309,7 @@ async def create_from_seed(
         "narration": narration,
         "players": created_players,
         "seed_code": seed_code,
+        "story_mode": storytelling.mode(instance),
         "round_number": progression_state.round_value(instance),
         "state": instance.state.value,
         "adventure_binding": dict(instance.adventure_binding),

@@ -21,6 +21,8 @@
 
 from __future__ import annotations
 
+from src.engine.modules import game_config
+
 import logging
 from collections.abc import Mapping
 from datetime import datetime, timezone
@@ -29,7 +31,7 @@ from typing import TYPE_CHECKING, Any
 from src.engine.contracts import ActionRecord
 from src.engine import module_hooks, progression
 from src.engine.game_state import GameState
-from src.engine.modules import progression_state, room_access, table_settings
+from src.engine.modules import progression_state, room_access
 from src.engine.player_control import (
     ai_controlled_players,
     away_control_policy,
@@ -48,14 +50,19 @@ logger = logging.getLogger("trpg")
 
 
 def all_alive_ready(instance: GameInstance) -> bool:
-    """多人模式下，所有未暂离的存活真人席位都提交行动后才自动推进。
+    """多人模式下，所有负责本轮的存活席位都提交行动后才自动推进。
 
-    AI 托管与未认领的席位不参与等待：它们不是"还没交行动的真人"。
+    有真人时只等待真人；纯 AI 桌则等待已被 AI 补行动或安全回退标记为
+    ready 的 AI 席位。未认领席位永远不会被当成已准备。
     """
     active = instance.active_human_players
-    if not active:
-        return False
-    return active.issubset(instance.ready_players)
+    if active:
+        return active.issubset(instance.ready_players)
+    active_ai = {
+        uid for uid in ai_controlled_players(instance)
+        if uid in instance.active_alive_players
+    }
+    return bool(active_ai) and active_ai.issubset(instance.ready_players)
 
 
 def human_actions_ready(instance: GameInstance) -> bool:
@@ -97,7 +104,7 @@ def multiplayer_status(instance: GameInstance) -> dict:
     return {
         "state": instance.state.value,
         "round_number": progression_state.round_value(instance),
-        "solo_mode": table_settings.solo_mode(instance),
+        "solo_mode": game_config.solo_mode(instance),
         "player_count": len(instance.players),
         "max_players": room_access.max_players(instance),
         "ready_count": len(ready),
@@ -154,7 +161,7 @@ def should_advance(instance: GameInstance) -> bool:
     """任一满足即推进：所有存活玩家已就绪，或单人模式下任一玩家已行动。"""
     if instance.has_pending_dice():
         return False
-    if table_settings.solo_mode(instance) and instance.action_queue:
+    if game_config.solo_mode(instance) and instance.action_queue:
         return True
     return instance.all_alive_ready()
 

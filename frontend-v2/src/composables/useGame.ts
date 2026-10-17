@@ -3,12 +3,13 @@ import type { Ref } from 'vue'
 import { useRoute } from 'vue-router'
 import { api, gameEventSource, hasAccessToken, isNotFoundError, isPlayerAccessClosedError } from '@/api/client'
 import { i18n } from '@/i18n'
-import type { CharacterListResponse, GameDetail, GameLogResponse, LogEntry, CheckRevealRecord, LorebookResponse, LoreEntry, MapData, Player, PrivateLogResponse, PrivateMessage, TableTalkExchange, TableTalkResponse } from '@/api/types'
+import type { CharacterListResponse, GameDetail, GameLogResponse, LogEntry, CheckRevealRecord, LorebookResponse, LoreEntry, MapData, Player, PrivateLogResponse, PrivateMessage, StorySequence, TableTalkExchange, TableTalkResponse } from '@/api/types'
 import type { LoreKeywords } from '@/utils/renderer'
 import { clearCurrentGame, gameFromQuery, queryString, readCurrentGame, rememberCurrentGame } from '@/stores/gameContext'
 import { resolveMapBackgroundAsset, revokeMapBackgroundAsset } from '@/api/mapBackgrounds'
 import { activePeerGameClient } from '@/peer/game/bridge'
 import { gameSseEffect, updatedGameSseCursor, type GameSsePayload } from '@/composables/gameSse'
+import { isStorySequence } from '@/features/play/story/story'
 
 const KEY_MAP:Record<string,keyof LoreKeywords>={npc:'npc',location:'location',item:'item',faction:'faction',event:'event',puzzle:'puzzle',other:'other',lore:'other'}
 function errorMessage(error: unknown): string { return error instanceof Error ? error.message : String(error || 'Load failed') }
@@ -30,10 +31,10 @@ export function useGame(){
   const routeUser = () => queryString(route.query.user)
   const currentGame = ref(routeGame() || readCurrentGame())
   const userId = ref(routeUser())
-  const detail = ref<GameDetail|null>(null), players = ref<Player[]>([]), log = ref<LogEntry[]>([]), liveNarration = ref('')
+  const detail = ref<GameDetail|null>(null), players = ref<Player[]>([]), log = ref<LogEntry[]>([]), liveNarration = ref(''), liveStory = ref<StorySequence | null>(null)
   const rulesetStateSignal = ref(0)
   const privateMessages = ref<PrivateMessage[]>([]), tableTalk = ref<TableTalkExchange[]>([]), map = ref<MapData>({locations:[]}), lore = ref<LoreKeywords>({}), loreEntries = ref<LoreEntry[]>([]), loading=ref(false), error=ref('')
-  const checkReveals = ref<Record<string, CheckRevealRecord>>({}), diceRevealMode = ref<'auto'|'click'>('click')
+  const checkReveals = ref<Record<string, CheckRevealRecord>>({}), diceRevealMode = ref<'auto'|'click'>('auto')
   // The GM closed the player entrance: stop reconnecting/polling until the player retries.
   const accessClosed = ref(false)
   let source:EventSource|null=null
@@ -42,10 +43,11 @@ export function useGame(){
   let refreshTimer:number|undefined
   let reconnectTimer:number|undefined
   let connectVersion=0
+  let refreshEpoch=0
   let eventCursor=''
   const signatures:Record<string,string> = { detail:'', players:'', log:'', privateMessages:'', tableTalk:'', map:'', loreEntries:'', lore:'' }
-  // GM 判定与后端 is_game_gm 同口径：已登录 owner（管理员账号多人共用都算）或该局主 GM 会话。
-  const isGm = computed(()=>!!detail.value && (hasAccessToken() || (!!userId.value && detail.value.gm_uid===userId.value)))
+  // 登录 owner 在无玩家覆盖时拥有 GM 视图；选择普通玩家预览不继承 owner 的 GM 控件。
+  const isGm = computed(()=>!!detail.value && ((!userId.value && hasAccessToken()) || (!!userId.value && detail.value.gm_uid===userId.value)))
   const actorId = computed(() => userId.value || (isGm.value ? detail.value?.gm_uid || '' : ''))
   const player = computed(()=>players.value.find(p=>p.user_id===actorId.value) || players.value[0])
 
@@ -96,7 +98,7 @@ export function useGame(){
     players.value = []
     log.value = []
     checkReveals.value = {}
-    diceRevealMode.value = 'click'
+    diceRevealMode.value = 'auto'
     privateMessages.value = []
     tableTalk.value = []
     revokeMapBackgroundAsset(map.value)
@@ -105,6 +107,7 @@ export function useGame(){
     lore.value = {}
     loreEntries.value = []
     liveNarration.value = ''
+    liveStory.value = null
     error.value = ''
     source?.close()
     source = null
@@ -155,7 +158,10 @@ export function useGame(){
 
   async function refresh(silent=false){
     const gameKey = currentGame.value
-    if(!gameKey)return
+    if(!gameKey)return false
+    const viewerId = userId.value
+    const epoch = ++refreshEpoch
+    const current = () => epoch === refreshEpoch && currentGame.value === gameKey && userId.value === viewerId
     if(!silent){loading.value=true; error.value=''}
     try{
       const [d,c,l,p,tt,m]=await Promise.all([
@@ -166,22 +172,22 @@ export function useGame(){
         api<TableTalkResponse>(`/games/${encodeURIComponent(gameKey)}/table-talk`),
         api<MapData>(`/games/${encodeURIComponent(gameKey)}/map`)
       ])
-      if(currentGame.value !== gameKey)return
+      if(!current())return false
       setIfChanged('detail', detail, d)
       setIfChanged('players', players, c.players||[])
       setIfChanged('log', log, l.log||[])
       // 展示层附加信息：揭示标记与揭示方式（自动/点击）。
       checkReveals.value = l.check_reveals || {}
-      diceRevealMode.value = l.dice_reveal_mode === 'auto' ? 'auto' : 'click'
+      diceRevealMode.value = l.dice_reveal_mode === 'click' ? 'click' : 'auto'
       setIfChanged('privateMessages', privateMessages, p.messages||p.private_log||[])
       setIfChanged('tableTalk', tableTalk, tt.exchanges||[])
       const nextMap = m || { locations: [] }
       const nextMapSignature = signature(nextMap)
       if (signatures.map !== nextMapSignature) {
         const resolvedMap = await resolveMapBackgroundAsset(nextMap)
-        if (currentGame.value !== gameKey) {
+        if (!current()) {
           revokeMapBackgroundAsset(resolvedMap)
-          return
+          return false
         }
         revokeMapBackgroundAsset(map.value)
         signatures.map = nextMapSignature
@@ -190,11 +196,12 @@ export function useGame(){
       if(d.world_id && isGm.value){
         try{
           const lb=await api<LorebookResponse>(`/lorebook/${encodeURIComponent(d.world_id)}`)
-          if(currentGame.value !== gameKey)return
+          if(!current())return false
           const entries = lb.entries||[]
           setIfChanged('loreEntries', loreEntries, entries)
           lore.value=buildLore(entries)
         }catch{
+          if (!current()) return false
           setIfChanged('loreEntries', loreEntries, [])
           setIfChanged('lore', lore, {})
         }
@@ -204,22 +211,26 @@ export function useGame(){
         setIfChanged('lore', lore, {})
       }
       error.value=''
+      return true
     }catch(e:unknown){
+      if (!current()) return false
       if (isNotFoundError(e)) {
         clearMissingGame(gameKey)
-        return
+        return false
       }
       if (isPlayerAccessClosedError(e)) {
         if (currentGame.value === gameKey) closeForPlayerAccess()
         return
       }
       if(!silent || !detail.value) error.value=errorMessage(e)
-    }finally{if(!silent)loading.value=false}
+      return false
+    }finally{if(current())loading.value=false}
   }
 
   async function connect(){
     const version=++connectVersion
     source?.close(); source=null; clearRefreshTimer(); liveNarration.value=''
+    liveStory.value = null
     unsubscribePeerEvents?.(); unsubscribePeerEvents=null
     if(reconnectTimer){clearTimeout(reconnectTimer);reconnectTimer=undefined}
     if(pollTimer){clearInterval(pollTimer);pollTimer=undefined}
@@ -247,7 +258,12 @@ export function useGame(){
         const effect=gameSseEffect(payload)
         if(effect==='baseline')return
         if(effect==='narration-delta'){liveNarration.value+=String(payload?.text||'');return}
-        if(effect==='narration-reset'){liveNarration.value='';return}
+        if(effect==='narration-reset'){liveNarration.value='';liveStory.value=null;return}
+        if(effect==='story-update'){
+          const story = (payload as GameSsePayload & { story?: unknown }).story
+          if (isStorySequence(story)) liveStory.value = story
+          return
+        }
         if(payload?.type === 'ruleset_state_changed') {
           rulesetStateSignal.value = Math.max(
             rulesetStateSignal.value + 1,
@@ -303,7 +319,7 @@ export function useGame(){
   })
   // 新回合写入 log 时清掉流式气泡。第一页满员后长度不再增长（旧条目被挤到下一页），
   // 须按最新条目的 round 判断，否则“GM 思考中”在正式输出落地后残留。
-  watch(() => log.value[log.value.length - 1]?.round, (next, prev) => { if (next !== prev) liveNarration.value = '' })
-  onBeforeUnmount(()=>{connectVersion++;source?.close();unsubscribePeerEvents?.();revokeMapBackgroundAsset(map.value);clearRefreshTimer();if(pollTimer)clearInterval(pollTimer);if(reconnectTimer)clearTimeout(reconnectTimer)})
-  return {currentGame,userId,actorId,detail,players,player,log,privateMessages,tableTalk,map,lore,loreEntries,loading,error,accessClosed,isGm,refresh,connect,retryAccess,selectGame,liveNarration,rulesetStateSignal,checkReveals,diceRevealMode}
+  watch(() => log.value[log.value.length - 1]?.round, (next, prev) => { if (next !== prev) { liveNarration.value = ''; liveStory.value = null } })
+  onBeforeUnmount(()=>{connectVersion++;refreshEpoch++;source?.close();unsubscribePeerEvents?.();revokeMapBackgroundAsset(map.value);clearRefreshTimer();if(pollTimer)clearInterval(pollTimer);if(reconnectTimer)clearTimeout(reconnectTimer)})
+  return {currentGame,userId,actorId,detail,players,player,log,privateMessages,tableTalk,map,lore,loreEntries,loading,error,accessClosed,isGm,refresh,connect,retryAccess,selectGame,liveNarration,liveStory,rulesetStateSignal,checkReveals,diceRevealMode}
 }

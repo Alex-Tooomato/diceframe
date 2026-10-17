@@ -48,6 +48,7 @@ class AdventureBundleManifest:
     required_runtime_version: int
     default_locale: str
     supported_locales: tuple[str, ...]
+    reference_policy: str = ""
 
 
 @dataclass(frozen=True, slots=True)
@@ -237,6 +238,8 @@ class AdventureBundleLoader:
             validate_graph_v2(next(iter(adventures.values())))
         else:
             self._validate_graph(entities)
+        if manifest.reference_policy == "adventure-local":
+            self._validate_local_references(entities)
         # Runtime-specific mechanics validation（母方案 §8/§185/§186，MOD-01）：
         # generic loader 只管结构；hp / armor_class / attack_bonus 等 D&D
         # mechanics 由目标 runtime 注册的 validator 校验。未注册时 generic
@@ -245,6 +248,11 @@ class AdventureBundleLoader:
         runtime_validator = adventure_validator_for(str(manifest.required_runtime_id or ""))
         if runtime_validator is not None:
             runtime_validator(entities)
+        # Installation must not depend on the installer's display language.
+        # Validate every declared overlay without applying it to the selected
+        # view, so a non-default locale cannot conceal mechanics overrides.
+        for declared_locale in manifest.supported_locales:
+            self._apply_locale(root, declared_locale, deepcopy(entities))
         self._apply_locale(root, manifest.default_locale, entities)
         if active_locale != manifest.default_locale:
             self._apply_locale(root, active_locale, entities)
@@ -285,6 +293,9 @@ class AdventureBundleLoader:
         if format_id not in (ADVENTURE_GRAPH_FORMAT, ADVENTURE_GRAPH_FORMAT_V2):
             raise AdventureBundleError(f"unsupported adventure format: {format_id}")
         recommended_world_id = str(raw.get("recommended_world_id") or "").strip()
+        reference_policy = str(raw.get("reference_policy") or "")
+        if reference_policy not in {"", "adventure-local"}:
+            raise AdventureBundleError("unsupported adventure reference policy")
         if world_policy == "fixed" and not recommended_world_id:
             raise AdventureBundleError("fixed adventures require recommended_world_id")
         return AdventureBundleManifest(
@@ -302,7 +313,22 @@ class AdventureBundleLoader:
             ),
             default_locale=default_locale,
             supported_locales=parsed_locales,
+            reference_policy=reference_policy,
         )
+
+    @staticmethod
+    def _validate_local_references(entities: dict[str, dict[str, dict[str, Any]]]) -> None:
+        """Opt-in self-contained imported packages never fall back to another source."""
+        for adventure in entities.get("adventure", {}).values():
+            for node in adventure.get("nodes", []):
+                references = [("scene", node.get("scene_ref")), ("encounter_catalog", node.get("encounter_ref"))]
+                references.extend(("npc", ref) for ref in node.get("npc_refs", []))
+                for expected, ref in references:
+                    if not ref:
+                        continue
+                    kind, _, identity = str(ref).partition(":")
+                    if kind != expected or identity not in entities.get(kind, {}):
+                        raise AdventureBundleError(f"unresolved local reference: {ref}")
 
     @staticmethod
     def _locale(manifest: AdventureBundleManifest, requested: str) -> str:
@@ -326,7 +352,8 @@ class AdventureBundleLoader:
         for path in paths:
             value = _read_object(path)
             _validate_no_executable_content(value, path)
-            if _positive_int(value.get("schema_version"), "entity.schema_version") != 1:
+            schema = _positive_int(value.get("schema_version"), "entity.schema_version")
+            if schema != 1 and not (schema == 2 and value.get("kind") == "adventure" and value.get("format") == ADVENTURE_GRAPH_FORMAT_V2):
                 raise AdventureBundleError(f"unsupported adventure entity schema: {path}")
             kind = _required_text(value.get("kind"), "entity.kind", _ID_RE)
             entity_id = _required_text(value.get("id"), "entity.id", _ID_RE)

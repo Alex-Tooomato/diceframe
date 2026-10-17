@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from legacy_save_fixtures import legacy_table_payload
+
 import pytest
 
 from src.engine.game_instance import GameInstance
@@ -30,6 +32,7 @@ def test_combat_extension_round_trips_through_save() -> None:
 
 def test_legacy_save_without_field_defaults_to_empty() -> None:
     payload = GameInstance(game_key=("web", "wuxia", "bot")).to_dict()
+    payload = legacy_table_payload(payload)
     payload["instance_schema_version"] = 19
     payload["modules"].pop("combat_extension")
     payload.pop("combat_extension", None)

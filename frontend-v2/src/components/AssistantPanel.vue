@@ -1,21 +1,47 @@
 <script setup lang="ts">
-import { nextTick, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, useId, watch } from 'vue'
 import { NButton, NIcon, NInput } from 'naive-ui'
 import {
-  CloseOutline, DocumentTextOutline, RefreshOutline, SendOutline,
+  CloseOutline, ContractOutline, DocumentTextOutline, ExpandOutline, RefreshOutline, SendOutline,
   SparklesOutline, StopCircleOutline, TrashOutline,
 } from '@vicons/ionicons5'
 import { useLocale } from '@/composables/useLocale'
 import { useAssistant } from '@/composables/useAssistant'
+import { useAssistantWorkspace } from '@/composables/useAssistantWorkspace'
 import { renderSafeMarkdown } from '@/utils/markdown'
+import AgentTaskCard from '@/components/assistant/AgentTaskCard.vue'
+import { assistantCopy, assistantToolLabel } from '@/features/assistant/copy'
+import { assistantWorkspaceCopy } from '@/features/assistant/workspaceCopy'
+import { generatedImageUrl } from '@/api/generatedImages'
 
-const emit = defineEmits<{ close: [] }>()
+const props = withDefaults(defineProps<{ expanded?: boolean }>(), { expanded: false })
+const emit = defineEmits<{ close: []; toggleExpanded: [] }>()
 const { t, locale } = useLocale()
-const { messages, streaming, send, stop, retryLast, clear } = useAssistant()
+const { messages, streaming, send, stop, retryLast, clear, pendingApproval, drafts, status, navigation, actionBusy, actionError, confirmApproval, cancelApproval, reviewDraft, saveDraft, restoreSession, invalidateApproval } = useAssistant()
+const draftList = computed(() => Object.values(drafts.value))
+const eventList = computed(() => messages.value.flatMap(message => message.events || []))
+const agentCopy = computed(() => assistantCopy(locale.value))
+const workspaceCopy = computed(() => assistantWorkspaceCopy(locale.value))
+const { collapsed: workspaceCollapsed, toggle: toggleWorkspace } = useAssistantWorkspace()
+const workspaceId = useId()
+const imageUrls = ref<Record<string, string>>({})
+const imageLoads = new Set<string>()
 const draft = ref('')
-const listEl = ref<HTMLElement | null>(null)
+const transcriptEl = ref<HTMLElement | null>(null)
+const tasksEl = ref<HTMLElement | null>(null)
+const hasTasks = computed(() => draftList.value.length > 0 || pendingApproval.value || actionError.value || navigation.value || eventList.value.some(event => event.event === 'tool_result'))
+const workspaceVisible = computed(() => hasTasks.value || streaming.value || props.expanded || messages.value.length > 0)
+const workspaceStatus = computed(() => {
+  if (actionError.value || pendingApproval.value?.expired || pendingApproval.value?.recovery_required) return workspaceCopy.value.attention
+  if (pendingApproval.value) return agentCopy.value.statusApproval
+  if (streaming.value || actionBusy.value) return workspaceCopy.value.working
+  return draftList.value.length ? workspaceCopy.value.drafts(draftList.value.length) : agentCopy.value.statusIdle
+})
+onMounted(() => { if (!streaming.value && !actionBusy.value) void restoreSession() })
 
 const quickQuestions = () => [
+  { id: 'create', prompt: agentCopy.value.create },
+  { id: 'start', prompt: agentCopy.value.start },
   { id: 'api', prompt: t('assistantQuickApi') },
   { id: 'plugin', prompt: t('assistantQuickPlugin') },
   { id: 'players', prompt: t('assistantQuickPlayers') },
@@ -25,11 +51,23 @@ const quickQuestions = () => [
 
 function scrollToBottom() {
   void nextTick(() => {
-    if (listEl.value) listEl.value.scrollTop = listEl.value.scrollHeight
+    const element = transcriptEl.value
+    if (element && element.clientHeight > 0) element.scrollTop = element.scrollHeight
+  })
+}
+
+function scrollTasksToBottom() {
+  void nextTick(() => {
+    const element = tasksEl.value
+    const editing = element?.contains(document.activeElement) && document.activeElement?.matches('input, textarea, select, [contenteditable="true"]')
+    if (element && element.clientHeight > 0 && !editing) element.scrollTop = element.scrollHeight
   })
 }
 
 watch(messages, scrollToBottom, { deep: true })
+watch([pendingApproval, status, streaming], scrollTasksToBottom)
+watch(() => props.expanded, () => { scrollToBottom(); scrollTasksToBottom() })
+watch(workspaceCollapsed, value => { if (!value) scrollTasksToBottom() })
 
 function renderMd(text: string): string {
   return renderSafeMarkdown(text)
@@ -54,10 +92,60 @@ function ask(question: string) {
   draft.value = question
   void onSubmit()
 }
+
+function saveDraftLocalized(draftId: string) { return saveDraft(draftId, locale.value) }
+function statusText(value: string): string {
+  if (value === 'idle') return agentCopy.value.statusIdle
+  if (value === 'approval_required') return agentCopy.value.statusApproval
+  return value
+}
+function toolLabel(tool: unknown): string { return assistantToolLabel(locale.value, tool) }
+function navigationLabel(route: string): string { return route === 'play' ? agentCopy.value.openGame : toolLabel('navigate') }
+function resultAssetId(value: unknown): string {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return ''
+  const record = value as Record<string, unknown>
+  const reference = record.reference && typeof record.reference === 'object' ? record.reference as Record<string, unknown> : {}
+  return reference.kind === 'generated' && typeof reference.asset_id === 'string'
+    ? reference.asset_id
+    : typeof record.asset_id === 'string' ? record.asset_id : ''
+}
+async function loadResultImage(value: unknown) {
+  const assetId = resultAssetId(value)
+  if (!assetId || imageLoads.has(assetId) || imageUrls.value[assetId]) return
+  imageLoads.add(assetId)
+  try { imageUrls.value[assetId] = await generatedImageUrl(assetId) } catch { /* Keep the result text usable when the image expires. */ }
+}
+watch(eventList, events => {
+  for (const event of events) if (event.event === 'tool_result') void loadResultImage(event.payload.result)
+}, { deep: true, immediate: true })
+onBeforeUnmount(() => { for (const url of Object.values(imageUrls.value)) URL.revokeObjectURL(url) })
+
+function eventResult(value: unknown, detailed = false): string {
+  if (value === undefined || value === null) return ''
+  if (typeof value === 'string') return detailed ? value : value.slice(0, 180)
+  try {
+    const text = JSON.stringify(value)
+    return detailed ? text : text.slice(0, 240)
+  } catch { return detailed ? String(value) : String(value).slice(0, 180) }
+}
+
+const approvalTarget = computed(() => {
+  const preview = pendingApproval.value?.preview
+  if (!preview || typeof preview !== 'object' || Array.isArray(preview)) return ''
+  const record = preview as Record<string, unknown>
+  return typeof record.target_name === 'string' ? record.target_name : ''
+})
+
+function followNavigation() {
+  const target = navigation.value
+  if (!target) return
+  const query = target.query ? new URLSearchParams(target.query).toString() : ''
+  window.location.hash = `#/${target.route}${query ? `?${query}` : ''}`
+}
 </script>
 
 <template>
-  <section class="assistant-panel" aria-labelledby="assistant-panel-title">
+  <section class="assistant-panel" :class="{ 'assistant-panel-expanded': props.expanded }" aria-labelledby="assistant-panel-title">
     <header class="assistant-panel-head">
       <span class="assistant-brand" aria-hidden="true"><NIcon :component="SparklesOutline" size="21" /></span>
       <div class="assistant-head-copy">
@@ -67,72 +155,122 @@ function ask(question: string) {
       <NButton size="small" quaternary circle :title="t('assistantClear')" :disabled="!messages.length" @click="clear">
         <template #icon><NIcon :component="TrashOutline" /></template>
       </NButton>
+      <NButton size="small" quaternary circle data-testid="assistant-toggle-expanded" :title="props.expanded ? agentCopy.shrinkWindow : agentCopy.expandWindow" :aria-label="props.expanded ? agentCopy.shrinkWindow : agentCopy.expandWindow" :aria-expanded="props.expanded" @click="emit('toggleExpanded')">
+        <template #icon><NIcon :component="props.expanded ? ContractOutline : ExpandOutline" /></template>
+      </NButton>
       <NButton size="small" quaternary circle :title="t('close')" @click="emit('close')">
         <template #icon><NIcon :component="CloseOutline" /></template>
       </NButton>
     </header>
 
-    <div ref="listEl" class="assistant-messages" aria-live="polite">
-      <div v-if="!messages.length" class="assistant-empty">
-        <span class="assistant-empty-icon"><NIcon :component="SparklesOutline" size="28" /></span>
-        <strong>{{ t('assistantEmpty') }}</strong>
-        <p>{{ t('assistantEmptyHint') }}</p>
-        <div class="assistant-quick-grid">
-          <button v-for="question in quickQuestions()" :key="question.id" type="button" :data-assistant-intent="question.id" @click="ask(question.prompt)">
-            {{ question.prompt }}
-          </button>
+    <div class="assistant-messages" aria-live="polite">
+      <div ref="transcriptEl" class="assistant-transcript">
+        <div v-if="!messages.length" class="assistant-empty">
+          <span class="assistant-empty-icon"><NIcon :component="SparklesOutline" size="28" /></span>
+          <strong>{{ t('assistantEmpty') }}</strong>
+          <p>{{ t('assistantEmptyHint') }}</p>
+          <div class="assistant-quick-grid">
+            <button v-for="question in quickQuestions()" :key="question.id" type="button" :data-assistant-intent="question.id" @click="ask(question.prompt)">
+              {{ question.prompt }}
+            </button>
+          </div>
+          <small>{{ t('assistantVersionHint') }}</small>
         </div>
-        <small>{{ t('assistantVersionHint') }}</small>
+
+        <article
+          v-for="(message, index) in messages"
+          :key="index"
+          class="assistant-message"
+          :class="`assistant-message-${message.role}`"
+        >
+          <span v-if="message.role === 'assistant'" class="assistant-avatar" aria-hidden="true">
+            <NIcon :component="SparklesOutline" />
+          </span>
+          <div class="assistant-message-stack">
+            <div
+              v-if="message.content || ((streaming || pendingApproval) && message.role === 'assistant' && index === messages.length - 1)"
+              class="assistant-bubble"
+              :class="message.role"
+            >
+              <span v-if="pendingApproval && index === messages.length - 1 && !message.content">{{ agentCopy.statusApproval }}</span>
+              <span
+                v-else-if="streaming && index === messages.length - 1 && !message.content"
+                class="assistant-thinking"
+              >
+                <i /><i /><i /><span class="sr-only">{{ t('assistantThinking') }}</span>
+              </span>
+              <div v-else-if="message.role === 'assistant'" class="safe-markdown" v-html="renderMd(message.content)" />
+              <span v-else>{{ message.content }}</span>
+            </div>
+
+            <details v-if="message.sources?.length" class="assistant-sources">
+              <summary><NIcon :component="DocumentTextOutline" />{{ t('assistantSources') }}</summary>
+              <ul>
+                <li v-for="source in message.sources" :key="`${source.source}:${source.heading}`">
+                  <span>{{ source.heading }}</span>
+                </li>
+              </ul>
+            </details>
+
+            <div v-if="message.error || message.stopped" class="assistant-inline-state">
+              <span>{{ message.error || t('assistantStopped') }}</span>
+              <NButton
+                v-if="index === messages.length - 1"
+                size="tiny"
+                quaternary
+                @click="retryLast(locale)"
+              >
+                <template #icon><NIcon :component="RefreshOutline" /></template>
+                {{ t('assistantRetry') }}
+              </NButton>
+            </div>
+          </div>
+        </article>
       </div>
 
-      <article
-        v-for="(message, index) in messages"
-        :key="index"
-        class="assistant-message"
-        :class="`assistant-message-${message.role}`"
-      >
-        <span v-if="message.role === 'assistant'" class="assistant-avatar" aria-hidden="true">
-          <NIcon :component="SparklesOutline" />
-        </span>
-        <div class="assistant-message-stack">
-          <div
-            v-if="message.content || (streaming && index === messages.length - 1)"
-            class="assistant-bubble"
-            :class="message.role"
-          >
-            <span
-              v-if="streaming && index === messages.length - 1 && !message.content"
-              class="assistant-thinking"
-            >
-              <i /><i /><i /><span class="sr-only">{{ t('assistantThinking') }}</span>
-            </span>
-            <div v-else-if="message.role === 'assistant'" class="safe-markdown" v-html="renderMd(message.content)" />
-            <span v-else>{{ message.content }}</span>
-          </div>
+      <section v-if="workspaceVisible" class="assistant-tasks" :class="{ 'assistant-workspace-collapsed': workspaceCollapsed }">
+        <button type="button" class="assistant-workspace-toggle" data-testid="assistant-workspace-toggle" :aria-expanded="!workspaceCollapsed" :aria-controls="workspaceId" :aria-label="workspaceCollapsed ? workspaceCopy.expand : workspaceCopy.collapse" @click="toggleWorkspace">
+          <strong>{{ agentCopy.workspaceTitle }}</strong>
+          <span class="assistant-workspace-state" :class="{ pending: pendingApproval || actionError }">{{ workspaceStatus }}</span>
+          <span aria-hidden="true">{{ workspaceCollapsed ? '⌃' : '⌄' }}</span>
+        </button>
+        <div :id="workspaceId" ref="tasksEl" v-show="!workspaceCollapsed" class="assistant-workspace-body">
+          <p v-if="!hasTasks" class="assistant-tasks-empty">{{ agentCopy.workspaceHint }}</p>
+          <div v-if="pendingApproval || (streaming && status)" class="assistant-status" role="status">{{ agentCopy.status }}: {{ pendingApproval ? agentCopy.statusApproval : statusText(status) }}</div>
 
-          <details v-if="message.sources?.length" class="assistant-sources">
-            <summary><NIcon :component="DocumentTextOutline" />{{ t('assistantSources') }}</summary>
-            <ul>
-              <li v-for="source in message.sources" :key="`${source.source}:${source.heading}`">
-                <span>{{ source.heading }}</span>
-              </li>
-            </ul>
+          <AgentTaskCard v-for="task in draftList" :key="task.draft_id" :draft="task" :busy="actionBusy" :streaming="streaming" @edit="invalidateApproval" @review="reviewDraft($event.draft_id, $event.draft)" @save="saveDraftLocalized" />
+
+          <div v-if="actionError" class="assistant-inline-state" role="alert">{{ actionError }}</div>
+
+          <details v-if="eventList.some(event => event.event === 'tool_result')" class="assistant-tool-results">
+            <summary>{{ agentCopy.tool }}</summary>
+            <div v-for="(event, index) in eventList.filter(item => item.event === 'tool_result')" :key="index" class="assistant-tool-result">
+              <strong :class="event.payload.ok === false ? 'assistant-result-failure' : 'assistant-result-success'">{{ event.payload.ok === false ? agentCopy.failure : event.payload.partial ? agentCopy.partial : agentCopy.success }}</strong>
+              <span>{{ toolLabel(event.payload.tool) }} · {{ eventResult(event.payload.result) }}</span>
+              <img v-if="resultAssetId(event.payload.result) && imageUrls[resultAssetId(event.payload.result)]" :src="imageUrls[resultAssetId(event.payload.result)]" alt="Generated result" class="assistant-result-image">
+              <details><summary>{{ agentCopy.details }}</summary><pre>{{ eventResult(event.payload.result, true) }}</pre></details>
+            </div>
           </details>
 
-          <div v-if="message.error || message.stopped" class="assistant-inline-state">
-            <span>{{ message.error || t('assistantStopped') }}</span>
-            <NButton
-              v-if="index === messages.length - 1"
-              size="tiny"
-              quaternary
-              @click="retryLast(locale)"
-            >
-              <template #icon><NIcon :component="RefreshOutline" /></template>
-              {{ t('assistantRetry') }}
-            </NButton>
-          </div>
+          <button v-if="navigation" type="button" class="assistant-navigation" @click="followNavigation">{{ navigationLabel(navigation.route) }}</button>
+          <button v-if="messages.length && !streaming && !pendingApproval" type="button" class="assistant-continue" @click="ask(agentCopy.continuePrevious)">{{ agentCopy.continuePrevious }}</button>
+
+          <article v-if="pendingApproval" class="assistant-approval" data-agent-approval>
+            <strong>{{ agentCopy.pending }}</strong>
+            <span>{{ toolLabel(pendingApproval.tool) }}</span>
+            <strong v-if="approvalTarget">{{ agentCopy.target }}: {{ approvalTarget }}</strong>
+            <span v-if="pendingApproval.expired || pendingApproval.recovery_required" class="assistant-approval-invalid">{{ agentCopy.approvalInvalid }}</span>
+            <details v-if="pendingApproval.preview || pendingApproval.arguments">
+              <summary>{{ agentCopy.details }}</summary>
+              <pre>{{ eventResult(pendingApproval.preview || pendingApproval.arguments, true) }}</pre>
+            </details>
+            <div class="assistant-approval-actions">
+              <NButton size="small" type="primary" :loading="actionBusy" :disabled="actionBusy || pendingApproval.expired || pendingApproval.recovery_required" @click="confirmApproval(true)">{{ agentCopy.approve }}</NButton>
+              <NButton size="small" quaternary :loading="actionBusy" :disabled="actionBusy" @click="cancelApproval">{{ agentCopy.cancel }}</NButton>
+            </div>
+          </article>
         </div>
-      </article>
+      </section>
     </div>
 
     <footer class="assistant-composer">
@@ -151,7 +289,7 @@ function ask(question: string) {
         <template #icon><NIcon :component="SendOutline" /></template>
         {{ t('assistantSend') }}
       </NButton>
-      <span class="assistant-composer-hint">{{ t('assistantInputHint') }}</span>
+      <span class="assistant-composer-hint">{{ pendingApproval ? `${agentCopy.statusApproval} · ${toolLabel(pendingApproval.tool)}` : t('assistantInputHint') }}</span>
     </footer>
   </section>
 </template>
@@ -170,7 +308,7 @@ function ask(question: string) {
 
 .assistant-panel-head {
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto auto;
+  grid-template-columns: auto minmax(0, 1fr) auto auto auto;
   align-items: center;
   gap: 9px;
   padding: 14px 15px;
@@ -218,11 +356,66 @@ function ask(question: string) {
   flex: 1;
   display: flex;
   min-height: 0;
-  overflow-y: auto;
+  overflow: hidden;
+  flex-direction: column;
+  gap: 0;
+}
+
+.assistant-transcript {
+  display: flex;
+  flex: 1 1 0;
   flex-direction: column;
   gap: 14px;
+  min-height: 0;
+  min-width: 0;
+  overflow-y: auto;
   padding: 18px 15px;
   scroll-behavior: smooth;
+}
+
+.assistant-tasks {
+  display: flex;
+  flex: 0 1 auto;
+  flex-direction: column;
+  min-height: 0;
+  max-height: 45%;
+  overflow: hidden;
+  border-top: 1px solid var(--df-border-soft);
+  background: var(--df-surface-1);
+}
+
+.assistant-workspace-collapsed { flex: 0 0 auto; }
+.assistant-workspace-toggle { display: flex; flex: 0 0 auto; align-items: center; gap: 8px; width: 100%; min-height: 44px; padding: 9px 15px; border: 0; border-radius: 0; background: var(--df-surface-2); color: var(--df-accent-strong); text-align: start; }
+.assistant-workspace-toggle:hover { transform: none; }
+.assistant-workspace-toggle strong { margin-right: auto; font-size: 13px; }
+.assistant-workspace-state { color: var(--df-text-muted); font-size: 11px; }
+.assistant-workspace-state.pending { color: var(--df-accent-strong); }
+.assistant-workspace-body { display: flex; flex-direction: column; gap: 14px; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 12px 15px; }
+
+.assistant-tasks-empty {
+  margin: 0;
+  color: var(--df-text-muted);
+  font-size: 13px;
+  line-height: 1.7;
+}
+
+@media (min-width: 801px) {
+  .assistant-panel-expanded .assistant-messages {
+    display: grid;
+    grid-template-columns: minmax(0, 7fr) minmax(280px, 3fr);
+    grid-template-rows: minmax(0, 1fr);
+    gap: 0;
+    overflow: hidden;
+    padding: 0;
+  }
+
+  .assistant-panel-expanded .assistant-tasks {
+    max-height: none;
+    border-top: 0;
+    border-left: 1px solid var(--df-border-soft);
+    background: color-mix(in srgb, var(--df-surface-2) 45%, var(--df-surface-1));
+  }
+  .assistant-panel-expanded .assistant-workspace-body { flex: 1 1 0; }
 }
 
 .assistant-empty {
@@ -385,6 +578,28 @@ function ask(question: string) {
   background: color-mix(in srgb, var(--df-danger) 8%, transparent);
   font-size: 11px;
 }
+
+.assistant-status,
+.assistant-approval,
+.assistant-tool-results {
+  padding: 9px 10px;
+  border: 1px solid var(--df-border-soft);
+  border-radius: var(--df-radius-sm);
+  color: var(--df-text-secondary);
+  background: color-mix(in srgb, var(--df-control-bg) 84%, transparent);
+  font-size: 11px;
+}
+
+.assistant-approval { display: grid; gap: 7px; }
+.assistant-approval > span { color: var(--df-text-muted); }
+.assistant-approval-actions { display: flex; gap: 7px; }
+.assistant-tool-result { display: grid; gap: 5px; padding-top: 7px; overflow-wrap: anywhere; }
+.assistant-result-success { color: var(--df-success-strong); }
+.assistant-result-failure { color: var(--df-danger-strong); }
+.assistant-result-image { display: block; max-width: 100%; max-height: 220px; border: 1px solid var(--df-border-soft); border-radius: var(--df-radius-sm); object-fit: contain; }
+.assistant-tool-result pre,
+.assistant-approval pre { max-height: 12rem; overflow: auto; white-space: pre-wrap; }
+.assistant-navigation { align-self: flex-start; padding: 7px 10px; border: 1px solid var(--df-interactive); border-radius: var(--df-radius-sm); color: var(--df-on-accent); background: var(--df-interactive); cursor: pointer; }
 
 .assistant-composer {
   display: grid;

@@ -1,4 +1,4 @@
-import { i18n, localeChain, localeEndonym, normalizeLocale, type Locale, type MessageKey } from '@/i18n'
+import { i18n, localeChain, localeEndonym, normalizeLocale, SUPPORTED_LOCALES, type Locale, type MessageKey } from '@/i18n'
 
 export interface LanguageTaggedContent {
   language?: unknown
@@ -6,15 +6,14 @@ export interface LanguageTaggedContent {
 
 /**
  * 内容语言选项契约：值就是全局 Locale，不在 Lorebook 里再养一套语言枚举。
- * 语言名统一显示自身名称（简体中文 / English / 日本語 / Deutsch / Русский），文案走 i18n。
+ * 语言名统一显示自身名称（简体中文 / English / 日本語 / Deutsch），文案走 i18n。
  */
-export const CONTENT_LANGUAGE_OPTIONS: ReadonlyArray<{ value: Locale; labelKey: MessageKey }> = [
-  { value: 'zh-CN', labelKey: 'contentLangZhCN' },
-  { value: 'en', labelKey: 'contentLangEn' },
-  { value: 'ja', labelKey: 'contentLangJa' },
-  { value: 'de', labelKey: 'contentLangDe' },
-  { value: 'ru', labelKey: 'contentLangRu' },
-]
+const CONTENT_LANGUAGE_LABEL_KEYS: Record<Locale, MessageKey> = {
+  'zh-CN': 'contentLangZhCN', en: 'contentLangEn', ja: 'contentLangJa', de: 'contentLangDe', ru: 'contentLangRu',
+}
+export const CONTENT_LANGUAGE_OPTIONS = SUPPORTED_LOCALES.map(value => ({
+  value, labelKey: CONTENT_LANGUAGE_LABEL_KEYS[value],
+}))
 
 export function contentLanguageLabelKey(locale: Locale): MessageKey {
   return CONTENT_LANGUAGE_OPTIONS.find(option => option.value === locale)?.labelKey ?? 'contentLangZhCN'
@@ -25,6 +24,12 @@ export function contentLanguageOf(item: LanguageTaggedContent | null | undefined
   return normalizeLocale(item?.language)
 }
 
+/**
+ * Pick the best-matching content for a locale, falling back the way the backend
+ * does: requested locale, then English, then Chinese. An exact-match filter left
+ * every locale beyond zh-CN/en staring at an empty list, because no built-in
+ * world, rule or template is tagged ja, de or ru.
+ */
 export function filterByContentLanguage<T extends LanguageTaggedContent>(
   items: T[],
   language: Locale,
@@ -36,7 +41,11 @@ export function filterByContentLanguage<T extends LanguageTaggedContent>(
   return []
 }
 
-/** Display a content language using its translated name or endonym. */
+/**
+ * Display name of a content language, for pickers and "world · language · N
+ * entries" lines. Uses the translated name where the catalogue has a key and the
+ * locale's own name otherwise, keeping the project's existing convention.
+ */
 export function localeLabel(locale: Locale): string {
   if (locale === 'zh-CN') return i18n.global.t('chinese')
   if (locale === 'en') return i18n.global.t('english')

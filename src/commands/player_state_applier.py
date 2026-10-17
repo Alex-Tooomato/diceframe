@@ -44,6 +44,7 @@ class PlayerStateApplier:
         players_update: dict,
         rule=None,
         allowed_player_uids: set | None = None,
+        health_runtime=None,
     ) -> dict[str, frozenset[str]]:
         """应用玩家字段更新，并汇总每个角色本轮真正变化的 live state 域。
 
@@ -64,6 +65,7 @@ class PlayerStateApplier:
                 )
                 continue
             cs = instance.get_character_sheet(uid)
+            hp_before = int(cs.get("hp", 0) or 0)
             hp_change = pud.get("hp_change")
             if isinstance(hp_change, (int, float)):
                 max_hp = cs.get("max_hp", 100)
@@ -130,27 +132,10 @@ class PlayerStateApplier:
                     default_current=99, max_key="max_luck", default_max=99,
                 )
                 logger.info("幸运值变化: %s %+d -> %d", uid, int(luck_change), cs["luck"])
-            # 推动检定
-            push_skill = pud.get("push_skill")
-            if push_skill:
-                skills: list[dict] = cs.get("skills", [])
-                for s in skills:
-                    if s.get("name") == push_skill:
-                        sv = s.get("value", 20)
-                        push_res, push_verdict = check_d100(sv)
-                        pushed_key = f"_pushed_{push_skill}"
-                        pushed_rounds = cs.get(pushed_key, 0)
-                        if pushed_rounds >= progression_state.round_value(instance):
-                            break  # 本轮已推动过此技能
-                        cs[pushed_key] = progression_state.round_value(instance)
-                        # 推动失败：后果加倍
-                        fail_suffix = ""
-                        if push_verdict in ("失败", "大失败"):
-                            fail_suffix = " (推动失败，后果加倍！)"
-                        logger.info("推动检定: %s 推动技能 %s d100=%d vs %d -> %s%s",
-                                    instance.players[uid].get("character_name", uid),
-                                    push_skill, push_res.natural, sv, push_verdict, fail_suffix)
-                        break
+            # Legacy LLM PUSH tags are untrusted proposals. Only the linked
+            # player/Keeper decision workflow may re-roll a failed check.
+            if pud.get("push_skill"):
+                logger.info("Ignored unconfirmed LLM Push proposal: uid=%s", uid)
             # 施法
             cast_spell = pud.get("cast_spell")
             if cast_spell:
@@ -182,6 +167,15 @@ class PlayerStateApplier:
                             instance.players[uid].get("character_name", uid),
                             progression_state.round_value(instance), cs.get("hp", 0))
             instance.set_character_sheet(uid, cs)
+            if health_runtime is not None:
+                accepted = health_runtime.apply_narrative_hp_delta(
+                    instance, str(uid), int(cs.get("hp", 0) or 0) - hp_before,
+                )
+                if "hp_change" in pud:
+                    if accepted:
+                        pud["hp_change"] = accepted
+                    else:
+                        pud.pop("hp_change", None)
             if domains:
                 changed_domains[uid] = frozenset(domains)
         return changed_domains

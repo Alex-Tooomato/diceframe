@@ -44,6 +44,7 @@ function setup(config: Partial<AppConfig>, supported = true) {
       plugins: [i18n],
       stubs: {
         HelpButton: true,
+        GenerationSettings: true,
         TestResultCard: true,
         teleport: true,
       },

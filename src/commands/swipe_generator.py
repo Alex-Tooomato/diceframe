@@ -22,8 +22,9 @@ from src.commands.protocol_repair import repair_malformed_protocol_response
 from src.commands.round_actions import format_check_results_constraint
 from src.commands.state_update_applier import StateUpdateApplier, discard_unresolved_player_damage
 from src.commands.tag_parser import parse_tag_state
+from src.commands.story_output import ensure_story_response, bound_story_response
 from src.engine.game_instance import GameInstance, restore_players
-from src.engine.modules import adventure_runtime_state, narrative_notes, progression_state, session_stats
+from src.engine.modules import adventure_runtime_state, progression_state, session_stats
 from src.engine.world_state import ensure_world_state
 from src.engine.economy import queue_effect_group, reconcile_rollback_snapshot, reverse_round_economy
 from src.imagegen.storyboards import normalize_scene_panels, storyboard_panel_metadata, storyboard_source_revision
@@ -81,7 +82,7 @@ class SwipeGenerator:
             async with instance._process_lock:
                 session_stats.require_writable(instance)
                 adventure_runtime_state.require_writable(instance)
-                narrative_notes.require_writable(instance)
+                module_hooks.preflight(instance, module_hooks.NARRATIVE_VIEW)
                 expected_run_id = instance.run_id
                 before = type(instance).from_dict(deepcopy(instance.to_dict()))
                 before.log = deepcopy(instance.log)
@@ -228,12 +229,21 @@ class SwipeGenerator:
             max_tokens=self.narrative_max_tokens,
         )
         response.content = normalize_tag_protocol(response.content)
+        response = await ensure_story_response(
+            instance, response, self.llm_client, system_prompt=gm_prompt,
+            user_message=context, max_tokens=self.narrative_max_tokens,
+            round_number=round_num, revision=len(swipes),
+        )
 
         narration = response.content
         if "---" in response.content:
             narration = response.content.split("---", 1)[0].strip()
         narration = sanitize_narration(narration)
         data = parse_tag_state(response.content, combat_model_s)
+        if getattr(response, "story", None):
+            bound_story_response(response, data, trigger=500 if instance.language == "zh-CN" else 1200,
+                                 limit=400 if instance.language == "zh-CN" else 1100)
+            narration = response.narration
         system_changes: list[str] = []
         if should_warn_unbacked_payment(
             narration, data, instance.language,
@@ -270,6 +280,7 @@ class SwipeGenerator:
         await instance.finish_judgment_with_swipe(
             narration, round_num,
             state_changes=system_changes if system_changes else None,
+            story=getattr(response, "story", None),
         )
         combat_narrative.consume_pending_events(
             instance, pending_combat_event_ids,
@@ -290,7 +301,7 @@ class SwipeGenerator:
             normalized_panels,
             narration=str(target_entry.get("gm_response") or ""),
             actions=target_entry.get("actions") or [],
-            current_scene=str(narrative_notes.scene(instance) or ""),
+            current_scene=str(module_hooks.narrative_view(instance)["scene"] or ""),
             source_revision=storyboard_source_revision(target_entry),
         )
         prompt_history = target_entry.setdefault("swipe_scene_image_prompts", [])

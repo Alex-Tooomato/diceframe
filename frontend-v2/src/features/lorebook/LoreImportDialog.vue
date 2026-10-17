@@ -1,12 +1,19 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import { useLocale } from '@/composables/useLocale'
+import Modal from '@/components/ui/Modal.vue'
+import { lorebookCopy } from './copy'
+import ReviewPlanOverview from '@/features/content-review/ReviewPlanOverview.vue'
+import { reviewCopy } from '@/features/content-review/copy'
+import type { ReviewPlan } from '@/features/content-review/types'
 
 export interface LoreImportPreview {
   format: string
   counts: { entries:number; mapped:number; warnings:number; unsupported:number }
   warnings: string[]
   character?: { name:string; book_name?:string; entries:number } | null
+  plan_digest?: string
+  commit_plan?: ReviewPlan
 }
 
 export interface LoreImportTargetBook { id:string; name:string; primary?:boolean }
@@ -16,6 +23,7 @@ export interface LoreImportCharacter { uid:string; name:string }
 export interface LoreImportDecision {
   bookId: string | null
   binding: { scope_kind:string; scope_id:string; role?:string } | null
+  duplicatePolicy?: 'update' | 'duplicate' | 'skip'
 }
 
 const props = defineProps<{
@@ -31,7 +39,9 @@ const props = defineProps<{
 }>()
 const emit = defineEmits<{ close:[]; confirm:[decision: LoreImportDecision] }>()
 
-const { t } = useLocale()
+const { t, locale } = useLocale()
+const copy = computed(() => reviewCopy(locale.value))
+const bookCopy = computed(() => lorebookCopy(locale.value))
 
 type Target = 'new' | 'existing'
 type BindingChoice = 'world' | 'game' | 'character' | 'global' | 'none'
@@ -40,10 +50,19 @@ const target = ref<Target>('new')
 const existingBookId = ref('')
 const binding = ref<BindingChoice>('world')
 const characterUid = ref('')
+const duplicatePolicy = ref<'update' | 'duplicate' | 'skip'>('update')
 
 const isCharacterCard = computed(() => props.preview?.format === 'character_card_v3')
 const characterName = computed(() => props.preview?.character?.name || '')
 const characterEntryCount = computed(() => props.preview?.character?.entries ?? 0)
+const hasConflicts = computed(() => Boolean(props.preview?.commit_plan?.operations?.some(operation => operation.existing_ref)))
+const displayPlan = computed(() => props.preview?.commit_plan ? {
+  ...props.preview.commit_plan,
+  duplicate_policy: duplicatePolicy.value,
+  operations: props.preview.commit_plan.operations?.map(operation => operation.existing_ref ? {
+    ...operation, action: duplicatePolicy.value === 'duplicate' ? 'create' : duplicatePolicy.value,
+  } : operation),
+} : undefined)
 // 这个流程的职责就是把卡里的世界书抽出来：没有内嵌世界书时整段都不该出现，
 // 更不该用一个「取消勾选」的假选项把 Import 按钮变灰。
 const hasCharacterBook = computed(() => isCharacterCard.value && characterEntryCount.value > 0)
@@ -68,12 +87,13 @@ const importsIntoPrimaryWorldBook = computed(() =>
   target.value === 'existing' && !!existingBookId.value && existingBookId.value === props.primaryBookId,
 )
 const primaryWarning = computed(() =>
-  t('loreImportPrimaryWarning', { nameHint: props.worldName ? `（${props.worldName}）` : '' }),
+  bookCopy.value.importPrimaryWarning.replace('{nameHint}', props.worldName ? `（${props.worldName}）` : ''),
 )
 
 const needsCharacterUid = computed(() => binding.value === 'character' && !characterUid.value)
 const confirmDisabled = computed(() =>
   props.busy || !props.preview
+  || Boolean(props.preview.commit_plan?.unresolved_references?.length)
   || (target.value === 'existing' && !existingBookId.value)
   || needsCharacterUid.value,
 )
@@ -82,6 +102,7 @@ function resetChoices() {
   // 每次打开（或换了一份 preview）都回到显式默认值，不继承上一次的选择。
   target.value = 'new'
   existingBookId.value = ''
+  duplicatePolicy.value = 'update'
   if (isCharacterCard.value) {
     const matched = matchedCharacter.value
     binding.value = matched ? 'character' : 'world'
@@ -106,18 +127,21 @@ watch(binding, choice => {
 
 function decide(): LoreImportDecision {
   const bookId = target.value === 'existing' ? existingBookId.value : null
-  if (binding.value === 'none') return { bookId, binding: null }
-  if (binding.value === 'global') return { bookId, binding: { scope_kind: 'global', scope_id: '' } }
-  if (binding.value === 'game') return { bookId, binding: { scope_kind: 'game', scope_id: String(props.gameKey || '') } }
-  if (binding.value === 'character') return { bookId, binding: { scope_kind: 'character', scope_id: characterUid.value } }
-  return { bookId, binding: { scope_kind: 'world', scope_id: String(props.worldId || '') } }
+  const decision = (nextBinding: LoreImportDecision['binding']): LoreImportDecision => ({
+    bookId, binding: nextBinding,
+    ...(duplicatePolicy.value === 'update' ? {} : { duplicatePolicy: duplicatePolicy.value }),
+  })
+  if (binding.value === 'none') return decision(null)
+  if (binding.value === 'global') return decision({ scope_kind: 'global', scope_id: '' })
+  if (binding.value === 'game') return decision({ scope_kind: 'game', scope_id: String(props.gameKey || '') })
+  if (binding.value === 'character') return decision({ scope_kind: 'character', scope_id: characterUid.value })
+  return decision({ scope_kind: 'world', scope_id: String(props.worldId || '') })
 }
 </script>
 
 <template>
-  <div v-if="open" class="lore-import-dialog" role="dialog" aria-modal="true" :aria-busy="busy || undefined" :aria-label="t('loreImportTitle')">
+  <Modal v-if="open" :title="bookCopy.importTitle" dialog-class="lore-import-dialog" @close="emit('close')">
     <div class="lore-import-dialog__panel">
-      <h2>{{ t('loreImportTitle') }}</h2>
 
       <p v-if="preview">
         {{ t('loreImportDetected', { format: preview.format, entries: preview.counts.entries, mapped: preview.counts.mapped }) }}
@@ -128,6 +152,14 @@ function decide(): LoreImportDecision {
       <p v-if="preview?.counts.unsupported" class="warning">
         {{ t('loreImportUnsupported', { count: preview.counts.unsupported }) }}
       </p>
+
+      <ReviewPlanOverview :plan="displayPlan" />
+      <fieldset v-if="hasConflicts" class="lore-import-dialog__conflicts">
+        <legend>{{ copy.conflicts }}</legend>
+        <label><input v-model="duplicatePolicy" type="radio" value="update"> {{ copy.update }}</label>
+        <label><input v-model="duplicatePolicy" type="radio" value="duplicate"> {{ copy.duplicate }}</label>
+        <label><input v-model="duplicatePolicy" type="radio" value="skip"> {{ copy.skip }}</label>
+      </fieldset>
 
       <!-- Character Card：先说清「这张卡带了世界书」，再问绑到哪里 -->
       <section v-if="hasCharacterBook" class="lore-import-dialog__character">
@@ -140,10 +172,10 @@ function decide(): LoreImportDecision {
       <fieldset class="lore-import-dialog__target" :disabled="busy">
         <legend>{{ t('loreImportTargetLegend') }}</legend>
         <label>
-          <input v-model="target" type="radio" value="new"> {{ t('loreImportTargetNew') }}
+          <input v-model="target" type="radio" value="new"> {{ bookCopy.importTargetNew }}
         </label>
         <label>
-          <input v-model="target" type="radio" value="existing"> {{ t('loreImportTargetExisting') }}
+          <input v-model="target" type="radio" value="existing"> {{ bookCopy.importTargetExisting }}
         </label>
         <select
           v-if="target === 'existing'"
@@ -153,7 +185,7 @@ function decide(): LoreImportDecision {
         >
           <option value="">{{ t('loreImportPickBook') }}</option>
           <option v-for="book in books || []" :key="book.id" :value="book.id">
-            {{ book.name }}{{ book.primary ? t('loreImportPrimarySuffix') : '' }}
+            {{ book.name }}{{ book.primary ? bookCopy.importPrimarySuffix : '' }}
           </option>
         </select>
         <p v-if="importsIntoPrimaryWorldBook" class="warning lore-import-dialog__primary-warning">
@@ -191,9 +223,9 @@ function decide(): LoreImportDecision {
       </fieldset>
 
       <div class="lore-import-dialog__buttons">
-        <button :disabled="busy" @click="emit('close')">{{ t('cancel') }}</button>
-        <button :disabled="confirmDisabled" @click="emit('confirm', decide())">{{ t('import') }}</button>
+        <button :disabled="busy" @click="emit('close')">{{ bookCopy.cancel }}</button>
+        <button :disabled="confirmDisabled" @click="!confirmDisabled && emit('confirm', decide())">{{ t('import') }}</button>
       </div>
     </div>
-  </div>
+  </Modal>
 </template>

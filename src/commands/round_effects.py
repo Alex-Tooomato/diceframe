@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from src.engine.modules import game_config
+
 import logging
 from typing import Any
 
@@ -10,7 +12,7 @@ from src.commands.state_recap import build_state_change_messages
 from src.engine.character_utils import revive_character
 from src.engine.game_instance import GameInstance
 from src.engine.health import record_health_event
-from src.engine.modules import progression_state, table_settings
+from src.engine.modules import progression_state
 from src.engine.puzzle import PuzzleState
 from src.rulesets.contracts import (
     CharacterRevivalRuntime,
@@ -66,7 +68,7 @@ def apply_revive_commands(
 ) -> None:
     revive_commands = data.get("revive_commands", [])
     # P2-O：硬核难度禁止复活，落实"硬核=角色可永久死亡"的机制差异（不只靠 GM prompt 文案）。
-    hardcore = str(table_settings.difficulty(instance) or "") == "硬核"
+    hardcore = str(game_config.difficulty(instance) or "") == "硬核"
     for cmd in revive_commands:
         uid = cmd["uid"]
         method = cmd.get("method", "法术")

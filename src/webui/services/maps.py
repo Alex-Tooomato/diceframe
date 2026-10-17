@@ -20,7 +20,7 @@ from src.webui.map_presets import builtin_map_preset
 from src.content_modules.projection import ContentProjectionService
 from src.engine.participant_view import Viewer
 from src.engine import module_hooks
-from src.engine.modules import narrative_notes
+
 from src.knowledge.visibility import entry_visible_to_viewer
 
 @dataclass(frozen=True)
@@ -90,7 +90,7 @@ def get_map_locations(
         )
     apply_map_presentation(locations, active_definition, assets)
 
-    current_scene = str(narrative_notes.scene(instance) or "")
+    current_scene = str(module_hooks.narrative_view(instance)["scene"] or "")
     current_location_id = _append_current_scene(locations, current_scene)
     automatic_map = public_map_definition(active_definition, assets) or builtin_map_preset(
         str(instance.world_id or ""),

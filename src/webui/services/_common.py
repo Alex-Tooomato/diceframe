@@ -45,6 +45,28 @@ def _is_safe_world_id(s: str) -> bool:
     return bool(s) and "/" not in s and "\\" not in s and ".." not in s
 
 
+def resolve_default_scene_image(
+    resolver: Any,
+    world_id: str,
+    rule_id: str,
+    selection_key: str = "",
+) -> dict[str, Any]:
+    """Call the optional keyed default-image resolver without breaking old adapters.
+
+    Third-party lifecycle test adapters and older integrations still expose the
+    original two-argument callable. The keyed call is used by the built-in API
+    so each new save can select a stable member from its ruleset/world pool;
+    the fallback keeps those adapters source-compatible.
+    """
+
+    if selection_key:
+        try:
+            return resolver(world_id, rule_id, selection_key)
+        except TypeError:
+            pass
+    return resolver(world_id, rule_id)
+
+
 def is_game_gm(inst: Any, user_id: str, owner_authenticated: bool = False) -> bool:
     """GM 判定统一入口：该局主 GM，或已登录 owner（多人共用管理员账号都算 GM）。
 

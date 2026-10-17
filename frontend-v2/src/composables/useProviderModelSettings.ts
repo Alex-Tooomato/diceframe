@@ -69,6 +69,7 @@ export interface UseProviderModelSettingsOptions {
 }
 
 export const MODEL_ROUTING_CONFIG_KEYS = [
+  'check_model_enabled', 'check_provider_ref', 'check_model',
   'llm_provider_ref', 'model',
   'fallback1_enabled', 'fallback1_provider_ref', 'fallback1_model',
   'fallback2_enabled', 'fallback2_provider_ref', 'fallback2_model',
@@ -400,6 +401,7 @@ export function useProviderModelSettings(options: UseProviderModelSettingsOption
   }
 
   const catalogRoleLabelKeys: Record<CatalogModelRoleId, MessageKey> = {
+    check: 'modelRoleCheck',
     main: 'modelRoleMain',
     embedding: 'modelRoleEmbedding',
     imagegen: 'modelRoleImagegen',

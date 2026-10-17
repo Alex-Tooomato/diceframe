@@ -23,8 +23,14 @@ ROUND_PROCESSING_BEGIN = "round.processing.begin"
 # Before an in-place reset touches anything: handler(instance) -> None.
 # Raise to refuse (e.g. an unsupported slot schema); nothing has changed yet.
 INSTANCE_RESET_PREFLIGHT = "instance.reset.preflight"
+# After all reset preflights, before the old run identity is rotated.
+INSTANCE_RESET_BEGIN = "instance.reset.begin"
 # In-place game reset: handler(instance) -> None.  Clear run-scoped state.
 INSTANCE_RESET = "instance.reset"
+# Before creating a replacement run: handler(source) -> None.
+INSTANCE_NEW_RUN_PREFLIGHT = "instance.new_run.preflight"
+# Carry optional preferences to an unpublished new run: handler(candidate, source).
+INSTANCE_NEW_RUN = "instance.new_run"
 # Before rollback_last_round / abort_round_processing change anything:
 # handler(instance) -> None.  Raise to refuse.
 ROUND_RECOVERY_PREFLIGHT = "round.recovery.preflight"
@@ -66,6 +72,7 @@ STATE_RECORD = "module.state.record"
 # Read module-held state by kind: handler(instance, kind) -> value | None.
 # ``None`` means "not mine / nothing stored"; the first other answer wins.
 STATE_READ = "module.state.read"
+STATE_WRITE_PREFLIGHT = "module.state.write.preflight"
 
 # State kinds.  List-valued unless noted; the owning module answers for its kinds.
 OVERREACH = "overreach"
@@ -100,12 +107,33 @@ COMBAT_EXTENSION = "combat_extension"  # dict | None
 # Combat-extension state with this round's tracked entity fields, for a log
 # entry's pre-state; computed on read.
 COMBAT_EXTENSION_SNAPSHOT = "combat_extension_snapshot"  # dict | None
+# Public narration presentation preferences and optional GM prompt sections.
+STORY_MODE = "story_mode"  # str | None; absent owner means prose
+STORY_PORTRAITS = "story_portraits"  # dict | None
+STORY_SPEAKER_ALIASES = "story_speaker_aliases"  # dict | None
+STORY_IDENTITY_NAMESPACE = "story_identity_namespace"  # str | None
+GM_PROMPT_SECTIONS = "gm_prompt_sections"  # list[str]
+NARRATIVE_VIEW = "narrative_view"  # dict, including verbatim legacy scene values
+NARRATIVE_SCENE = "narrative_scene"
+NARRATIVE_TIME = "narrative_time"
+NARRATIVE_SUMMARY = "narrative_summary"
+NARRATIVE_KEY_FACTS = "narrative_key_facts"
+NARRATIVE_CONFIRMED_ITEMS = "narrative_confirmed_items"
+NARRATION_PREFERENCES = "narration_preferences"  # dict, preserving None versus explicit empty style
+CHECK_PRESENTATION = "check_presentation"  # dict, neutral auto / 60
+NARRATIVE_PERSPECTIVE = "narrative_perspective"
+GM_STYLE_OVERRIDE = "gm_style_override"
+DICE_REVEAL_MODE = "dice_reveal_mode"
+LUCK_TIMEOUT_SECONDS = "luck_timeout_seconds"
+PUSH_ENABLED = "push_enabled"
+QUICK_ACTIONS_ENABLED = "quick_actions_enabled"
 
 HOOK_POINTS = frozenset({
-    ROUND_RESET, ROUND_PROCESSING_BEGIN, INSTANCE_RESET_PREFLIGHT, INSTANCE_RESET,
+    ROUND_RESET, ROUND_PROCESSING_BEGIN, INSTANCE_RESET_PREFLIGHT, INSTANCE_RESET_BEGIN, INSTANCE_RESET,
+    INSTANCE_NEW_RUN_PREFLIGHT, INSTANCE_NEW_RUN,
     ROUND_RECOVERY_PREFLIGHT, ROUND_ABORT, ROUND_REWIND_BEGIN, ROUND_REWIND_RESTORE, ROUND_COMMIT,
     SEAT_PREFLIGHT, SEAT_ACTED, SEAT_FORGOTTEN, SEAT_HAS_ACTED,
-    STATE_RECORD, STATE_READ,
+    STATE_RECORD, STATE_READ, STATE_WRITE_PREFLIGHT,
 })
 
 Handler = Callable[..., Any]
@@ -170,6 +198,30 @@ def ask(point: str, *args: Any, default: Any) -> Any:
 def record(instance: Any, kind: str, value: Any) -> None:
     """Store ``kind``; dropped when no module keeps it."""
     run(STATE_RECORD, instance, kind, value)
+
+
+def preflight(instance: Any, kind: str) -> None:
+    """Validate an optional state owner before any part of a transaction writes."""
+    run(STATE_WRITE_PREFLIGHT, instance, kind)
+
+
+def narrative_view(instance: Any) -> dict[str, Any]:
+    """Narrative state projection, neutral when its optional owner is absent."""
+    neutral = {"summary": {}, "key_facts": [], "confirmed_items": [], "game_time": "", "scene": ""}
+    view = read_value(instance, NARRATIVE_VIEW)
+    return {**neutral, **view} if view is not None else neutral
+
+
+def narration_preferences(instance: Any) -> dict[str, Any]:
+    neutral = {"narrative_perspective": "auto", "gm_style_override": None}
+    view = read_value(instance, NARRATION_PREFERENCES)
+    return {**neutral, **view} if view is not None else neutral
+
+
+def check_presentation(instance: Any) -> dict[str, Any]:
+    neutral = {"dice_reveal_mode": "auto", "luck_timeout_seconds": 60}
+    view = read_value(instance, CHECK_PRESENTATION)
+    return {**neutral, **view} if view is not None else neutral
 
 
 def read(instance: Any, kind: str) -> list:

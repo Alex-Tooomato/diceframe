@@ -180,6 +180,8 @@ async def api_module_marketplace_install(request: web.Request) -> web.Response:
 
 
 def register_modules(app: web.Application) -> None:
+    from src.webui.routes.module_resources import register
+    register(app)
     app.router.add_get("/api/modules", api_modules)
     # 先注册静态段：``/api/modules/{module_id}`` 会吞掉 ``marketplace``。
     app.router.add_get("/api/modules/marketplace", api_module_marketplace)

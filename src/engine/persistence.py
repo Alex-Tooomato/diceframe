@@ -19,6 +19,7 @@ from typing import Any, Callable
 from uuid import uuid4
 
 from src.engine import game_instance
+from src.engine import check_decisions
 from src.engine.game_instance import GameInstance, GameRegistry, GameState
 from src.engine.health import record_health_event
 from src.engine.module_state import ModuleStateError
@@ -308,7 +309,7 @@ async def recover_all(registry: GameRegistry) -> list[GameInstance]:
                 kept_luck_pending = (
                     instance.state == GameState.ACTIVE_JUDGMENT
                     and checks.round_checks_prepared(instance)
-                    and instance.pending_luck_checks()
+                    and check_decisions.pending_any(instance)
                 )
                 if not kept_luck_pending:
                     instance.state = GameState.PAUSED

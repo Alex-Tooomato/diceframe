@@ -14,7 +14,7 @@ from types import SimpleNamespace
 
 import web_server
 from src.engine.modules import room_access
-from src.webui.access_password import hash_access_password
+from src.webui.access_password import hash_access_password, verify_access_password
 from src.webui.sse_ticket import SseTicketStore
 
 
@@ -332,6 +332,27 @@ def test_ensure_bot_token_migrates_legacy_qq_secret(tmp_path, monkeypatch):
     assert web_server.STATE["bot_token"] == "legacy-token"
 
 
+def test_versioned_data_keeps_password_reset_shared_and_reads_active_plugin_token(tmp_path, monkeypatch):
+    host = tmp_path / "host"
+    active = tmp_path / "active"
+    host.mkdir()
+    plugin = active / "plugins" / "qq-napcat"
+    plugin.mkdir(parents=True)
+    (plugin / "secrets.json").write_text('{"bot_token":"active-plugin-token"}')
+    (host / "reset_access_password.txt").write_text("new-host-password")
+    monkeypatch.setattr(web_server, "DATA_DIR", active)
+    monkeypatch.setattr(web_server, "CONFIG_FILE", host / "config.json")
+    monkeypatch.setattr(web_server, "ACCESS_TOKEN_FILE", host / "access_token.txt")
+    monkeypatch.setattr(web_server, "save_config", lambda: None)
+    monkeypatch.setitem(web_server.STATE, "bot_token", "")
+    monkeypatch.setitem(web_server.STATE, "access_token", "")
+    credentials = web_server._host_credentials()
+    credentials.initialize_access_password()
+    assert verify_access_password("new-host-password", web_server.STATE["access_token"])
+    assert not (host / "reset_access_password.txt").exists()
+    assert credentials.ensure_bot_token() == "active-plugin-token"
+
+
 @pytest.mark.asyncio
 async def test_sse_ticket_authenticates_once_without_exposing_owner_password(monkeypatch):
     monkeypatch.setitem(web_server.STATE, "access_token", hash_access_password("owner-secret"))
@@ -397,6 +418,19 @@ async def test_share_link_player_can_use_ruleset_gameplay_endpoints(monkeypatch)
 
     assert [response.status for response in responses] == [200] * 3
     assert all(body["user_id"] == "player-1" for body in bodies)
+
+
+@pytest.mark.asyncio
+async def test_share_check_endpoints_carry_player_identity_including_keeper_operations(monkeypatch):
+    monkeypatch.setitem(web_server.STATE, "access_token", hash_access_password("owner-secret"))
+    app = _make_sse_auth_app()
+    app.router.add_post("/api/games/{game_key}/checks/{check_id}/{action:luck|reveal}", _identity)
+    app.router.add_post("/api/games/{game_key}/checks/{check_id}/push/{operation}", _identity)
+    async with TestClient(TestServer(app)) as client:
+        for suffix in ("luck", "reveal", "push/request", "push/offer", "push/reject", "push/confirm", "push/decline"):
+            response = await client.post("/api/games/web%7Croom%7Cbot/checks/c1/" + suffix, params={"user": "player-1", "share": "1"}, headers=_seat(app))
+            assert response.status == 200
+            assert (await response.json())["user_id"] == "player-1"
 
 
 @pytest.mark.asyncio

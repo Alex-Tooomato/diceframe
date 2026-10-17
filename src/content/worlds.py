@@ -106,6 +106,11 @@ def _world_draft_from_definition(data: dict[str, Any]) -> WorldDraft:
     )
 
 
+def world_definition_draft(data: dict[str, Any]) -> WorldDraft:
+    """Validate a supplied canonical v3 definition without reading storage."""
+    return _world_draft_from_definition(copy.deepcopy(data))
+
+
 def _safe_lore_id_part(value: Any) -> str:
     """Mirror the persisted plugin-lore id contract without importing plugin code."""
     text = str(value or "").strip().lower()

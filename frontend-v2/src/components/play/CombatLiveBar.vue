@@ -5,6 +5,7 @@ import { ListOutline, OpenOutline, ShieldOutline } from '@vicons/ionicons5'
 import type { RulesetCombatEvent, RulesetGameplayView } from '@/api/types'
 import Modal from '@/components/ui/Modal.vue'
 import { useLocale } from '@/composables/useLocale'
+import { combatRollEvidence } from '@/features/play/check-modes/combatEvidence'
 
 const props = defineProps<{
   gameplay: RulesetGameplayView
@@ -134,11 +135,11 @@ function eventText(event?: RulesetCombatEvent): string {
         : `${actor} makes a death save: d20 ${event.natural ?? roll}, ${event.success ? 'success' : 'failure'}`
     }
     if (kind === 'attack' || kind === 'spell_attack' || kind === 'opportunity_attack') {
-      const natural = event.natural ?? event.roll ?? ''
+      const dice = combatRollEvidence(event, locale.value)
       const modifier = Number(event.modifier || 0) + Number(event.bless_bonus || 0)
       return zh.value
-        ? `${actor}攻击${target}：d20 ${natural} + ${modifier} = ${roll} vs AC ${dc}，${verdict}`
-        : `${actor} attacks ${target}: d20 ${natural} + ${modifier} = ${roll} vs AC ${dc}, ${verdict}`
+        ? `${actor}攻击${target}：${dice} + ${modifier} = ${roll} vs AC ${dc}，${verdict}`
+        : `${actor} attacks ${target}: ${dice} + ${modifier} = ${roll} vs AC ${dc}, ${verdict}`
     }
     return zh.value
       ? `${actor}攻击${target}：${roll} vs ${dc}，${verdict}`

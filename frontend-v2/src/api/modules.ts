@@ -8,8 +8,11 @@ export type ModuleSummary = {
   content_delivery_mode: string
   is_module: boolean
   status: string
-  adventure_count: number
-  content_counts: Record<string, number>
+  // Counts describe installed declarations, independently of whether the pack is enabled.
+  // null means unreadable; it must not be displayed as an empty package.
+  adventure_count: number | null
+  content_counts: Record<string, number> | null
+  inventory_status?: 'available' | 'disabled' | 'unknown'
   lorebook_count: number
 }
 
@@ -33,7 +36,7 @@ export type ModuleActionGuard = {
 
 export type ModuleDetail = ModuleSummary & {
   content: Record<string, Array<{ key: string; title: string; description: string }>>
-  adventures: Array<{ adventure_id: string; version: string; format: string; directory_id: string }>
+  adventures: Array<{ adventure_id: string; version: string; format: string; directory_id: string; name?: string; summary?: string }>
   lorebooks: Array<{ id: string; name: string; description: string; language: string; enabled: boolean; source_kind: string; source_id: string }>
   bound_games?: ModuleBoundGame[]
   actions?: Record<string, ModuleActionGuard>
@@ -115,7 +118,7 @@ export const moduleApi = {
     }).toString()
     return api<ModuleMarketplaceResponse>(`/modules/marketplace${query ? `?${query}` : ''}`)
   },
-  installFromMarketplace: (moduleId: string, overwrite = false) => api<{ ok: boolean; id?: string }>(
+  installFromMarketplace: (moduleId: string, overwrite = false) => api<{ ok: boolean; id?: string; error?: string; error_code?: string }>(
     `/modules/${encodeURIComponent(moduleId)}/install`,
     { method: 'POST', body: JSON.stringify({ overwrite }) },
   ),

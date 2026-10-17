@@ -35,7 +35,8 @@ const BASE_PROPS = {
 function mountDialog(props: Record<string, unknown> = {}) {
   return mount(LoreImportDialog, {
     props: { ...BASE_PROPS, primaryBookId: 'world:w-golden', preview: ST_PREVIEW, ...props },
-    global: { plugins: [i18n] },
+    global: { plugins: [i18n], stubs: { teleport: true } },
+    attachTo: document.body,
   })
 }
 
@@ -46,6 +47,18 @@ async function confirmDecision(wrapper: ReturnType<typeof mountDialog>) {
 }
 
 describe('LoreImportDialog binding selector', () => {
+  it('shows unresolved content references and blocks committing the preview', async () => {
+    const wrapper = mount(LoreImportDialog, { props: {
+      open: true, worldId: 'world', preview: { ...ST_PREVIEW, commit_plan: {
+        unresolved_references: [{ source_kind: 'module', source_id: 'castle', kind: 'npc', id: 'keeper' }],
+      } },
+    }, global: { plugins: [i18n], stubs: { teleport: true } }, attachTo: document.body })
+    expect(wrapper.text()).toContain('keeper')
+    const button = wrapper.findAll('button').find(button => button.text() === '导入')
+    expect(button?.attributes('disabled')).toBeDefined()
+    await button?.trigger('click')
+    expect(wrapper.emitted('confirm')).toBeUndefined()
+  })
   it('defaults to a new standalone book bound to the current world', async () => {
     const wrapper = mountDialog()
     expect(await confirmDecision(wrapper)).toEqual({
@@ -124,7 +137,7 @@ describe('LoreImportDialog target selection', () => {
     await wrapper.get('.lore-import-dialog__target input[value=existing]').setValue(true)
     await wrapper.get('.lore-import-dialog__book').setValue('world:w-golden')
     const warning = wrapper.get('.lore-import-dialog__primary-warning')
-    expect(warning.text()).toContain('将导入当前世界主世界书')
+    expect(warning.text()).toContain('将导入当前世界主资料册')
     expect(warning.text()).toContain('Golden World')
     expect(await confirmDecision(wrapper)).toEqual({
       bookId: 'world:w-golden',
@@ -144,7 +157,7 @@ describe('LoreImportDialog character_book flow', () => {
   it('announces the embedded book and defaults to the matching character', async () => {
     const wrapper = mountDialog({ preview: CARD_PREVIEW })
     expect(wrapper.get('.lore-import-dialog__character-summary').text()).toContain('角色 Alice')
-    expect(wrapper.get('.lore-import-dialog__character-summary').text()).toContain('世界书 2 条')
+    expect(wrapper.get('.lore-import-dialog__character-summary').text()).toContain('资料册 2 条')
     expect(await confirmDecision(wrapper)).toEqual({
       bookId: null,
       binding: { scope_kind: 'character', scope_id: 'alice' },

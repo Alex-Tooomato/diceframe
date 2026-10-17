@@ -2,6 +2,10 @@
 
 from __future__ import annotations
 
+from src.engine.modules import game_config
+
+from src.engine import check_decisions
+
 import logging
 from dataclasses import dataclass
 from typing import Any, Callable
@@ -10,10 +14,7 @@ from src.engine.game_instance import GameState
 from src.engine.health import health_payload
 from src.engine.language import DEFAULT_LANGUAGE, normalize_language
 from src.engine import module_hooks
-from src.engine.modules import (
-    adventure_runtime_state, checks, economy_state, narrative_notes,
-    progression_state, room_access, ruleset_runtime, session_stats, table_settings,
-)
+from src.engine.modules import adventure_runtime_state, checks, economy_state, progression_state, room_access, ruleset_runtime, session_stats
 from src.engine.player_control import away_control_policy
 from src.engine.visibility_rules import manual_roll_visible_to, proposal_visible_to
 from src.llm.parser import sanitize_narration
@@ -21,6 +22,7 @@ from src.rulesets.contracts import GameDetailProjectionRuntime
 from src.rulesets.registry import RulesetRuntimeRegistry
 from src.webui.services._common import _GAME_KEY_SEP
 from src.webui.ruleset_rest_projection import public_rest_session
+from src.game_profiles.projection import routing_descriptor
 
 logger = logging.getLogger("trpg")
 
@@ -77,17 +79,17 @@ def list_games(dependencies: GameQueryDependencies) -> dict[str, Any]:
             "player_count": len(instance.players),
             "max_players": max(1, int(room_access.max_players(instance) or 6)),
             "combat_active": module_hooks.combat_view(instance)["combat_active"],
-            "scene": narrative_notes.scene(instance),
+            "scene": module_hooks.narrative_view(instance)["scene"],
             "total_llm_calls": session_stats.total_llm_calls(instance),
             "total_tokens": session_stats.total_tokens(instance),
             "started_at": session_stats.started_at(instance),
             "last_activity": session_stats.last_activity(instance),
-            "seed_code": table_settings.seed_code(instance),
+            "seed_code": game_config.seed_code(instance),
             "language": normalize_language(
                 getattr(instance, "language", DEFAULT_LANGUAGE)
             ),
-            "solo_mode": table_settings.solo_mode(instance),
-            "narrative_perspective": table_settings.narrative_perspective(instance),
+            "solo_mode": game_config.solo_mode(instance),
+            "narrative_perspective": module_hooks.narration_preferences(instance)["narrative_perspective"],
             "gm_uid": instance.gm_uid or "",
             "ready_count": multiplayer["ready_count"],
             "alive_count": multiplayer["alive_count"],
@@ -197,12 +199,12 @@ def game_detail(
         "state": instance.state.value,
         "round_number": progression_state.round_value(instance),
         "player_count": len(instance.players),
-        "scene": narrative_notes.scene(instance),
+        "scene": module_hooks.narrative_view(instance)["scene"],
         "total_llm_calls": session_stats.total_llm_calls(instance),
         "total_tokens": session_stats.total_tokens(instance),
         "started_at": session_stats.started_at(instance),
         "last_activity": session_stats.last_activity(instance),
-        "seed_code": table_settings.seed_code(instance),
+        "seed_code": game_config.seed_code(instance),
         "language": normalize_language(
             getattr(instance, "language", DEFAULT_LANGUAGE)
         ),
@@ -212,12 +214,14 @@ def game_detail(
         "away_control_policy": away_control_policy(instance),
         "has_room_password": bool(room_access.has_room_password(instance)),
         "economy_reward_policy": dict(
-            table_settings.economy_reward_policy(instance) or {}
+            economy_state.reward_policy(instance) or {}
         ),
         "combat_extension": _combat_extension_projection(instance, dependencies, viewer_uid),
         "quick_actions": module_hooks.read(instance, module_hooks.QUICK_ACTIONS),
+        "quick_actions_enabled": module_hooks.ask(module_hooks.STATE_READ, instance, module_hooks.QUICK_ACTIONS_ENABLED, default=True),
         "economy_proposals": economy_proposals,
         "pending_luck_decisions": instance.pending_luck_checks(),
+        "pending_push_decisions": check_decisions.pending(instance),
         "round_check_results": (
             [dict(item) for item in checks.last_checks(instance)]
             if (
@@ -226,12 +230,13 @@ def game_detail(
             )
             else []
         ),
-        "difficulty": table_settings.difficulty(instance),
-        "solo_mode": table_settings.solo_mode(instance),
-        "narrative_perspective": table_settings.narrative_perspective(instance),
+        "difficulty": game_config.difficulty(instance),
+        "solo_mode": game_config.solo_mode(instance),
+        "narrative_perspective": module_hooks.narration_preferences(instance)["narrative_perspective"],
+        "story_mode": module_hooks.ask(module_hooks.STATE_READ, instance, module_hooks.STORY_MODE, default="prose"),
         # custom_instructions 可能包含剧透级 GM 笔记：gm_style_override 只下发给 GM。
         "gm_style_override": (
-            table_settings.gm_style_override(instance)
+            module_hooks.narration_preferences(instance)["gm_style_override"]
             if viewer_is_gm or (viewer_uid and viewer_uid == (instance.gm_uid or ""))
             else None
         ),
@@ -247,6 +252,7 @@ def game_detail(
             getattr(instance, "adventure_binding", {}) or {}
         ),
         "play_mode": str(adventure_runtime_state.play_mode(instance) or "free"),
+        "game_profile": routing_descriptor(instance),
         "manual_rolls": _public_manual_rolls(instance, viewer_uid),
     }
     if ruleset_runtime.binding(instance):
@@ -374,12 +380,12 @@ def _public_recap(instance: Any) -> dict[str, Any]:
     ]
     return {
         "narrative": clean_public_narration(
-            (narrative_notes.summary(instance) or {}).get("narrative") or ""
+            (module_hooks.narrative_view(instance)["summary"] or {}).get("narrative") or ""
         ),
-        "key_facts": list(narrative_notes.key_facts(instance) or [])[-8:],
+        "key_facts": list(module_hooks.narrative_view(instance)["key_facts"] or [])[-8:],
         "recent_rounds": recent_rounds,
         "pending_actions": pending_actions,
-        "current_scene": narrative_notes.scene(instance),
+        "current_scene": module_hooks.narrative_view(instance)["scene"],
         "round_number": progression_state.round_value(instance),
     }
 

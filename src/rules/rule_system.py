@@ -524,7 +524,7 @@ class RuleSystem:
             return 0
         value = int(skill_value or 0)
         best = 0
-        for threshold, bonus in table.items():
+        for threshold, bonus in sorted(table.items(), key=lambda item: int(item[0])):
             if value >= int(threshold):
                 best = int(bonus)
         return best
@@ -935,6 +935,7 @@ def list_available_rules(rules_dir: str | Path) -> list[dict]:
                 "custom": bool(template.get("custom", False)),
                 "source_rule_id": template.get("source_rule_id", ""),
                 "scene_image": template.get("scene_image"),
+                "scene_images": template.get("scene_images") if isinstance(template.get("scene_images"), list) else [],
                 "file": str(f),
             })
         except Exception as exc:

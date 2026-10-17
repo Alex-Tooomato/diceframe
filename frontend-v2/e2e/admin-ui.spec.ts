@@ -7,6 +7,7 @@ test('settings status summary stays structured and destructive confirmations are
   await page.addInitScript(value => localStorage.setItem('trpg_access_token', value), token())
 
   await page.goto('/#/settings')
+  await page.locator('.settings-status-disclosure > summary').click()
   await expect(page.locator('.system-status-grid')).toBeVisible()
   const statusCards = page.locator('.system-status-card')
   await expect(statusCards.first()).toBeVisible()
@@ -23,6 +24,7 @@ test('settings status summary stays structured and destructive confirmations are
   }
 
   await page.goto('/')
+  await page.locator('.overview-game-tools').first().locator('summary').click()
   await page.getByRole('button', { name: '删除' }).first().click()
   await expect(page.getByText('删除存档').first()).toBeVisible()
   await expect(page.getByRole('button', { name: '删除存档' })).toBeVisible()
@@ -34,6 +36,7 @@ test('settings status grid stays within viewport for German locale', async ({ pa
   await page.addInitScript(() => localStorage.setItem('diceframe_locale', 'de'))
   await page.setViewportSize({ width: 1280, height: 1024 })
   await page.goto('/#/settings')
+  await page.locator('.settings-status-disclosure > summary').click()
   const grid = page.locator('.system-status-grid')
   await expect(grid).toBeVisible()
   const overflow = await grid.evaluate(el => ({

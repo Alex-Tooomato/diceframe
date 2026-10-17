@@ -12,9 +12,10 @@ interface Relation { npc_name?: string; tier?: string }
 interface Decision { title?: string; summary?: string; description?: string; round_number?: number }
 interface PlotTracker { quests?: Record<string, Quest>; relations?: Record<string, Relation>; decisions?: Array<Decision | string> }
 
-const props = defineProps<{ detail: GameDetail; player?: Player; privateMessages: PrivateMessage[]; map?: MapData | null; ruleMeta?: RuleMeta | null; collapsed?: boolean; portraitEditable?: boolean; showAdvancedCenter?: boolean }>()
+const props = defineProps<{ detail: GameDetail; player?: Player; privateMessages: PrivateMessage[]; map?: MapData | null; ruleMeta?: RuleMeta | null; collapsed?: boolean; docked?: boolean; portraitEditable?: boolean; showAdvancedCenter?: boolean }>()
 const emit = defineEmits<{ 'lore-click': [name: string]; 'open-map': []; 'toggle-sidebar': []; 'portrait-click': []; 'allocate-level-up': [attrs: Record<string, number>]; 'open-character-center': [] }>()
 const { t } = useLocale()
+const toggleLabel = computed(() => props.docked === false ? t('close') : props.collapsed ? t('expandSidebar') : t('collapseSidebar'))
 
 const pt = computed<PlotTracker>(() => (props.detail.plot_tracker && typeof props.detail.plot_tracker === 'object' ? props.detail.plot_tracker as PlotTracker : {}))
 const activeQuests = computed(() => Object.values(pt.value.quests || {}).filter(q => q.status === 'active'))
@@ -52,7 +53,7 @@ function perceptionKey(m: PrivateMessage | string, i: number) {
 
 <template>
   <aside class="game-sidebar" :class="{ collapsed }">
-    <button class="sidebar-toggle" @click="emit('toggle-sidebar')" :title="collapsed ? t('expandSidebar') : t('collapseSidebar')">
+    <button class="sidebar-toggle" type="button" @click="emit('toggle-sidebar')" :title="toggleLabel" :aria-label="toggleLabel" :aria-expanded="!collapsed">
       <NIcon :component="collapsed ? ChevronForward : ChevronBack" size="16" />
     </button>
     <CharacterPanel :player="player" :rule-meta="ruleMeta" :portrait-editable="portraitEditable" :show-advanced-center="showAdvancedCenter" @portrait-click="emit('portrait-click')" @allocate-level-up="(attrs) => emit('allocate-level-up', attrs)" @open-character-center="emit('open-character-center')" />

@@ -21,6 +21,8 @@
 
 from __future__ import annotations
 
+from src.engine.modules import game_config
+
 import copy
 import logging
 from typing import TYPE_CHECKING
@@ -69,28 +71,26 @@ def reset_locked(instance: GameInstance, *, keep_seed: bool = True) -> None:
     集合与基线逐句一致。reset 的真实契约由
     ``tests/test_game_instance_reset_characterization.py`` 冻结。
     """
-    from src.engine.modules import (
-        adventure_runtime_state, checks, narrative_notes, round_safety,
-        ruleset_runtime, session_stats, table_settings,
-    )
+    from src.engine.modules import adventure_runtime_state, checks, economy_state, round_safety, ruleset_runtime, session_stats
 
     session_stats.require_writable(instance)
+    game_config.require_writable(instance)
+    economy_state.require_writable(instance)
     checks.require_writable(instance)
     round_safety.require_writable(instance)
     ruleset_runtime.require_writable(instance)
     adventure_runtime_state.require_writable(instance)
-    narrative_notes.require_writable(instance)
+    module_hooks.preflight(instance, module_hooks.NARRATIVE_VIEW)
     module_hooks.run(module_hooks.INSTANCE_RESET_PREFLIGHT, instance)
-    saved_seed = table_settings.seed_code(instance) if keep_seed else ""
+    saved_seed = game_config.seed_code(instance) if keep_seed else ""
     saved_world_id = instance.world_id
     saved_world_name = instance.world_name
     saved_group_name = instance.group_name
-    saved_solo = table_settings.solo_mode(instance)
-    saved_narrative_perspective = table_settings.narrative_perspective(instance)
-    saved_gm_style_override = copy.deepcopy(table_settings.gm_style_override(instance))
+    saved_solo = game_config.solo_mode(instance)
     saved_language = normalize_language(instance.language)
     saved_ruleset_runtime = copy.deepcopy(ruleset_runtime.binding(instance))
     saved_adventure_binding = copy.deepcopy(instance.adventure_binding)
+    module_hooks.run(module_hooks.INSTANCE_RESET_BEGIN, instance)
     instance.rotate_run_identity()
     instance.players.clear()
     # 例外（同 adventure_progress）：席位"已行动"标记属于这一轮 run，随名册与日志一起清空。
@@ -99,11 +99,7 @@ def reset_locked(instance: GameInstance, *, keep_seed: bool = True) -> None:
     instance.action_queue.clear()
     instance.pending_actions.clear()
     instance.ready_players.clear()
-    narrative_notes.replace_scene(instance, "")
-    narrative_notes.replace_game_time(instance, "")
     instance.log.clear()
-    narrative_notes.summary(instance).clear()
-    narrative_notes.key_facts(instance).clear()
     # 世界真相属于这一轮 run：重置与重开都从空世界重新开始。
     instance.world_state = fresh_world_state()
     # Adventure v2 进度与世界状态同属这一轮 run（完成节点的后果写在 world_state
@@ -114,7 +110,6 @@ def reset_locked(instance: GameInstance, *, keep_seed: bool = True) -> None:
     session_stats.reset(instance)
     instance.puzzle_manager = None
     instance.plot_tracker = None
-    narrative_notes.confirmed_items(instance).clear()
     checks.clear_round(instance)
     round_safety.clear_snapshots(instance)
     module_hooks.run(module_hooks.INSTANCE_RESET, instance)
@@ -124,9 +119,7 @@ def reset_locked(instance: GameInstance, *, keep_seed: bool = True) -> None:
     instance.world_id = saved_world_id
     instance.world_name = saved_world_name
     instance.group_name = saved_group_name
-    table_settings.replace_solo_mode(instance, saved_solo)
-    table_settings.replace_narrative_perspective(instance, saved_narrative_perspective)
-    table_settings.replace_gm_style_override(instance, saved_gm_style_override)
+    game_config.replace_solo_mode(instance, saved_solo)
     instance.language = saved_language
-    table_settings.replace_seed_code(instance, saved_seed)
-    logger.info("游戏已重置 (seed=%s) - game_key=%s", table_settings.seed_code(instance), instance.game_key)
+    game_config.replace_seed_code(instance, saved_seed)
+    logger.info("游戏已重置 (seed=%s) - game_key=%s", game_config.seed_code(instance), instance.game_key)

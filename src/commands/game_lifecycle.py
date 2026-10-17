@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+from src.engine.modules import economy_state
+from src.engine.modules import game_config
+
 import asyncio
 import logging
 import copy
@@ -26,12 +29,12 @@ from src.commands.tag_parser import (
 )
 from src.commands.tag_json import extract_narration_from_response
 from src.commands.tag_summary import summarize_tags
-from src.engine import progression
+from src.engine import progression, module_hooks
 from src.engine.character_utils import reset_character_for_restart
 from src.engine.economy import queue_effect_group
 from src.engine.game_instance import GameInstance, GameRegistry, GameState
 from src.engine.language import localized_text, normalize_language
-from src.engine.modules import narrative_notes
+
 from src.engine.narrative_perspective import narrative_perspective_instruction
 from src.llm.parser import normalize_tag_protocol, sanitize_narration
 from src.rulesets.contracts import RunLifecycleRuntime
@@ -122,11 +125,14 @@ class GameLifecycle:
         *,
         preserve_players: bool,
     ) -> GameInstance:
-        from src.engine.modules import adventure_runtime_state, content_binding, ruleset_runtime, table_settings
+        from src.engine.modules import adventure_runtime_state, content_binding, ruleset_runtime
 
         ruleset_runtime.require_writable(source)
         adventure_runtime_state.require_writable(source)
         content_binding.require_writable(source)
+        game_config.require_writable(source)
+        economy_state.require_writable(source)
+        module_hooks.run(module_hooks.INSTANCE_NEW_RUN_PREFLIGHT, source)
         # Read only after the slot preflight above.
         source_play_mode = adventure_runtime_state.play_mode(source)
         # Read the source run's content identity before creating anything, so
@@ -138,23 +144,24 @@ class GameLifecycle:
             world_id=source.world_id,
             world_name=source.world_name,
             group_name=source.group_name,
-            seed_code=table_settings.seed_code(source),
+            seed_code=game_config.seed_code(source),
             rule_id=source.rule_id,
-            difficulty=table_settings.difficulty(source),
+            difficulty=game_config.difficulty(source),
             language=normalize_language(source.language),
             fresh_instance=True,
         )
         ruleset_runtime.require_writable(candidate)
         adventure_runtime_state.require_writable(candidate)
         candidate.configure_session(
-            solo_mode=table_settings.solo_mode(source),
-            entry_point=table_settings.entry_point(source),
+            solo_mode=game_config.solo_mode(source),
+            entry_point=game_config.entry_point(source),
             gm_uid=source.gm_uid,
-            economy_reward_policy=dict(table_settings.economy_reward_policy(source) or {}),
+            economy_reward_policy=dict(economy_state.reward_policy(source) or {}),
         )
         # Perspective, GM style, luck timeout and dice reveal mode; the old
         # field-by-field copy dropped dice_reveal_mode.
-        table_settings.carry_preferences_for_new_run(candidate, source)
+
+        module_hooks.run(module_hooks.INSTANCE_NEW_RUN, candidate, source)
         from src.engine.modules import room_access
 
         room_access.replace_max_players(candidate, room_access.max_players(source))
@@ -233,13 +240,13 @@ class GameLifecycle:
         persist: bool = True,
     ) -> str:
         """激活游戏，生成开场叙事，进入第一轮。"""
-        from src.engine.modules import checks, narrative_notes, round_safety, session_stats
+        from src.engine.modules import checks, round_safety, session_stats
 
         progression.require_writable(instance)
         session_stats.require_writable(instance)
         checks.require_writable(instance)
         round_safety.require_writable(instance)
-        narrative_notes.require_writable(instance)
+        module_hooks.preflight(instance, module_hooks.NARRATIVE_VIEW)
         await instance.activate()
         await instance.start_round()
         if publish:
@@ -377,6 +384,7 @@ class GameLifecycle:
         )
 
         response = None
+        opening_story = None
         try:
             response = await self.llm_client.call(
                 system_prompt=gm_prompt,
@@ -394,12 +402,23 @@ class GameLifecycle:
                 max_tokens=self.narrative_max_tokens,
             )
             response.content = normalize_tag_protocol(response.content)
+            from src.commands.story_output import ensure_story_response, bound_story_response
+            response = await ensure_story_response(
+                instance, response, self.llm_client, system_prompt=gm_prompt,
+                user_message=welcome_context, max_tokens=self.narrative_max_tokens, round_number=0,
+            )
             narration = extract_narration_from_response(response)
             if "---" in response.content:
                 narration = response.content.split("---", 1)[0].strip()
             narration = sanitize_narration(narration)
             # 开场标签同样需要落地到 instance：NPC 登记、场景、首次战利品等。
             start_data = parse_tag_state(response.content, rule_ctx.combat_model)
+            if getattr(response, "story", None):
+                bound_story_response(response, start_data,
+                                     trigger=500 if instance.language == "zh-CN" else 1200,
+                                     limit=400 if instance.language == "zh-CN" else 1100)
+                opening_story = response.story
+                narration = response.narration
         except Exception:
             logger.exception("开场叙事生成失败，已保存可继续的兜底开场")
             narration = localized_text(
@@ -475,6 +494,7 @@ class GameLifecycle:
             "state_changes": system_changes,
             "tags_summary": summarize_tags(start_data),
             "timestamp": datetime.now(timezone.utc).isoformat(),
+            **({"story": opening_story} if opening_story is not None else {}),
         })
         if persist:
             await self.registry.save(instance)
@@ -498,7 +518,7 @@ class GameLifecycle:
             for e in recent_log
         )
 
-        current_scene = narrative_notes.scene(instance)
+        current_scene = module_hooks.narrative_view(instance)["scene"]
         resume_prompt = localized_text(
             instance.language,
             {
@@ -550,7 +570,7 @@ class GameLifecycle:
             resume_narration = sanitize_narration(response.narration or response.content)
         except Exception:
             logger.exception("续接叙事生成失败")
-            current_scene = narrative_notes.scene(instance)
+            current_scene = module_hooks.narrative_view(instance)["scene"]
             resume_narration = localized_text(
                 instance.language,
                 {
@@ -613,10 +633,10 @@ class GameLifecycle:
 
     async def _start_reset_instance(self, instance: GameInstance) -> str:
         """Resume the gameplay stack already bound to this save."""
-        from src.engine.modules import adventure_runtime_state, narrative_notes, ruleset_runtime
+        from src.engine.modules import adventure_runtime_state, ruleset_runtime
 
         adventure_runtime_state.require_writable(instance)
-        narrative_notes.require_writable(instance)
+        module_hooks.preflight(instance, module_hooks.NARRATIVE_VIEW)
         runtime_id = str((ruleset_runtime.binding(instance) or {}).get("id") or "")
         if not runtime_id or runtime_id == "core:legacy":
             return await self.start_game(instance, publish=False, persist=False)

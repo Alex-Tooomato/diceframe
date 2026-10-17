@@ -40,6 +40,13 @@ KERNEL_MODULES = frozenset({
     "round_safety",
     "ruleset_runtime",
     "session_stats",
+    # Credentials and export scrubbing must never disappear as an optional
+    # capability: neutral defaults would open protected rooms or leak tokens.
+    "room_access",
+    # The transaction ledger is required for settlement and round reversal.
+    # Optional economy presentation is separate from this authoritative state.
+    "economy_state",
+    "game_config",  # difficulty, turn model and run identity configuration
 })
 
 # Generic game creation, round lifecycle, snapshot, persistence, projection
@@ -70,42 +77,8 @@ CORE_FLOW_FILES = frozenset({
 
 # Keys are core file + capability module.  Do not add entries or raise counts.
 CORE_COUPLING: dict[tuple[str, str], int] = {
-    ("src/commands/game_lifecycle.py", "narrative_notes"): 4,
-    ("src/commands/game_lifecycle.py", "room_access"): 8,
-    ("src/commands/game_lifecycle.py", "table_settings"): 6,
-    ("src/commands/prompt_composer.py", "table_settings"): 2,
-    ("src/commands/round_effects.py", "table_settings"): 1,
-    ("src/commands/round_helpers.py", "narrative_notes"): 1,
-    ("src/commands/round_helpers.py", "table_settings"): 1,
-    ("src/commands/round_processor.py", "narrative_notes"): 7,
-    ("src/commands/round_processor.py", "table_settings"): 1,
-    ("src/commands/swipe_generator.py", "narrative_notes"): 2,
-    ("src/engine/game_context_projector.py", "narrative_notes"): 2,
-    ("src/engine/game_context_projector.py", "table_settings"): 2,
-    ("src/engine/game_instance.py", "economy_state"): 9,
-    ("src/engine/game_instance.py", "narrative_notes"): 7,
-    ("src/engine/game_instance.py", "room_access"): 10,
-    ("src/engine/game_instance.py", "table_settings"): 15,
-    ("src/engine/instance_lifecycle.py", "narrative_notes"): 6,
-    ("src/engine/instance_lifecycle.py", "table_settings"): 9,
     # media.payload_container validates a raw save package (storage contract, like fresh/ensure).
     ("src/engine/persistence.py", "media"): 1,
-    ("src/engine/persistence.py", "room_access"): 3,
-    ("src/engine/turn_state.py", "room_access"): 2,
-    ("src/engine/turn_state.py", "table_settings"): 2,
-    ("src/llm/context_builder.py", "economy_state"): 1,
-    ("src/llm/context_builder.py", "narrative_notes"): 8,
-    ("src/llm/context_builder.py", "table_settings"): 1,
-    ("src/webui/services/game_creation_phases.py", "room_access"): 1,
-    ("src/webui/services/game_lifecycle.py", "room_access"): 1,
-    ("src/webui/services/game_lifecycle.py", "table_settings"): 3,
-    ("src/webui/services/game_queries.py", "economy_state"): 1,
-    ("src/webui/services/game_queries.py", "narrative_notes"): 5,
-    ("src/webui/services/game_queries.py", "room_access"): 4,
-    ("src/webui/services/game_queries.py", "table_settings"): 9,
-    ("src/webui/services/logs.py", "table_settings"): 1,
-    ("src/webui/services/turns.py", "economy_state"): 1,
-    ("src/webui/services/turns.py", "table_settings"): 1,
 }
 
 

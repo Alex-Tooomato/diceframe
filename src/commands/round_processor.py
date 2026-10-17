@@ -1,6 +1,7 @@
 """完整回合推进流程。"""
 
 from __future__ import annotations
+from src.imagegen.game_context import capture_storyboard_context
 
 import asyncio
 import json
@@ -66,10 +67,7 @@ from src.engine.economy import filter_unconfirmed_purchase_grants, has_pending_i
 from src.engine import combat_narrative, module_hooks, progression
 from src.engine.game_instance import GameInstance, GameState, _snapshot_players
 from src.engine.module_state import ModuleStateError
-from src.engine.modules import (
-    adventure_runtime_state, checks, narrative_notes, progression_state, round_safety,
-    ruleset_runtime, session_stats, table_settings,
-)
+from src.engine.modules import adventure_runtime_state, checks, progression_state, round_safety, ruleset_runtime, session_stats
 from src.engine.language import localized_text
 from src.engine.world_events import advance_world_time
 from src.engine.world.memory_projection import queue_world_memory
@@ -265,9 +263,13 @@ class RoundProcessor:
         lore_retriever: Any | None = None,
         content_projection: Any | None = None,
         advance_adventure_world: Callable[[GameInstance], dict[str, Any]] | None = None,
+        check_model_enabled: bool = False,
+        check_llm_client: Any | None = None,
     ):
         self.registry = registry
         self.llm_client = llm_client
+        self.check_model_enabled = check_model_enabled
+        self.check_llm_client = check_llm_client
         self.matcher = matcher
         self.lore_retriever = lore_retriever or LoreRetriever(matcher)
         self.lorebook_store = lorebook_store
@@ -288,6 +290,7 @@ class RoundProcessor:
         # generic round processor owns world-time settlement but must not import
         # the Adventure application service or a concrete ruleset.
         self._advance_adventure_world = advance_adventure_world
+        self._defer_hosted_players = False
         # 后台摘要任务引用持有，避免被 GC 中断
         self._pending_summary_tasks: set = set()
         self._image_generation = None
@@ -300,6 +303,9 @@ class RoundProcessor:
 
     def set_image_generation_service(self, service) -> None:
         self._image_generation = service
+
+    def set_defer_hosted_players(self, enabled: bool) -> None:
+        self._defer_hosted_players = enabled
 
     def set_adventure_world_advance(
         self, callback: Callable[[GameInstance], dict[str, Any]] | None,
@@ -357,6 +363,9 @@ class RoundProcessor:
                 check["check_id"] = uuid.uuid4().hex
             if check.get("luck_spend_available"):
                 check["luck_decision"] = "pending"
+        from src.engine import check_decisions
+
+        check_decisions.prepare(instance, rule_ctx.rule)
         instance.complete_round_check_preparation()
         return list(checks.last_checks(instance))
 
@@ -369,6 +378,8 @@ class RoundProcessor:
             return list(checks.last_checks(instance))
         if instance.state != GameState.ACTIVE_JUDGMENT:
             return []
+        if self.check_model_enabled and self.check_llm_client is None:
+            raise RuntimeError("独立检定模型未配置，请在设置中选择有效服务商和模型，或关闭独立检定模型")
         actions_text = collect_actions_text(instance)
         rule_ctx = self._prompt.load_rule_context(instance, self._load_world_template)
         instance.reset_round_checks()
@@ -389,7 +400,10 @@ class RoundProcessor:
 
         try:
             plan_started = time.perf_counter()
-            planned, metadata = await plan_round_checks(instance, rule_ctx.rule, self.llm_client)
+            planned, metadata = await plan_round_checks(
+                instance, rule_ctx.rule,
+                self.check_llm_client if self.check_model_enabled else self.llm_client,
+            )
             if not planning_target_is_current():
                 logger.info(
                     "丢弃过期检定规划: game=%s run=%s",
@@ -522,6 +536,9 @@ class RoundProcessor:
                 check["check_id"] = uuid.uuid4().hex
             if check.get("luck_spend_available"):
                 check["luck_decision"] = "pending"
+        from src.engine import check_decisions
+
+        check_decisions.prepare(instance, rule_ctx.rule)
         instance.complete_round_check_preparation()
         return list(checks.last_checks(instance))
 
@@ -542,12 +559,14 @@ class RoundProcessor:
         round_safety.require_writable(instance)
         adventure_runtime_state.require_writable(instance)
         ruleset_runtime.require_writable(instance)
-        narrative_notes.require_writable(instance)
+        module_hooks.preflight(instance, module_hooks.NARRATIVE_VIEW)
         if has_blocking_economy_decision(instance):
             logger.info("等待经济提案结算，暂不生成叙事: %s", instance.game_key)
             raise RoundNotProcessed("economy_pending")
         await self.prepare_round_checks_ai(instance)
-        if instance.pending_luck_checks():
+        from src.engine import check_decisions
+
+        if check_decisions.pending_any(instance):
             logger.info("等待幸运选择，暂不生成叙事: %s", instance.game_key)
             self._schedule_luck_timeouts(instance)
             raise RoundNotProcessed("luck_pending")
@@ -610,7 +629,7 @@ class RoundProcessor:
         effective_timeout = getattr(instance, "effective_luck_timeout_seconds", None)
         timeout = int(
             effective_timeout() if callable(effective_timeout)
-            else table_settings.luck_timeout_seconds(instance) or 0
+            else module_hooks.check_presentation(instance)["luck_timeout_seconds"] or 0
         )
         if timeout <= 0:
             return
@@ -765,6 +784,7 @@ class RoundProcessor:
         if existing is not None and not existing.done():
             return None
 
+        storyboard_context = capture_storyboard_context(instance)
         task = asyncio.create_task(self._infer_storyboard_draft_background(
             game_key=game_key,
             expected_run_id=expected_run_id,
@@ -773,8 +793,8 @@ class RoundProcessor:
             source_revision=source_revision,
             narration=str(entry.get("gm_response") or ""),
             actions=deepcopy(entry.get("actions") or []),
-            current_scene=str(getattr(instance, "scene", "") or ""),
-            players=deepcopy(getattr(instance, "players", {}) or {}),
+            current_scene=storyboard_context["current_scene"],
+            players=storyboard_context["players"],
         ))
         self._storyboard_draft_tasks[task_key] = task
         task.add_done_callback(
@@ -983,7 +1003,7 @@ class RoundProcessor:
             self._generate_scene_image_background(
                 game_key, expected_run_id, completed_round, prompt,
                 normalized_panels, compressed_count, character_appearances,
-                str(narrative_notes.scene(instance) or ""),
+                str(module_hooks.narrative_view(instance)["scene"] or ""),
             )
         )
         self._scene_image_tasks[task_key] = task
@@ -1044,7 +1064,7 @@ class RoundProcessor:
                         self.llm_client,
                         narration=str(entry.get("gm_response") or ""),
                         actions=entry.get("actions") or [],
-                        current_scene=current_scene or str(narrative_notes.scene(current) or ""),
+                        current_scene=current_scene or str(module_hooks.narrative_view(current)["scene"] or ""),
                         players=getattr(current, "players", {}),
                         global_prompt=prompt,
                         declared_panels=panels,
@@ -1103,7 +1123,7 @@ class RoundProcessor:
                     panels,
                     narration=str(entry.get("gm_response") or ""),
                     actions=entry.get("actions") or [],
-                    current_scene=current_scene or str(getattr(current, "scene", "") or ""),
+                    current_scene=current_scene or capture_storyboard_context(current)["current_scene"],
                     source_revision=draft_revision,
                 )
                 try:
@@ -1138,7 +1158,7 @@ class RoundProcessor:
                 "round": round_number,
                 "run_id": expected_run_id,
                 "source_revision": source_revision,
-                "scene": current_scene or str(narrative_notes.scene(current) or ""),
+                "scene": current_scene or str(module_hooks.narrative_view(current)["scene"] or ""),
                 "narration": str(entry.get("gm_response") or "")[:1600],
                 "actions": str(entry.get("actions") or "")[:1200],
                 "panels": panels,
@@ -1209,7 +1229,7 @@ class RoundProcessor:
                     panels,
                     narration=str(entry.get("gm_response") or ""),
                     actions=entry.get("actions") or [],
-                    current_scene=current_scene or str(narrative_notes.scene(current) or ""),
+                    current_scene=current_scene or str(module_hooks.narrative_view(current)["scene"] or ""),
                     source_revision=source_revision,
                 )
             try:
@@ -1235,7 +1255,7 @@ class RoundProcessor:
         round_safety.require_writable(instance)
         adventure_runtime_state.require_writable(instance)
         ruleset_runtime.require_writable(instance)
-        narrative_notes.require_writable(instance)
+        module_hooks.preflight(instance, module_hooks.NARRATIVE_VIEW)
         expected_run_id = instance.run_id
         if not checks.round_checks_prepared(instance):
             await self.prepare_round_checks_ai(instance)
@@ -1469,6 +1489,7 @@ class RoundProcessor:
             try:
                 automation_batches = apply_director_automation(
                     runtime, instance, director_proposal_data, random.SystemRandom(),
+                    defer_hosted_players=self._defer_hosted_players,
                 )
             except (ValueError, KeyError, TypeError):
                 # The advisory encounter request remains visible for GM review.
@@ -1515,6 +1536,7 @@ class RoundProcessor:
             pre_state_snapshot=round_pre_snapshot,
             state_changes=state_msgs,
             pre_combat_extension_snapshot=round_pre_combat_snapshot,
+            story=getattr(response, "story", None),
         )
         # Keep the GM's public image directives with the completed round so
         # manual generation and later restores use the same source.
@@ -1530,7 +1552,7 @@ class RoundProcessor:
                     completed["scene_panels"],
                     narration=str(completed.get("gm_response") or ""),
                     actions=completed.get("actions") or [],
-                    current_scene=str(narrative_notes.scene(instance) or ""),
+                    current_scene=str(module_hooks.narrative_view(instance)["scene"] or ""),
                     source_revision=storyboard_source_revision(completed),
                 )
         combat_narrative.consume_pending_events(instance, pending_combat_event_ids)

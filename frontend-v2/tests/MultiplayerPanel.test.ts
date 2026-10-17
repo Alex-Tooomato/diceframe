@@ -29,7 +29,6 @@ describe('MultiplayerPanel party rest status', () => {
             ],
           },
         },
-        isGm: false,
         currentUserId: 'hero-2',
       },
     })
@@ -51,7 +50,6 @@ describe('MultiplayerPanel party rest status', () => {
       props: {
         players: [{ user_id: 'hero-1', character_name: '阿刁' }],
         detail: { game_key: 'web|room|bot', solo_mode: false },
-        isGm: false,
         currentUserId: 'hero-1',
       },
     })
@@ -76,7 +74,6 @@ describe('MultiplayerPanel AI takeover feedback', () => {
           solo_mode: false,
           multiplayer: { submitted_actions: [{ user_id: 'hero-1', text: '我先走' }] },
         },
-        isGm: true,
         currentUserId: 'hero-1',
         hostingUid,
       },
