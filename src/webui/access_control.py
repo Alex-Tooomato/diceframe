@@ -52,9 +52,12 @@ _BOT_PUBLIC_ENDPOINTS = frozenset(
 # A read-only Bot surface may still use transport/session operations that do
 # not submit an action or mutate the game.  Everything else is denied before
 # the route handler runs, so direct HTTP callers cannot bypass the Bridge.
+# ``verify-room-password`` is deliberately absent: a correct password mints a
+# room token and persists it (evicting the oldest ones), so it is a write, not
+# a read.  A private ``kp-question`` call is the only admitted non-GET path and
+# never persists (the route rejects party answers from a read-only surface).
 _BOT_READ_ONLY_POST_TAILS = frozenset({
     "kp-question",
-    "verify-room-password",
 })
 
 

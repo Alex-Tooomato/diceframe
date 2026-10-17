@@ -1,4 +1,5 @@
 import asyncio
+import json
 from copy import deepcopy
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
@@ -6,6 +7,7 @@ from unittest.mock import AsyncMock
 import pytest
 
 from src.engine.game_instance import GameState
+from src.engine.modules import run_finale
 from src.engine.participant_view import Viewer
 from src.webui.services.run_story import RunStoryDependencies, RunStoryService
 from tests.test_run_story import game, plan
@@ -73,6 +75,46 @@ async def test_finale_blocks_actions_cancels_and_commits_once():
     archive = svc.export('key', PLAYER)
     assert 'PRIVATE' not in str(archive) and 'SECRET' not in str(archive)
     assert archive['source_rounds'] == list(range(1, 15))
+
+
+@pytest.mark.asyncio
+async def test_legacy_protocol_leak_is_scrubbed_at_settlement_and_public_export():
+    svc, inst, _, _ = setup()
+    inst.log.extend([
+        {
+            "round": 1,
+            "gm_response": "灰沼的雾散了。\n---\n【状态变更】\nHP: -2",
+            "actions": [{"user_id": "alice", "text": "观察雾"}],
+        },
+        {
+            "round": 2,
+            "gm_response": "【GM指令】秘密出口在东侧\n你们继续赶路。",
+            "actions": [{"user_id": "alice", "text": "继续赶路"}],
+        },
+    ])
+    prepared = await svc.mutate('key', GM, 'prepare', {'run_id': inst.run_id})
+    assert prepared['ok'], prepared
+    body = {'run_id': inst.run_id, 'job_id': prepared['finale']['id'], 'job_revision': 0,
+            'epilogue': '雾散之后', 'recap': '两人穿过灰沼', 'gm_notes': 'GM PRIVATE'}
+    assert (await svc.mutate('key', GM, 'materials', body))['ok']
+    assert (await svc.mutate(
+        'key', GM, 'commit', {**body, 'job_revision': 1, 'confirmed': True},
+    ))['ok']
+
+    archive = svc.export('key', PLAYER)
+
+    assert archive['source'] == [
+        {'round': 1, 'text': '灰沼的雾散了。', 'actions': [{'user_id': 'alice', 'text': '观察雾'}]},
+        {'round': 2, 'text': '你们继续赶路。', 'actions': [{'user_id': 'alice', 'text': '继续赶路'}]},
+    ]
+    assert archive['source_rounds'] == [1, 2]
+    rendered = json.dumps(archive, ensure_ascii=False)
+    assert 'GM PRIVATE' not in rendered
+    assert 'GM指令' not in rendered and '状态变更' not in rendered
+    assert 'gm_notes' not in archive and 'receipt' not in archive
+    # The persisted archive and a repeated export stay identical.
+    assert run_finale.view(inst)['archive']['source'] == archive['source']
+    assert svc.export('key', PLAYER) == archive
 
 
 @pytest.mark.asyncio

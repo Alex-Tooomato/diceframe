@@ -133,6 +133,27 @@ describe('AdventuresView', () => {
     expect(remove?.attributes('disabled')).toBeDefined()
   })
 
+  it('locks direct edit and delete for a read-only plugin package', async () => {
+    mocks.api.mockResolvedValue({
+      ok: true,
+      adventures: [...packages.adventures, {
+        adventure_id: 'plugin:shared', source_kind: 'plugin', source_id: 'conflict-module',
+        directory_id: 'shared', name: '插件只读冒险', summary: '由插件提供', version: '1.0.0',
+        format: 'diceframe:adventure-graph-v1', world_policy: 'portable',
+        recommended_world_id: '', compatibility: 'compatible',
+        incompatibility_reasons: [], custom: true, editable: false, in_use: 0,
+      }],
+    })
+    const wrapper = mount(AdventuresView, { global: { plugins: [i18n] } })
+    await flushPromises()
+
+    const card = articleByText(wrapper, '插件只读冒险')
+    const edit = card.findAll('button').find(button => button.text() === '编辑')
+    const remove = card.findAll('button').find(button => button.text() === '删除')
+    expect(edit?.attributes('disabled')).toBeDefined()
+    expect(remove?.attributes('disabled')).toBeDefined()
+  })
+
   it('opens a copy form with a new user identity', async () => {
     const wrapper = mount(AdventuresView, { global: { plugins: [i18n] } })
     await flushPromises()

@@ -155,7 +155,9 @@ def list_adventures(
             "source_kind": resolution.source_kind,
             "source_id": resolution.source_id,
             "custom": not builtin,
-            "editable": not builtin and not usages,
+            # A plugin/builtin package is never directly editable, even when it
+            # is not bound to a save; the UI must offer Copy/Fork instead.
+            "editable": _user_owned_package(dependencies, resolution) and not usages,
             "in_use": len(usages),
         })
     conflicts = _source_conflicts(dependencies, language)
@@ -228,6 +230,60 @@ def _is_builtin_bundle(
     )
 
 
+def _user_owned_package(
+    dependencies: AdventureDependencies,
+    resolution: AdventureResolution,
+) -> bool:
+    """Whether this server may overwrite or delete the resolved package.
+
+    Only an explicit ``user`` source owns writable files.  ``builtin`` and
+    ``plugin`` packages are read-only and must be copied into the user source
+    first.  A legacy single-loader resolution carries no source identity, so
+    ownership is then proven by the real path (after ``resolve()``) living
+    inside the writable user root — never by assuming "unknown" means user.
+    """
+
+    if resolution.source_kind and resolution.source_kind != "user":
+        return False
+    if _is_builtin_bundle(dependencies, resolution.bundle):
+        return False
+    try:
+        user_root = _user_adventure_root(dependencies).resolve()
+    except (OSError, ValueError):
+        # No verifiable writable user source: fail closed.
+        return False
+    root = resolution.bundle.root.resolve()
+    return root != user_root and root.is_relative_to(user_root)
+
+
+def _writable_user_package(
+    dependencies: AdventureDependencies,
+    adventure_id: str,
+    language: str = "",
+) -> AdventureResolution:
+    """Resolve an edit/delete target and enforce user-source ownership first."""
+
+    resolution = _resolve_with_source(dependencies, adventure_id, language)
+    if not _user_owned_package(dependencies, resolution):
+        if resolution.source_kind == "plugin":
+            raise PermissionError(
+                "plugin adventures are read-only; copy the package into user "
+                "adventures before editing or deleting it"
+            )
+        if (
+            resolution.source_kind == "builtin"
+            or _is_builtin_bundle(dependencies, resolution.bundle)
+        ):
+            raise PermissionError(
+                "built-in adventures must be copied before editing or deleting"
+            )
+        raise PermissionError(
+            "adventure is not owned by the user adventure directory; copy the "
+            "package before editing or deleting it"
+        )
+    return resolution
+
+
 def _resolve_bundle(
     dependencies: AdventureDependencies,
     adventure_id: str,
@@ -296,7 +352,8 @@ def adventure_detail(
     adventure_id: str,
     language: str = "",
 ) -> dict[str, Any]:
-    bundle = _resolve_bundle(dependencies, adventure_id, language)
+    resolution = _resolve_with_source(dependencies, adventure_id, language)
+    bundle = resolution.bundle
     usages = _bound_games(dependencies, bundle.manifest.adventure_id)
     builtin = _is_builtin_bundle(dependencies, bundle)
     return {
@@ -308,7 +365,9 @@ def adventure_detail(
             "format": bundle.manifest.format,
             "content_digest": bundle.content_digest,
             "custom": not builtin,
-            "editable": not builtin and not usages,
+            "source_kind": resolution.source_kind,
+            "source_id": resolution.source_id,
+            "editable": _user_owned_package(dependencies, resolution) and not usages,
             "bound_games": usages,
             "files": _json_files(bundle.root),
         },
@@ -607,9 +666,11 @@ def update_adventure(
     body: dict[str, Any],
     language: str = "",
 ) -> dict[str, Any]:
-    current = _resolve_bundle(dependencies, adventure_id, language)
-    if _is_builtin_bundle(dependencies, current):
-        raise PermissionError("built-in adventures must be copied before editing")
+    # Ownership is validated before any staging or filesystem change: builtin
+    # and plugin packages may only be edited after an explicit Copy/Fork.
+    current = _writable_user_package(
+        dependencies, adventure_id, language,
+    ).bundle
     usages = _bound_games(dependencies, current.manifest.adventure_id)
     if usages:
         raise PermissionError("adventure is bound to a save and cannot be edited")
@@ -645,9 +706,9 @@ def delete_adventure(
     dependencies: AdventureDependencies,
     adventure_id: str,
 ) -> dict[str, Any]:
-    bundle = _resolve_bundle(dependencies, adventure_id)
-    if _is_builtin_bundle(dependencies, bundle):
-        raise PermissionError("built-in adventures cannot be deleted")
+    # Ownership is validated before ``rmtree``; a plugin package must never be
+    # deleted by an adventure-management call.
+    bundle = _writable_user_package(dependencies, adventure_id).bundle
     usages = _bound_games(dependencies, bundle.manifest.adventure_id)
     if usages:
         raise PermissionError("adventure is bound to a save and cannot be deleted")

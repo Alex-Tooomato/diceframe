@@ -108,11 +108,31 @@ def _public_actions(instance: Any, entry: dict[str, Any]) -> list[dict[str, str]
 
 
 def public_source(instance: Any) -> list[dict[str, Any]]:
+    """Project the run log into the public transcript archived at settle time.
+
+    This is the single public projection shared by preparation, AI material
+    generation and download, so it must apply the same narration boundary as
+    live player reads: legacy saves, imports and non-standard writers may
+    still carry protocol tags or internal GM directives in ``gm_response``.
+    Rounds are never renumbered; a round whose narration is fully scrubbed
+    keeps its player actions and is dropped only when nothing public remains.
+    """
     # Whitelist source fields BEFORE model calls/export. No plot tracker,
     # private messages, hidden outcomes, entity snapshots or GM plans enter.
-    return [{'round': int(e.get('round', 0)), 'text': str(e.get('gm_response') or ''),
-             'actions': _public_actions(instance, e)}
-            for e in instance.log if isinstance(e, dict) and e.get('gm_response')]
+    # Local import: the LLM package pulls in context_builder -> game_instance,
+    # which imports this module during instance boot.
+    from src.llm.parser import sanitize_narration
+
+    source: list[dict[str, Any]] = []
+    for entry in instance.log:
+        if not isinstance(entry, dict) or not entry.get('gm_response'):
+            continue
+        text = sanitize_narration(str(entry.get('gm_response') or ''))
+        actions = _public_actions(instance, entry)
+        if not text and not actions:
+            continue
+        source.append({'round': int(entry.get('round', 0)), 'text': text, 'actions': actions})
+    return source
 
 
 def fingerprint(instance: Any) -> str:
