@@ -9,9 +9,13 @@ has done with that binding:
   an Adventure v2 graph.  It is written in the same authoritative transaction
   as world truth, so round snapshots and rollbacks carry it alongside
   ``world_state``.
-- ``play_mode``: ``"free"`` or ``"adventure"`` chosen at creation.  An empty or
-  unknown value is derived from the binding when a save is decoded, exactly as
-  the codec did when the field lived at the top level.
+- ``play_mode``: ``"free"``, ``"adventure"`` or ``"gal"`` chosen at creation.
+  An empty or unknown value is derived from the binding when a save is
+  decoded, exactly as the codec did when the field lived at the top level.
+- ``bot_surface``: the transport capability declared per play mode.  It is
+  data on the mode registry and is enforced only at the bind admission
+  point; transports (bot bridge, platform plugins) never branch on specific
+  modes.
 
 Run transitions: the in-place reset clears ``progress`` together with world
 truth and keeps ``play_mode``; a new run (reset/restart/seed) keeps the play
@@ -28,7 +32,17 @@ from src.engine.module_state import (
 
 MODULE_NAME = "adventure_runtime"
 SCHEMA_VERSION = 1
-PLAY_MODES = frozenset({"free", "adventure"})
+PLAY_MODES = frozenset({"free", "adventure", "gal"})
+
+BOT_SURFACE_FULL = "full"
+BOT_SURFACE_READ_ONLY = "read_only"
+BOT_SURFACE_NONE = "none"
+BOT_SURFACES = frozenset({BOT_SURFACE_FULL, BOT_SURFACE_READ_ONLY, BOT_SURFACE_NONE})
+MODE_BOT_SURFACES: dict[str, str] = {
+    "free": BOT_SURFACE_FULL,
+    "adventure": BOT_SURFACE_FULL,
+    "gal": BOT_SURFACE_READ_ONLY,
+}
 
 
 def fresh() -> dict[str, Any]:
@@ -93,6 +107,18 @@ def normalize_decoded_play_mode(instance: Any) -> None:
     if not isinstance(slot, dict) or slot.get("schema_version") != SCHEMA_VERSION:
         return
     slot["play_mode"] = derive_play_mode(slot.get("play_mode"), getattr(instance, "adventure_binding", None))
+
+
+def bot_surface(mode: Any) -> str:
+    """Fail closed: unknown or empty modes expose no bot surface at all."""
+    return MODE_BOT_SURFACES.get(str(mode or ""), BOT_SURFACE_NONE)
+
+
+def effective_bot_surface(instance: Any) -> str:
+    """Bot surface of the run's effective play mode (decode-time derivation)."""
+    return bot_surface(
+        derive_play_mode(play_mode(instance), getattr(instance, "adventure_binding", None))
+    )
 
 
 SPEC = ModuleStateSpec(name=MODULE_NAME, schema_version=SCHEMA_VERSION, fresh=fresh, ensure=ensure)

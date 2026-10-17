@@ -157,6 +157,9 @@ class FakeAPI:
     def bot_actor_allowed(self, game_key: str, user_id: str) -> bool:
         return user_id in self._players
 
+    def bot_surface(self, game_key: str) -> str:
+        return "full"
+
     def game_detail(self, game_key: str) -> dict:
         return {"player_access_open": True, "gm_uid": "actor-1"} if self.exists else None
 
@@ -269,6 +272,57 @@ async def test_bot_game_action_with_valid_actor_allowed(bot_enabled):
             json={},
         )
         assert r.status == 200
+
+
+@pytest.mark.asyncio
+async def test_bot_read_only_surface_rejects_action_before_handler(bot_enabled):
+    api = FakeAPI()
+    api.bot_surface = lambda game_key: "read_only"
+    app = _make_app(api)
+    async with TestClient(TestServer(app)) as client:
+        r = await client.post(
+            "/api/games/web%7Cx%7Cy/action",
+            headers={"X-Bot-Token": "tok", "X-Bot-Actor": "actor-1"},
+            json={"text": "look"},
+        )
+        assert r.status == 403
+        body = await r.json()
+        assert body["error_code"] == "BOT_READ_ONLY"
+
+
+@pytest.mark.asyncio
+async def test_bot_read_only_surface_keeps_read_and_kp_question_access(bot_enabled):
+    api = FakeAPI()
+    api.bot_surface = lambda game_key: "read_only"
+    app = _make_app(api)
+    app.router.add_get("/api/games/{game_key}", _identity)
+    app.router.add_post("/api/games/{game_key}/kp-question", _identity)
+    async with TestClient(TestServer(app)) as client:
+        read = await client.get(
+            "/api/games/web%7Cx%7Cy",
+            headers={"X-Bot-Token": "tok", "X-Bot-Actor": "actor-1"},
+        )
+        question = await client.post(
+            "/api/games/web%7Cx%7Cy/kp-question",
+            headers={"X-Bot-Token": "tok", "X-Bot-Actor": "actor-1"},
+            json={"question": "where?"},
+        )
+        assert read.status == 200
+        assert question.status == 200
+
+
+@pytest.mark.asyncio
+async def test_unknown_bot_surface_fails_closed(bot_enabled):
+    api = FakeAPI()
+    api.bot_surface = lambda game_key: "future"
+    app = _make_app(api)
+    async with TestClient(TestServer(app)) as client:
+        r = await client.get(
+            "/api/games/web%7Cx%7Cy",
+            headers={"X-Bot-Token": "tok", "X-Bot-Actor": "actor-1"},
+        )
+        assert r.status == 403
+        assert (await r.json())["error_code"] == "BOT_SURFACE_UNSUPPORTED"
 
 
 @pytest.mark.asyncio

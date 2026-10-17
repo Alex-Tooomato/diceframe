@@ -12,6 +12,7 @@ from src.webui.access_password import (
     verify_access_password,
 )
 from src.engine.modules import room_access
+from src.engine.modules import adventure_runtime_state
 from src.webui.device_tokens import DEVICE_TOKENS_KEY
 from src.webui.sse_ticket import SSE_GRANT_KEY, BotGrant, OwnerGrant, token_digest
 from src.webui.services._common import canonical_game_key
@@ -47,6 +48,14 @@ _BOT_PUBLIC_ENDPOINTS = frozenset(
         "/api/generate-text",
     }
 )
+
+# A read-only Bot surface may still use transport/session operations that do
+# not submit an action or mutate the game.  Everything else is denied before
+# the route handler runs, so direct HTTP callers cannot bypass the Bridge.
+_BOT_READ_ONLY_POST_TAILS = frozenset({
+    "kp-question",
+    "verify-room-password",
+})
 
 
 class WebAccessControl:
@@ -261,6 +270,41 @@ class WebAccessControl:
                 PLAYER_ACCESS_CLOSED_BODY,
                 status=403,
             )
+        surface = (
+            api.bot_surface(game_key)
+            if api is not None and hasattr(api, "bot_surface")
+            else adventure_runtime_state.BOT_SURFACE_NONE
+        )
+        if surface not in adventure_runtime_state.BOT_SURFACES:
+            return web.json_response(
+                {
+                    "ok": False,
+                    "error_code": "BOT_SURFACE_UNSUPPORTED",
+                    "error": "该对局的 Bot 权限面无效，已拒绝请求",
+                },
+                status=403,
+            )
+        request["bot_surface"] = surface
+        if surface == adventure_runtime_state.BOT_SURFACE_NONE:
+            return web.json_response(
+                {
+                    "ok": False,
+                    "error_code": "BOT_SURFACE_DISABLED",
+                    "error": "该玩法模式不支持 Bot 操作",
+                },
+                status=403,
+            )
+        if surface == adventure_runtime_state.BOT_SURFACE_READ_ONLY:
+            path_tail = request.path.rsplit("/", 1)[-1]
+            if request.method != "GET" and path_tail not in _BOT_READ_ONLY_POST_TAILS:
+                return web.json_response(
+                    {
+                        "ok": False,
+                        "error_code": "BOT_READ_ONLY",
+                        "error": "该对局的 Bot 绑定仅允许读取和只读提问",
+                    },
+                    status=403,
+                )
         request["user_id"] = actor
         request["bot_actor"] = actor
         return await handler(request)

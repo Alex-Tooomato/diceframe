@@ -18,7 +18,7 @@ export function useAdventureSelection(options: {
   const adventures = ref<AdventureSummary[]>([])
   const selectedKey = ref('')
   const moduleId = ref('')
-  const playMode = ref<'free' | 'adventure'>('free')
+  const playMode = ref<'free' | 'adventure' | 'gal'>('free')
   const loading = ref(false)
   const loadIssue = ref<MessageKey | ''>('')
   let sequence = 0
@@ -35,7 +35,7 @@ export function useAdventureSelection(options: {
   const selectedProjection = computed(() => adventures.value.find(item => adventureKey(item) === selectedKey.value))
   const selectedAdventure = computed(() => selectedProjection.value || catalogue.value.find(item => adventureKey(item) === selectedKey.value))
   const issue = computed<MessageKey | ''>(() => {
-    if (playMode.value === 'free') return ''
+    if (playMode.value === 'free' || playMode.value === 'gal') return ''
     if (loadIssue.value) return loadIssue.value
     if (!selectedKey.value) return 'adventureSelectionRequired'
     if (selectedKey.value && !selectedProjection.value) return loading.value ? '' : 'adventureLaunchUnavailable'
@@ -85,9 +85,9 @@ export function useAdventureSelection(options: {
     } catch { if (current === discoverySequence) catalogue.value = [] }
   }
 
-  function selectPlayMode(value: 'free' | 'adventure') {
+  function selectPlayMode(value: 'free' | 'adventure' | 'gal') {
     playMode.value = value
-    if (value === 'free') {
+    if (value !== 'adventure') {
       ++launchSequence
       ++sequence
       initializing = false

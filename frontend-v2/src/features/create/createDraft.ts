@@ -34,7 +34,7 @@ export interface CreateDraftSnapshot {
   loreChoice: string
   selectedBookIds?: string[]
   moduleId: string
-  playMode: 'free' | 'adventure'
+  playMode: 'free' | 'adventure' | 'gal'
   adventureChoice: string
   seed: string
   characters: CharacterSheet[]

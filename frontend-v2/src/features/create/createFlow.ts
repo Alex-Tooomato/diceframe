@@ -16,7 +16,7 @@ export interface CreateStepState {
   step: CreateStep
   seed: string
   activeRule: string
-  playMode: 'free' | 'adventure'
+  playMode: 'free' | 'adventure' | 'gal'
   adventureReady: boolean
   mode: CreateMode
   customName: string

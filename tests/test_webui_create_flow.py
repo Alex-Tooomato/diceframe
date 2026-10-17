@@ -664,6 +664,36 @@ async def test_create_game_rejects_empty_player_list(web_api):
 
 
 @pytest.mark.asyncio
+async def test_gal_creation_contract_is_enforced_server_side(web_api):
+    api, _lorebook, registry, _fake_llm, _worlds_dir = web_api
+    (api._rules_dir / "gal_narrative.json").write_text(
+        json.dumps({
+            "rule_id": "gal_narrative",
+            "rule_name": "GAL",
+            "dice_system": "none",
+            "mechanics": "narrative_only",
+        }, ensure_ascii=False),
+        encoding="utf-8",
+    )
+    player = {"character_name": "叙事者", "attributes": {"str": 10}}
+
+    multiplayer = await api.create_game(
+        "template_world", "GAL 多人", rule_id="gal_narrative", play_mode="gal",
+        solo=False, players=[player],
+    )
+    assert multiplayer["ok"] is False
+    assert multiplayer["error_code"] == "GAL_REQUIRES_SOLO"
+
+    wrong_rule = await api.create_game(
+        "template_world", "GAL 数值规则", rule_id="freeform_fantasy", play_mode="gal",
+        solo=True, players=[player],
+    )
+    assert wrong_rule["ok"] is False
+    assert wrong_rule["error_code"] == "GAL_REQUIRES_NARRATIVE_RULE"
+    assert registry.list_all() == []
+
+
+@pytest.mark.asyncio
 async def test_unconfigured_model_is_rejected_before_creating_save_data(web_api):
     api, _lorebook, registry, fake_llm, _worlds_dir = web_api
     fake_llm.providers = {

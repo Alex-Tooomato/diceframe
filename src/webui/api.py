@@ -1783,6 +1783,9 @@ class WebAPI:
     def bot_actor_allowed(self, game_key: str, user_id: str) -> bool:
         return self._bot_access.actor_allowed(game_key, user_id)
 
+    def bot_surface(self, game_key: str) -> str:
+        return self._bot_access.surface_for_game(game_key)
+
     def bot_extension_capabilities(self) -> dict[str, Any]:
         return self._bot_extensions.capabilities()
 
