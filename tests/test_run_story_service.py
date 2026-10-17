@@ -100,6 +100,7 @@ async def test_legacy_finale_export_uses_one_public_projection_without_rewriting
             'text': '玩家走进房间。\n---\n【GM指令】SECRET PLAN',
             'actions': [
                 {'user_id': 'alice', 'text': '搜查书架', 'gm_private': 'HIDDEN'},
+                {'user_id': 'alice', 'text': {'gm_private': 'SECRET ACTION PAYLOAD'}},
                 {'user_id': 'system', 'text': 'SECRET SYSTEM'},
                 {'user_id': 'unknown', 'text': 'SECRET UNKNOWN'},
             ],

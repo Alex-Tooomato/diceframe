@@ -92,7 +92,9 @@ def _public_actions(instance: Any, entry: dict[str, Any]) -> list[dict[str, str]
     players = getattr(instance, 'players', {}) or {}
     for raw_uid, raw_text in candidates:
         uid = str(raw_uid or '').strip()
-        text = str(raw_text or '').strip()
+        if not isinstance(raw_text, str):
+            continue
+        text = raw_text.strip()
         if uid == 'system' or text.lstrip().startswith(('【GM指令】', '[GM Directive]')):
             continue
         if uid and uid not in players:
