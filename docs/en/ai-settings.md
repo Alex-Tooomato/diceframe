@@ -6,7 +6,7 @@ The sidebar is ordered **Models and AI, Connection and integrations,
 Security and privacy, General**. The General page combines interface language,
 speech playback and recognition, DF Agent and system maintenance in one view.
 Voice, Agent and maintenance no longer have separate sidebar pages. Appearance
-and About remain available under the General group. Previous `section=voice`,
+and About remain available under the General group, alongside the separate Game page. Previous `section=voice`,
 `section=agent` and `section=system` links open General at the relevant area;
 search results also locate settings within the combined page.
 The interface language is shared with the header and saved on this browser.
@@ -15,11 +15,20 @@ Search sits at the top of the sidebar on desktop and phone, with a short “Sear
 setting names and synonyms, opens the relevant details and preserves
 unsaved fields when switching sections. It never indexes credentials or prompt text.
 
-**General → About** retains version updates, project links and restart controls.
+Open **Manage → Settings**, then choose a page in the sidebar:
+
+| Group | Pages and common tasks |
+| --- | --- |
+| Models and AI | **Model API**: save providers and credentials. **Model Routing**: assign providers/models to capabilities; expand Advanced generation settings for sampling and context. |
+| Connection and integrations | Network Proxy, Share Address and Bot API; Backend Connection is available in the standalone frontend. |
+| Security and privacy | Access Password; **Security** includes DiceFrame Hub and privacy. |
+| General | **General**: interface language, speech, DF Agent and maintenance. **Game**: defaults for new games. **Appearance**: theme and backgrounds. **About**: version updates, project links and restart controls. |
+
+General, Game, Appearance and About are sibling pages, not nested pages.
 Only the active settings pane occupies the content area. Navigation scrolls
 independently on desktop, bounded by the viewport rather than editor length.
 Navigation and the editor have separate surfaces with space between them; on
-phones the section list can fold beneath search. Management's log menu follows
+phones the section list can fold beneath search. Manage's log menu follows
 the same vertical layout, with processing logs and export reachable in short windows.
 
 ## Providers and check planning
@@ -28,7 +37,7 @@ Save providers in the shared directory, then assign each capability a provider
 reference and model. There are no per-capability inline endpoint/key fallbacks.
 Deleting a provider removes its credentials and clears dependent references.
 
-**Model routing → Dedicated check model** follows the main model when disabled.
+**Model Routing → Dedicated check model** follows the main model when disabled.
 When enabled, `check_provider_ref` and `check_model` select a separate client for
 check/world-intent planning; dice and settlement remain server-authoritative.
 An enabled but unconfigured route cannot silently use old credentials or the main
@@ -38,7 +47,7 @@ deterministic offline recovery policy.
 
 ## Context and sampling
 
-Expand **Model routing → Advanced generation settings** for sampling, context,
+Expand **Model Routing → Advanced generation settings** for sampling, context,
 generation budgets and request timeout. This group follows the model card layout
 and starts folded. One save applies the advanced generation fields together,
 excluding the independent DF Agent budget. Searching a parameter opens the group
