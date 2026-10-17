@@ -103,9 +103,9 @@ def test_create_adventure_starts_with_a_valid_editable_package(tmp_path: Path) -
     }, "zh-CN")
     assert created["adventure_id"] == "user:fog_harbor_case"
     bundle = api._adventure_loader.resolve("user:fog_harbor_case", "zh-CN")
-    assert bundle.adventure["start_step_id"] == "opening"
-    assert bundle.adventure["steps"][0]["scene_ref"] == "scene:fog_harbor_case_opening"
-    assert bundle.manifest.required_runtime_id == "core:dnd2024"
+    assert bundle.adventure["start_node_ids"] == ["opening"]
+    assert bundle.adventure["nodes"][0]["scene_ref"] == "scene:fog_harbor_case_opening"
+    assert bundle.manifest.required_runtime_id == "core:adventure"
     detail = adventures.adventure_detail(
         api.dependencies, "user:fog_harbor_case", "zh-CN",
     )["adventure"]

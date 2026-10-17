@@ -172,6 +172,7 @@ def _context(
     game_key: str,
     requester_id: str,
     requester_is_gm: bool,
+    *, adventure_command: bool = False,
 ) -> tuple[Any, Any, Any, str, dict[str, Any] | None]:
     instance = dependencies.get_instance(
         dependencies.parse_game_key(game_key)
@@ -203,15 +204,16 @@ def _context(
         return instance, rule, None, effective_requester, _error(
             "RULESET_RUNTIME_UNAVAILABLE", str(exc),
         )
-    if not runtime.capabilities.authoritative_intents:
+    if not runtime.capabilities.authoritative_intents and not adventure_command:
         return instance, rule, runtime, effective_requester, _error(
             "RULESET_INTENTS_UNAVAILABLE", "该规则继续使用自由文本回合流程",
         )
-    binding = dict(ruleset_runtime.binding(instance) or {})
-    if binding.get("id") != runtime.runtime_id:
-        return instance, rule, runtime, effective_requester, _error(
-            "RULESET_BINDING_MISMATCH", "存档未绑定当前权威规则运行时",
-        )
+    if not adventure_command or runtime.capabilities.versioned_state:
+        binding = dict(ruleset_runtime.binding(instance) or {})
+        if binding.get("id") != runtime.runtime_id:
+            return instance, rule, runtime, effective_requester, _error(
+                "RULESET_BINDING_MISMATCH", "存档未绑定当前权威规则运行时",
+            )
     return instance, rule, runtime, effective_requester, None
 
 
@@ -440,8 +442,12 @@ async def submit_intent(
     requester_is_gm: bool,
     body: Any,
 ) -> dict[str, Any]:
+    is_adventure_command = isinstance(body, dict) and body.get('type') in {
+        'adventure.node.complete', 'adventure.choice.request',
+    }
     instance, rule, runtime, effective_requester, error = _context(
         dependencies, game_key, requester_id, requester_is_gm,
+        adventure_command=is_adventure_command,
     )
     if error:
         return error
@@ -449,7 +455,7 @@ async def submit_intent(
     # deliberately reuses the normal authenticated intent endpoint.  It is not
     # a ruleset runtime event and therefore must be dispatched before the
     # concrete runtime validates its own intent vocabulary.
-    if isinstance(body, dict) and body.get("type") in {"adventure.node.complete", "adventure.choice.request"}:
+    if is_adventure_command:
         command = await adventure_commands.execute(
             adventure_commands.AdventureCommandDependencies(
                 save=dependencies.save_instance,

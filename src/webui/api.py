@@ -30,6 +30,7 @@ from src.rules.loader import RuleBundleLoader
 from src.rulesets.builtin import (
     build_default_ruleset_registry,
     default_adventure_runtime_requirement,
+    default_module_runtime_requirement,
 )
 from src.rulesets.registry import RulesetRuntimeRegistry
 from src.engine.world_template import load_world_template
@@ -190,6 +191,7 @@ class WebAPI:
             register_instance=self._reg.register,
             project_scene=lambda instance, **options: self.scene_context_provider(instance, **options),
             bind_carried_game=lambda candidate: self._game_lorebooks.bind_carried_game(candidate),
+            prepare_adventure_draft=lambda draft: self.review_adventure_script(draft),
         ))
         if callable(getattr(handler, 'set_game_defaults_provider', None)):
             handler.set_game_defaults_provider(lambda: validate_preferences((getattr(self, '_config_state', {}) or {}).get('game_defaults', {})))
@@ -508,7 +510,7 @@ class WebAPI:
             list_save_metadata=lambda: persistence.scan_save_metadata(self._reg),
             # FIX-01 §3.6：destructive module action 前刷新来源注册表。
             refresh_adventure_sources=self._sync_plugin_adventure_sources,
-            default_runtime_requirement=default_adventure_runtime_requirement,
+            default_runtime_requirement=default_module_runtime_requirement,
             # FIX-06 §8：在线模组区块复用既有插件市场索引（含 installed 判定）。
             list_marketplace_plugins=(
                 self._plugins.marketplace_plugins if self._plugins is not None else None

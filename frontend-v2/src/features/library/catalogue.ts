@@ -1,14 +1,11 @@
 import type { AdventureSummary, RuleSummary } from '@/api/types'
 import type { RouteLocationRaw } from 'vue-router'
+import { adventureMatchesRule } from '@/features/adventures/compatibility'
 
 // Discovery has no selected world or ruleset. Use the advertised runtime
 // capabilities here; CreateView and the server still validate the final binding.
 export function matchingAdventureRules(item: AdventureSummary, rules: RuleSummary[]): RuleSummary[] {
-  const required = item.required_runtime
-  if (!required?.id) return []
-  return rules.filter(rule => rule.ruleset_runtime?.id === required.id
-    && rule.ruleset_runtime.version >= required.minimum_version
-    && rule.ruleset_runtime.capabilities.adventure_formats?.includes(item.format))
+  return rules.filter(rule => adventureMatchesRule(item, rule))
 }
 
 export function adventureLaunchTarget(item: AdventureSummary): RouteLocationRaw | null {

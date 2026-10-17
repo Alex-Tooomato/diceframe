@@ -6,6 +6,7 @@ import AdventureResourcesForm from './AdventureResourcesForm.vue'
 import GateEditor from './GateEditor.vue'
 import ChoiceEditor from './ChoiceEditor.vue'
 import { importCopy } from './importCopy'
+import { narrativeRuntimeId } from './compatibility'
 
 const props = defineProps<{ files: ScriptFiles }>()
 const emit = defineEmits<{ pending: [value: boolean] }>()
@@ -16,6 +17,7 @@ const copy = computed(() => importCopy(locale.value))
 const records = (kind: string) => Object.values(props.files).filter(value => value && typeof value === 'object' && value.kind === kind)
 const graph = computed(() => props.files['adventure.json'])
 const manifest = computed(() => props.files['manifest.json'])
+const narrativeOnly = computed(() => (manifest.value.required_runtime as { id?: string } | undefined)?.id === narrativeRuntimeId)
 
 function addScene() {
   const graphValue = graph.value
@@ -38,6 +40,7 @@ function addBranch(node: import('./scriptTypes').GraphNode) {
 
 <template>
   <section class="graph-form">
+    <p v-if="narrativeOnly" data-testid="adventure-profile">{{ locale === 'zh-CN' ? '通用剧情：可用于支持剧情图的规则。检定、战斗和奖励由本局规则处理；此包不自动结算专属机制。' : 'Universal story: works with rules that support story graphs. Checks, combat and rewards follow the game rules; this package does not automatically settle specific mechanics.' }}</p>
     <div class="graph-metadata">
       <label>{{ t('adventurePackageName') }}<input v-model="graph.name" data-testid="graph-name"></label>
       <label>{{ t('modulesVersionLabel') }}<input v-model="manifest.version"></label>
@@ -60,11 +63,11 @@ function addBranch(node: import('./scriptTypes').GraphNode) {
       <ChoiceEditor :node="node" @upgrade="graph.schema_version = 2" />
       <label>{{ copy.scene }}<select v-model="node.scene_ref"><option :value="undefined">—</option><option v-for="record in records('scene')" :key="record.id" :value="`scene:${record.id}`">{{ record.name || record.id }}</option></select></label>
       <label>{{ copy.npc }}<select :value="node.npc_refs || []" multiple data-testid="graph-npc-refs" @change="node.npc_refs = Array.from(($event.target as HTMLSelectElement).selectedOptions, option => option.value)"><option v-for="record in records('npc')" :key="record.id" :value="`npc:${record.id}`">{{ record.name || record.id }}</option></select></label>
-      <label>{{ copy.encounter_catalog }}<select v-model="node.encounter_ref"><option :value="undefined">—</option><option v-for="record in records('encounter_catalog')" :key="record.id" :value="`encounter_catalog:${record.id}`">{{ record.name || record.id }}</option></select></label>
+      <label v-if="!narrativeOnly || node.encounter_ref">{{ copy.encounter_catalog }}<select v-model="node.encounter_ref" data-testid="graph-encounter-ref"><option :value="undefined">—</option><option v-for="record in records('encounter_catalog')" :key="record.id" :value="`encounter_catalog:${record.id}`">{{ record.name || record.id }}</option></select></label>
       <div v-for="(transition, index) in node.transitions" :key="index" class="graph-transition">
         <label>{{ t('scriptNextScene') }}<select v-model="transition.to"><option v-for="target in graph.nodes" :key="target.id" :value="target.id">{{ target.name || target.id }}</option></select></label>
         <button type="button" @click="node.transitions.splice(index, 1)">{{ t('delete') }}</button>
-        <GateEditor :transition="transition" @pending="gatePending[`${node.id}_${index}`] = $event" />
+        <GateEditor :transition="transition" :allow-rules="!narrativeOnly" @pending="gatePending[`${node.id}_${index}`] = $event" />
       </div>
       <button type="button" @click="addBranch(node)">{{ t('scriptAddBranch') }}</button>
     </article>

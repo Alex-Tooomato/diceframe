@@ -2,6 +2,7 @@ import { computed, nextTick, onScopeDispose, ref, watch, type Ref } from 'vue'
 import { api } from '@/api/client'
 import type { AdventureSummary, AdventuresResponse, RuleSummary, WorldTemplateSummary } from '@/api/types'
 import type { MessageKey } from '@/i18n'
+import { adventureMatchesRule } from '@/features/adventures/compatibility'
 
 export function adventureKey(item: AdventureSummary): string {
   return JSON.stringify([item.source_kind || (item.custom ? 'user' : 'builtin'), item.source_id || '', item.adventure_id])
@@ -127,12 +128,7 @@ export function useAdventureSelection(options: {
       const item = matches[0]!
       selectedKey.value = adventureKey(item)
       catalogue.value = catalog.adventures || []
-      const compatibleRules = rules.filter(rule => {
-        const runtime = rule.ruleset_runtime
-        return runtime && runtime.id === item.required_runtime?.id
-          && runtime.version >= (item.required_runtime?.minimum_version || 1)
-          && runtime.capabilities.adventure_formats?.includes(item.format)
-      })
+      const compatibleRules = rules.filter(rule => adventureMatchesRule(item, rule))
       if (!compatibleRules.length) { loadIssue.value = 'adventureLaunchIncompatible'; return }
       const targetWorld = worlds.find(world => String(world.world_id || world.id) === item.recommended_world_id)
       if (item.world_policy === 'fixed' && !targetWorld) { loadIssue.value = 'adventureLaunchUnavailable'; return }

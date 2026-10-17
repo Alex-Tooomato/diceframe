@@ -28,11 +28,16 @@ class RunStoryDependencies:
     register_instance: Callable[[Any], Any] | None = None
     project_scene: Callable[..., dict] | None = None
     bind_carried_game: Callable[[Any], None] | None = None
+    prepare_adventure_draft: Callable[[dict], dict] | None = None
 
 
 class RunStoryService:
     def __init__(self, dependencies: RunStoryDependencies):
         self.deps = dependencies
+
+    async def prepare_adventure(self, key: str, viewer: Viewer, body: Any) -> dict:
+        from src.webui.services.story_adventure import prepare
+        return await prepare(self.deps.get_instance, self.deps.prepare_adventure_draft, key, viewer, body)
 
     def get(self, key: str, viewer: Viewer) -> dict:
         instance = self.deps.get_instance(key)

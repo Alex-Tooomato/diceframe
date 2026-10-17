@@ -3,6 +3,7 @@ import { computed, ref, watch } from 'vue'
 import { useLocale } from '@/composables/useLocale'
 import type { NativePayload } from '@/api/moduleResources'
 import { importCopy } from './importCopy'
+import { narrativeRuntimeId } from './compatibility'
 const props = defineProps<{ files: Record<string, unknown> }>()
 const emit = defineEmits<{ pending: [value: boolean] }>()
 // The owning editor passes a mutable draft, matching AdventureGraphForm.
@@ -10,8 +11,10 @@ const files = computed(() => props.files)
 const { locale, t } = useLocale()
 const copy = computed(() => importCopy(locale.value))
 const object = (value: unknown): NativePayload => value && typeof value === 'object' && !Array.isArray(value) ? value as NativePayload : {}
-const kinds = ['npc', 'item', 'scene', 'map_location', 'encounter_catalog'] as const
-const kind = ref<typeof kinds[number]>('npc'), selected = ref(''), raw = ref(''), error = ref('')
+const allKinds = ['npc', 'item', 'scene', 'map_location', 'encounter_catalog'] as const
+const narrativeOnly = computed(() => object(object(props.files['manifest.json']).required_runtime).id === narrativeRuntimeId)
+const kinds = computed(() => allKinds.filter(value => !narrativeOnly.value || value !== 'encounter_catalog'))
+const kind = ref<typeof allKinds[number]>('npc'), selected = ref(''), raw = ref(''), error = ref('')
 const resources = computed(() => Object.entries(props.files).filter(([path, value]) => path.startsWith('content/') && !!object(value).kind))
 const current = computed(() => object(props.files[selected.value]))
 const name = computed({ get: () => String(current.value.name || ''), set: value => { current.value.name = value } })

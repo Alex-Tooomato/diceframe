@@ -11,6 +11,7 @@ import { importCopy } from './importCopy'
 import type { ScriptDraft, ScriptPreview } from './scriptTypes'
 import type { MessageKey } from '@/i18n'
 
+const props = defineProps<{ initialPreview?: ScriptPreview }>()
 const emit = defineEmits<{ close: []; published: [id: string] }>()
 const { locale, t } = useLocale()
 const copy = computed(() => importCopy(locale.value))
@@ -33,6 +34,12 @@ const messageKeys: Record<string, MessageKey> = {
   scriptUnresolvedReferences: 'scriptUnresolvedReferences',
 }
 const diagnostic = (code: string) => {
+  if (code === 'storyDraftGmReview') return locale.value === 'zh-CN'
+    ? '本局计划已复制为独立草稿。所有场景默认仅 GM 可见；公开前请移走描述中的转场条件和 GM 提示。不会复制本局进度或角色状态。'
+    : 'The plan was copied to an independent draft. Scenes start GM-only; remove exit conditions and GM hints before making descriptions public. Live progress and character state are excluded.'
+  if (code === 'storyDraftNpcReferencesOmitted') return locale.value === 'zh-CN'
+    ? '核心人物引用没有随本局状态复制。请在草稿中另行创建或映射人物资料。'
+    : 'Live NPC references were omitted. Create or map reusable NPC material in this draft.'
   const external = { externalImportReference: copy.value.reference, externalImportMedia: copy.value.media, externalImportScriptsOmitted: copy.value.scripts, pdfReviewLayout: copy.value.pdf } as Record<string, string>
   return messageKeys[code] ? t(messageKeys[code]) : external[code] || code
 }
@@ -104,6 +111,7 @@ async function publish() {
   } catch (cause) { error.value = errorMessage(cause) }
   finally { busy.value = false }
 }
+if (props.initialPreview) applyAiPreview(props.initialPreview)
 </script>
 
 <template>

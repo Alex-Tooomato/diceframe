@@ -79,23 +79,8 @@ def _runtime_for_rule(
 def _compatibility(
     bundle: LoadedAdventureBundle, runtime: Any | None, world_id: str,
 ) -> tuple[str, list[str]]:
-    reasons: list[str] = []
-    manifest = bundle.manifest
-    if runtime is None:
-        reasons.append("ruleset_runtime_unavailable")
-    else:
-        formats = set(getattr(runtime.capabilities, "adventure_formats", ()) or ())
-        if manifest.format not in formats:
-            reasons.append("adventure_format_unsupported")
-        if runtime.runtime_id != manifest.required_runtime_id:
-            reasons.append("runtime_id_mismatch")
-        if runtime.runtime_version < manifest.required_runtime_version:
-            reasons.append("runtime_version_too_old")
-    if (
-        manifest.world_policy == "fixed"
-        and str(world_id or "") != manifest.recommended_world_id
-    ):
-        reasons.append("world_mismatch")
+    from src.adventures.compatibility import compatibility_reasons
+    reasons = compatibility_reasons(bundle.manifest, runtime, world_id)
     return ("compatible" if not reasons else "incompatible", reasons)
 
 
@@ -299,7 +284,7 @@ def adventure_detail(
     }
 
 
-def _validate_directory_id(value: Any) -> str:
+def validate_directory_id(value: Any) -> str:
     directory_id = str(value or "").strip().lower()
     if not _DIRECTORY_ID_RE.fullmatch(directory_id):
         raise ValueError("adventure directory_id must use lowercase canonical characters")
@@ -372,7 +357,7 @@ def copy_adventure(
     language: str = "",
 ) -> dict[str, Any]:
     source = _resolve_bundle(dependencies, adventure_id, language)
-    directory_id = _validate_directory_id(body.get("directory_id"))
+    directory_id = validate_directory_id(body.get("directory_id"))
     target = dependencies.adventure_loader.adventures_dir / directory_id
     if target.exists():
         raise ValueError(f"adventure directory already exists: {directory_id}")
@@ -423,7 +408,7 @@ def review_native_adventure_fork(dependencies: AdventureDependencies, payload: d
     from copy import deepcopy
     if source is not None and any(path.is_file() and path.suffix.lower() != ".json" for path in source.root.rglob("*")):
         raise ValueError("native adventure Fork currently requires a JSON-only package; copy declared module images separately")
-    directory = _validate_directory_id(directory_id)
+    directory = validate_directory_id(directory_id)
     identity = f"user:{directory}"
     _ensure_identity_available(dependencies, identity)
     if (dependencies.adventure_loader.adventures_dir / directory).exists():
@@ -475,7 +460,7 @@ def create_adventure(
     and one chapter so it can be selected immediately, while all rich content is
     optional and can be added later through the structured editor.
     """
-    directory_id = _validate_directory_id(body.get("directory_id"))
+    directory_id = validate_directory_id(body.get("directory_id"))
     target = dependencies.adventure_loader.adventures_dir / directory_id
     if target.exists():
         raise ValueError(f"adventure directory already exists: {directory_id}")
@@ -519,15 +504,16 @@ def create_adventure(
             "schema_version": 1,
             "adventure_id": adventure_id,
             "version": str(body.get("version") or "1.0.0").strip(),
-            "format": "diceframe:adventure-graph-v1",
+            "format": ADVENTURE_GRAPH_FORMAT_V2,
+            "reference_policy": "adventure-local",
             "world_policy": world_policy,
             "recommended_world_id": world_id,
             "required_runtime": {
                 "id": runtime_id,
                 "minimum_version": minimum_runtime_version,
             },
-            "default_locale": "zh-CN",
-            "supported_locales": ["zh-CN", "en", "de"],
+            "default_locale": "zh-CN" if language == "zh-CN" else "en",
+            "supported_locales": ["zh-CN", "en"],
             "custom": True,
         },
         "adventure.json": {
@@ -535,19 +521,21 @@ def create_adventure(
             "kind": "adventure",
             "id": stem,
             "source_ref": source_ref,
+            "name": name, "summary": summary,
             "recommended_world_id": world_id,
             "automation_level": "guided",
             "estimated_minutes": int(body.get("estimated_minutes", 60) or 60),
-            "start_step_id": step_id,
-            "chapters": [{"id": chapter_id, "step_ids": [step_id]}],
-            "steps": [{
-                "id": step_id,
-                "chapter_id": chapter_id,
-                "scene_ref": f"scene:{scene_id}",
-                "requires": "none",
-                "choice_ids": [],
+            "format": ADVENTURE_GRAPH_FORMAT_V2,
+            "start_node_ids": [step_id],
+            "chapters": [{"id": chapter_id}],
+            "nodes": [{
+                "id": step_id, "type": "scene", "chapter_id": chapter_id,
+                "name": "开场" if language == "zh-CN" else "Opening",
+                "description": "冒险从这里开始。" if language == "zh-CN" else "The adventure begins here.",
+                "scene_ref": f"scene:{scene_id}", "visibility": "public",
+                "transitions": [], "on_complete": [],
             }],
-            "choices": [],
+            "objectives": [], "milestones": [],
         },
         f"content/scenes/{scene_id}.json": {
             "schema_version": 1,
@@ -558,37 +546,15 @@ def create_adventure(
             "npc_refs": [],
         },
     }
-    _SCAFFOLD_TEXT = {
-        "zh-CN": {"chapter_1": "第一章", "opening": "开场", "narration": "冒险从这里开始。", "opening_scene": "开场场景"},
-        "en": {"chapter_1": "Chapter 1", "opening": "Opening", "narration": "The adventure begins here.", "opening_scene": "Opening Scene"},
-        "de": {"chapter_1": "Kapitel 1", "opening": "Eröffnung", "narration": "Das Abenteuer beginnt hier.", "opening_scene": "Eröffnungsszene"},
-    }
-    for locale in ("zh-CN", "en", "de"):
-        localized_name = name
-        localized_summary = summary
-        scaffold_text = _SCAFFOLD_TEXT[locale]
+    for locale, scene_name in (("zh-CN", "开场场景"), ("en", "Opening Scene")):
         files[f"locales/{locale}/adventure.json"] = {
-            "locale_schema_version": 1,
-            "locale": locale,
-            "target": {"kind": "adventure", "id": stem},
-            "fields": {"tutorial": {
-                "name": localized_name,
-                "summary": localized_summary,
-                "chapters": {chapter_id: {"name": scaffold_text["chapter_1"]}},
-                "steps": {step_id: {
-                    "title": scaffold_text["opening"],
-                    "narration": scaffold_text["narration"],
-                    "objective": "",
-                    "hint": "",
-                }},
-                "choices": {},
-            }},
+            "locale_schema_version": 1, "locale": locale,
+            "target": {"kind": "adventure", "id": stem}, "fields": {},
         }
         files[f"locales/{locale}/scenes/{scene_id}.json"] = {
-            "locale_schema_version": 1,
-            "locale": locale,
+            "locale_schema_version": 1, "locale": locale,
             "target": {"kind": "scene", "id": scene_id},
-            "fields": {"name": scaffold_text["opening_scene"], "description": ""},
+            "fields": {"name": scene_name, "description": ""},
         }
     staged, temporary = _validated_stage(dependencies, directory_id, files)
     try:
@@ -711,7 +677,7 @@ def import_adventure(
         raise ValueError("adventure package is missing manifest.json")
     adventure_id = _validate_package_id(manifest.get("adventure_id"))
     _ensure_identity_available(dependencies, adventure_id)
-    wanted_directory = _validate_directory_id(directory_id or root)
+    wanted_directory = validate_directory_id(directory_id or root)
     target = dependencies.adventure_loader.adventures_dir / wanted_directory
     if target.exists():
         raise ValueError(f"adventure directory already exists: {wanted_directory}")

@@ -24,7 +24,7 @@ def preview(deps: adventures.AdventureDependencies, payload: bytes, filename: st
 
 def prepare_text_adventure(deps: adventures.AdventureDependencies, text: str, directory_id: str, language: str) -> dict[str, Any]:
     """Prepare a prose fragment at its reviewed identity, including locale targets."""
-    directory = adventures._validate_directory_id(directory_id)
+    directory = adventures.validate_directory_id(directory_id)
     draft = parse_script(text.encode(), f"{directory}.md", deps.default_runtime_requirement(), language)
     old_id = draft["files"]["adventure.json"]["id"]
     draft["directory_id"] = directory
@@ -42,7 +42,7 @@ def prepare_text_adventure(deps: adventures.AdventureDependencies, text: str, di
 
 def review(deps: adventures.AdventureDependencies, draft: dict[str, Any]) -> dict[str, Any]:
     """Recompute plan for the *edited* draft; temporary validation leaves no content behind."""
-    if deps.adventure_resolver is not None and deps.adventure_resolver.source_for('user') is None:
+    if not deps.adventure_loader.adventures_dir.is_dir():
         raise ValueError('script import requires an available user Adventure directory')
     files = deepcopy(draft.get('files'))
     if not isinstance(files, dict):
@@ -50,7 +50,7 @@ def review(deps: adventures.AdventureDependencies, draft: dict[str, Any]) -> dic
     for name in files:
         if not isinstance(name, str) or '\\' in name or ':' in name or any(part.startswith('.') for part in PurePosixPath(name).parts):
             raise ValueError('unsafe script draft file path')
-    directory = adventures._validate_directory_id(draft.get('directory_id'))
+    directory = adventures.validate_directory_id(draft.get('directory_id'))
     manifest = files.get('manifest.json')
     if not isinstance(manifest, dict):
         raise ValueError('script draft manifest is required')
@@ -67,6 +67,7 @@ def review(deps: adventures.AdventureDependencies, draft: dict[str, Any]) -> dic
         raise ValueError('script references must be a bounded array')
     references = [parse_content_ref(ref, default_source=f'adventure:{directory}') for ref in refs]
     warnings = ['scriptDefaultGm', 'scriptMechanicsReference']
+    warnings.extend(code for code in ('storyDraftGmReview', 'storyDraftNpcReferencesOmitted') if code in draft.get('warnings', []))
     if 'scriptUnknownMarker' in draft.get('warnings', []):
         warnings.append('scriptUnknownMarker')
     warnings.extend(code for code in ('externalImportReference', 'externalImportMedia', 'externalImportScriptsOmitted', 'pdfReviewLayout') if code in draft.get('warnings', []))

@@ -8,6 +8,7 @@ from typing import Any
 
 from src.engine.legacy_game_projection import project_legacy_game_context
 from src.rulesets.contracts import RulesetCapabilities
+from src.adventures.graph_v2 import ADVENTURE_GRAPH_FORMAT_V2
 
 
 class LegacyRulesetAdapter:
@@ -21,7 +22,7 @@ class LegacyRulesetAdapter:
 
     runtime_id = "core:legacy"
     runtime_version = 1
-    capabilities = RulesetCapabilities()
+    capabilities = RulesetCapabilities(adventure_formats=(ADVENTURE_GRAPH_FORMAT_V2,))
 
     def check_mode_policy(self, instance: Any, rule: Any, uid: str) -> dict[str, Any]:
         del uid

@@ -22,6 +22,24 @@ cross-run requests, nonadjacent transitions and missing evidence are rejected.
 Alternative routes/costs do not change failed dice. Bound Adventures retain their
 own progress controls.
 
+## Create a reusable Adventure from a plan
+
+Expand **Story plan → Create reusable Adventure**, choose a fresh identity and
+prepare the draft. Edit, validate and explicitly review it in the existing
+Adventure dialog before publication. Preview/cancellation never publishes or
+changes the source game.
+
+The copy starts at the authored beginning; successor alternatives become
+exclusive choices. It excludes live progress, characters, chat and world state.
+Exit conditions/hints stay in descriptions, so copied scenes/objectives start
+GM-only. Remove private hints before making descriptions public. Live NPC
+references are omitted; create or map reusable resources explicitly.
+
+New Adventures, prose imports and plan copies default to **Universal story** for
+graph-capable CoC, custom and D&D rules. Specific mechanical gates, combat and
+rewards still require their owning runtime. Old D&D packages retain their
+requirements. See the [contract](../adventures/UNIVERSAL_ADVENTURES.md).
+
 ## Lite CoC skill development
 
 Successful settled skill checks create one pending mark per actor/skill.

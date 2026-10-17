@@ -57,6 +57,17 @@ async def export(request: web.Request) -> web.Response:
                             'Content-Disposition': 'attachment; filename="diceframe-run.json"', 'Cache-Control': 'no-store'})
 
 
+async def adventure_draft(request: web.Request) -> web.Response:
+    service, key, viewer = _context(request)
+    if not viewer.is_gm:
+        raise web.HTTPForbidden()
+    try:
+        result = await service.prepare_adventure(key, viewer, await request.json())
+    except ValueError as exc:
+        return web.json_response({'ok': False, 'error': str(exc)}, status=409)
+    return web.json_response(result, headers={'Cache-Control': 'no-store'})
+
+
 async def generate(request: web.Request) -> web.StreamResponse:
     service, key, viewer = _context(request)
     if not viewer.is_gm:
@@ -108,5 +119,6 @@ def register(app: web.Application) -> None:
     prefix = '/api/games/{game_key}/run-story'
     app.router.add_get(prefix, get)
     app.router.add_get(prefix + '/export', export)
+    app.router.add_post(prefix + '/adventure-draft', adventure_draft)
     app.router.add_post(prefix + '/generate/{kind:plan|finale}', generate)
     app.router.add_post(prefix + '/{action:plan|advance|intermission|prepare|materials|cancel|commit|carry}', mutate)
