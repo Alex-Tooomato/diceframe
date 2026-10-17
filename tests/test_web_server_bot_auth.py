@@ -6,6 +6,8 @@
 
 from __future__ import annotations
 
+from copy import deepcopy
+
 import pytest
 from aiohttp import web
 from aiohttp.test_utils import TestClient, TestServer
@@ -15,6 +17,7 @@ from types import SimpleNamespace
 import web_server
 from src.engine.modules import room_access
 from src.webui.access_password import hash_access_password, verify_access_password
+from src.webui.routes.games import api_verify_room_password
 from src.webui.sse_ticket import SseTicketStore
 
 
@@ -309,6 +312,88 @@ async def test_bot_read_only_surface_keeps_read_and_kp_question_access(bot_enabl
         )
         assert read.status == 200
         assert question.status == 200
+
+
+class _RoomPasswordAPI(FakeAPI):
+    """FakeAPI with the room-password route's instance/save surface."""
+
+    def __init__(self, instance, surface: str) -> None:
+        super().__init__()
+        self.instance = instance
+        self.surface = surface
+        self.saved = 0
+
+    def bot_surface(self, game_key: str) -> str:
+        return self.surface
+
+    def get_game_instance(self, game_key: str):
+        return self.instance
+
+    async def save_game_instance(self, instance) -> None:
+        self.saved += 1
+
+
+def _room_instance():
+    instance = SimpleNamespace(
+        modules={}, gm_uid="actor-1", players={"actor-1": {}},
+    )
+    room_access.set_room_password(instance, "correct horse")
+    room_access.issue_room_token(instance, token="seeded-room-token")
+    return instance
+
+
+def _room_password_app(api) -> web.Application:
+    app = _make_app(api)
+    app.router.add_post(
+        "/api/games/{game_key}/verify-room-password", api_verify_room_password,
+    )
+    return app
+
+
+@pytest.mark.asyncio
+async def test_bot_read_only_surface_cannot_issue_a_room_token(bot_enabled):
+    """read_only must not mint/persist a room token, even with the right password."""
+
+    instance = _room_instance()
+    before = deepcopy(instance.modules["room_access"])
+    api = _RoomPasswordAPI(instance, "read_only")
+    app = _room_password_app(api)
+    async with TestClient(TestServer(app)) as client:
+        response = await client.post(
+            "/api/games/web%7Cx%7Cy/verify-room-password",
+            headers={"X-Bot-Token": "tok", "X-Bot-Actor": "actor-1"},
+            json={"password": "correct horse"},
+        )
+        body = await response.json()
+
+    assert response.status == 403
+    assert body["error_code"] == "BOT_READ_ONLY"
+    assert api.saved == 0
+    # No token was minted, nothing was persisted, and the existing token still
+    # verifies: the blocked call left no side effect behind.
+    assert instance.modules["room_access"] == before
+    assert len(instance.modules["room_access"]["room_tokens"]) == 1
+    assert room_access.verify_room_token(instance, "seeded-room-token")
+
+
+@pytest.mark.asyncio
+async def test_bot_with_write_surface_can_still_issue_a_room_token(bot_enabled):
+    instance = _room_instance()
+    api = _RoomPasswordAPI(instance, "full")
+    app = _room_password_app(api)
+    async with TestClient(TestServer(app)) as client:
+        response = await client.post(
+            "/api/games/web%7Cx%7Cy/verify-room-password",
+            headers={"X-Bot-Token": "tok", "X-Bot-Actor": "actor-1"},
+            json={"password": "correct horse"},
+        )
+        body = await response.json()
+
+    assert response.status == 200
+    assert body["ok"] is True
+    assert api.saved == 1
+    assert len(instance.modules["room_access"]["room_tokens"]) == 2
+    assert room_access.verify_room_token(instance, body["room_token"])
 
 
 @pytest.mark.asyncio
