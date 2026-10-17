@@ -85,3 +85,33 @@ for (const route of ['/#/library', '/#/settings?section=appearance']) test(`seco
   }
   await page.screenshot({ path: info.outputPath('secondary-navigation-fixed.png'), scale: 'css' })
 })
+
+test('secondary navigation takes the top position as the primary header scrolls away', async ({ page }, info) => {
+  await page.setViewportSize({ width: page.viewportSize()!.width, height: 480 })
+  await page.goto('/#/settings?section=general')
+  const header = page.locator('.app-header')
+  const rail = page.locator('.content-workspace-rail')
+  await expect(rail).toBeVisible()
+  const headerHeight = (await header.boundingBox())!.height
+
+  const partialScroll = Math.round(480 - headerHeight / 2)
+  for (const scrollY of [0, partialScroll, 680, partialScroll, 0]) {
+    await page.evaluate(y => window.scrollTo(0, y), scrollY)
+    await expect.poll(() => page.evaluate(() => window.scrollY)).toBe(scrollY)
+    const headerBox = (await header.boundingBox())!
+    const expectedTop = Math.max(0, headerBox.y + headerBox.height)
+    if (scrollY === 680) {
+      expect(expectedTop).toBe(0)
+    }
+    await expect.poll(async () => (await rail.boundingBox())!.y).toBeCloseTo(expectedTop, 0)
+    await expect(rail.locator('a').first()).toBeInViewport()
+    if (scrollY === 680) {
+      await expect.poll(async () => {
+        const railBox = (await rail.boundingBox())!
+        const settingsBox = (await page.locator('.settings-nav').boundingBox())!
+        return settingsBox.y - railBox.y - railBox.height
+      }).toBeGreaterThanOrEqual(8)
+      await page.screenshot({ path: info.outputPath('secondary-navigation-primary-hidden.png'), scale: 'css' })
+    }
+  }
+})

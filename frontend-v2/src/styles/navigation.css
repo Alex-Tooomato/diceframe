@@ -1,5 +1,5 @@
 /* Application header, mobile navigation and section workspace shell.
-   useSectionHeaderOffset measures header/navigation heights for sticky children;
+   useSectionHeaderOffset tracks the visible header edge and navigation height for sticky children;
    keep page-specific geometry in its page owner. */
 
 .app-shell {
