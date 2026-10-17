@@ -245,11 +245,15 @@ class GeneratedImageService:
         instance: Any,
         entry: dict[str, Any],
         *,
+        game_key: str,
         panels: list[dict[str, Any]],
         compressed_count: int,
         requested_panel_count: int | None,
         source_revision: str,
-    ) -> None:
+        expected_run_id: str,
+        expected_round: int,
+        expected_swipe: int,
+    ) -> str:
         """Persist an un-applied analysis result without touching the draft.
 
         Saving is best effort for injected/lightweight runtimes that do not
@@ -262,33 +266,48 @@ class GeneratedImageService:
         # ran unlocked, and a frozen or ended run keeps its archived drafts.
         async with _run_authority(instance) as entered:
             if not entered:
-                return
-            old_value = deepcopy(entry.get(self._STORYBOARD_CANDIDATE_KEY))
-            entry[self._STORYBOARD_CANDIDATE_KEY] = {
+                return "read_only"
+            # Re-resolve the aggregate and the exact log object after taking
+            # the authority.  A rollback/swipe may have replaced the entry
+            # while model analysis was running; writing the old dict would
+            # report success without changing the live log.
+            current = self._dependencies.get_instance(game_key)
+            if current is None or str(getattr(current, "run_id", "") or "") != expected_run_id:
+                return "stale"
+            live_entry = next((item for item in getattr(current, "log", []) if item is entry), None)
+            if (live_entry is None
+                    or int(live_entry.get("round") or 0) != expected_round
+                    or int(live_entry.get("current_swipe") or 0) != expected_swipe
+                    or storyboard_source_revision(live_entry) != source_revision):
+                return "stale"
+            old_value = deepcopy(live_entry.get(self._STORYBOARD_CANDIDATE_KEY))
+            live_entry[self._STORYBOARD_CANDIDATE_KEY] = {
                 "panels": deepcopy(panels),
                 "compressed_count": max(0, int(compressed_count or 0)),
                 "requested_panel_count": requested_panel_count,
                 "source_revision": source_revision,
-                "round": int(entry.get("round") or 0),
-                "swipe_index": int(entry.get("current_swipe") or 0),
+                "round": expected_round,
+                "swipe_index": expected_swipe,
             }
             save_instance = self._dependencies.save_instance
             if save_instance is None:
-                return
+                return "ok"
             try:
-                await save_instance(instance)
+                await save_instance(current)
             except Exception:
                 if old_value is None:
-                    entry.pop(self._STORYBOARD_CANDIDATE_KEY, None)
+                    live_entry.pop(self._STORYBOARD_CANDIDATE_KEY, None)
                 else:
-                    entry[self._STORYBOARD_CANDIDATE_KEY] = old_value
+                    live_entry[self._STORYBOARD_CANDIDATE_KEY] = old_value
                 logger.warning(
                     "分镜候选草稿保存失败，保留当前请求结果但不覆盖旧候选 "
                     "(game=%s round=%s)",
                     getattr(instance, "game_key", ""),
-                    entry.get("round"),
+                    live_entry.get("round"),
                     exc_info=True,
                 )
+                return "save_failed"
+            return "ok"
 
     async def analyze_storyboard(self, game_key: str, user_id: str, round_number: int = 0, panel_count: int | None = None) -> dict[str, Any]:
         instance = self._dependencies.get_instance(game_key)
@@ -352,14 +371,24 @@ class GeneratedImageService:
             or storyboard_source_revision(live_entry) != source_revision
         ):
             return {"ok": False, "error": "目标剧情已变化，请重新分析分镜"}
-        await self._persist_storyboard_candidate(
+        persist_status = await self._persist_storyboard_candidate(
             current,
             live_entry,
+            game_key=game_key,
             panels=panels,
             compressed_count=compressed,
             requested_panel_count=requested_count,
             source_revision=source_revision,
+            expected_run_id=str(getattr(current, "run_id", "") or ""),
+            expected_round=int(live_entry.get("round") or 0),
+            expected_swipe=int(live_entry.get("current_swipe") or 0),
         )
+        if persist_status == "read_only":
+            return {"ok": False, "error_code": "RUN_READ_ONLY", "error": "本局已结团或正在准备结团，分镜候选未写入存档"}
+        if persist_status == "stale":
+            return {"ok": False, "error": "目标剧情已变化，请重新分析分镜"}
+        if persist_status == "save_failed":
+            return {"ok": False, "error": "分镜候选保存失败，请重试"}
         return {
             "ok": True,
             "round": int(entry.get("round") or 0),
