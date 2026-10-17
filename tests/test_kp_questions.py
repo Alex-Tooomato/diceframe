@@ -365,3 +365,30 @@ async def test_party_safe_context_excludes_questioner_private_knowledge() -> Non
     assert "提问者的秘密背景" not in context
     assert "提问者私藏的银钥匙" not in context
     assert "只有你听见阁楼的脚步声" not in context
+
+
+@pytest.mark.asyncio
+async def test_party_question_is_not_written_into_a_run_frozen_during_the_answer() -> None:
+    from src.engine.game_state import GameState
+
+    instance = _instance()
+    api = _Api(instance)
+    answer = api._handler.answer_kp_question
+
+    async def answer_then_end(*args, **kwargs):
+        result = await answer(*args, **kwargs)
+        instance.state = GameState.ENDED  # the finale is committed while the model answers
+        return result
+
+    api.questions = KPQuestionService(KPQuestionDependencies(
+        registry=api._reg,
+        parse_game_key=lambda _game_key: ("web", "questions", "bot"),
+        answer_question=answer_then_end,
+    ))
+
+    result = await api.questions.ask("game", "p1", "大家都知道这是什么吗？", "party")
+
+    assert result["status"] == 409
+    assert result["payload"]["code"] == "RUN_READ_ONLY"
+    assert private_channels.table_talk(instance) == []
+    assert api._reg.save_calls == 0

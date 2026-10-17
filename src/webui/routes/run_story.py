@@ -48,8 +48,10 @@ async def export(request: web.Request) -> web.Response:
     try:
         result = service.export(key, viewer, character=request.query.get('kind') == 'character',
                                 target_uid=request.query.get('uid', ''))
-    except (ValueError, PermissionError) as exc:
+    except PermissionError as exc:
         return web.json_response({'ok': False, 'error': str(exc)}, status=403)
+    except ValueError as exc:
+        return web.json_response({'ok': False, 'error_code': 'UNSUPPORTED_RUN_STATE', 'error': str(exc)}, status=409)
     return web.Response(body=json.dumps(result, ensure_ascii=False, indent=2).encode(),
                         content_type='application/json', headers={
                             'Content-Disposition': 'attachment; filename="diceframe-run.json"', 'Cache-Control': 'no-store'})

@@ -2416,8 +2416,13 @@ freeze/archive state without scheduling another round.
 Finale barriers and growth receipts are mandatory kernel authority even when
 presentation hooks are detached. HTTP `run_write_admission` and aggregate
 authority/state gates cover Web, same-route Bot and direct-connect requests.
-The finale service owns administrative writes; read-only SSE ticket issuance
-and credential revocation are explicit exceptions. Reset/restart cannot overwrite
+The finale service owns administrative writes. Read-only SSE ticket issuance,
+GM identity recovery, seat-credential issue/claim (administrative, still
+serialized) and deleting the owner's memory entries remain available on
+frozen/ended archives. Slow model/media routes (KP questions, recaps, speech,
+transcription, image generation and storyboard analysis) are admitted at entry
+but do not hold run authority while they wait; their short commit step takes
+`authoritative_write()` and re-checks the run. Reset/restart cannot overwrite
 frozen/ended archives.
 Synchronous domain setters remain trusted transaction primitives. Rewind/swipe
 cannot cross settled intermissions; pending marks and plans use owner snapshots.

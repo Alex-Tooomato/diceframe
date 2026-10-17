@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections import Counter
 from dataclasses import dataclass
+from contextlib import nullcontext
 from copy import deepcopy
 import logging
 from pathlib import Path
@@ -33,6 +34,12 @@ from src.imagegen.contracts import (
 
 
 logger = logging.getLogger("trpg")
+
+
+def _run_authority(instance: Any) -> Any:
+    """The run write gate, or an open gate for lightweight injected runtimes."""
+    gate = getattr(instance, "authoritative_write", None)
+    return gate() if callable(gate) else nullcontext(True)
 
 
 def _scene_text(instance: Any) -> str:
@@ -251,32 +258,37 @@ class GeneratedImageService:
         still return the in-memory result for this request.
         """
 
-        old_value = deepcopy(entry.get(self._STORYBOARD_CANDIDATE_KEY))
-        entry[self._STORYBOARD_CANDIDATE_KEY] = {
-            "panels": deepcopy(panels),
-            "compressed_count": max(0, int(compressed_count or 0)),
-            "requested_panel_count": requested_panel_count,
-            "source_revision": source_revision,
-            "round": int(entry.get("round") or 0),
-            "swipe_index": int(entry.get("current_swipe") or 0),
-        }
-        save_instance = self._dependencies.save_instance
-        if save_instance is None:
-            return
-        try:
-            await save_instance(instance)
-        except Exception:
-            if old_value is None:
-                entry.pop(self._STORYBOARD_CANDIDATE_KEY, None)
-            else:
-                entry[self._STORYBOARD_CANDIDATE_KEY] = old_value
-            logger.warning(
-                "分镜候选草稿保存失败，保留当前请求结果但不覆盖旧候选 "
-                "(game=%s round=%s)",
-                getattr(instance, "game_key", ""),
-                entry.get("round"),
-                exc_info=True,
-            )
+        # Only the candidate write takes the run authority: the analysis itself
+        # ran unlocked, and a frozen or ended run keeps its archived drafts.
+        async with _run_authority(instance) as entered:
+            if not entered:
+                return
+            old_value = deepcopy(entry.get(self._STORYBOARD_CANDIDATE_KEY))
+            entry[self._STORYBOARD_CANDIDATE_KEY] = {
+                "panels": deepcopy(panels),
+                "compressed_count": max(0, int(compressed_count or 0)),
+                "requested_panel_count": requested_panel_count,
+                "source_revision": source_revision,
+                "round": int(entry.get("round") or 0),
+                "swipe_index": int(entry.get("current_swipe") or 0),
+            }
+            save_instance = self._dependencies.save_instance
+            if save_instance is None:
+                return
+            try:
+                await save_instance(instance)
+            except Exception:
+                if old_value is None:
+                    entry.pop(self._STORYBOARD_CANDIDATE_KEY, None)
+                else:
+                    entry[self._STORYBOARD_CANDIDATE_KEY] = old_value
+                logger.warning(
+                    "分镜候选草稿保存失败，保留当前请求结果但不覆盖旧候选 "
+                    "(game=%s round=%s)",
+                    getattr(instance, "game_key", ""),
+                    entry.get("round"),
+                    exc_info=True,
+                )
 
     async def analyze_storyboard(self, game_key: str, user_id: str, round_number: int = 0, panel_count: int | None = None) -> dict[str, Any]:
         instance = self._dependencies.get_instance(game_key)
@@ -695,48 +707,53 @@ class GeneratedImageService:
         current = self._dependencies.get_instance(game_key)
         if current is None or str(getattr(current, "run_id", "") or "") != expected_run_id:
             return {"ok": False, "error": "本局已重开或重置，生成图片未写入新存档"}
-        entry = next((item for item in reversed(current.log) if int(item.get("round") or 0) == target_round and str(item.get("gm_response") or "").strip()), None)
-        if entry is None:
-            return {"ok": False, "error": "目标 GM 叙事已被回滚，生成图片未写入存档"}
-        if storyboard_source_revision(entry) != source_revision:
-            return {"ok": False, "error": "目标剧情已变化，生成图片未写入旧版本存档"}
-        reference = {"kind": "generated", "asset_id": result.asset_id}
-        old_entry = deepcopy(entry.get("scene_image")); old_top = _scene_image_value(current)
-        # Explicit panels in a successful manual generation represent the
-        # user's applied storyboard.  Persist them as the public draft and
-        # clear only the matching un-applied candidate.  Do this after the
-        # image request succeeds so a failed generation leaves the candidate
-        # available for the next dialog open.
-        explicit_panels_applied = bool(requested_panels)
-        old_scene_panels = deepcopy(entry.get("scene_panels"))
-        had_scene_panels = "scene_panels" in entry
-        old_candidate = deepcopy(entry.get(self._STORYBOARD_CANDIDATE_KEY))
-        entry["scene_image"] = {"reference": reference, "generation_id": result.generation_id, "prompt": prompt, "revised_prompt": result.revised_prompt, "status": "ready", "swipe_index": int(entry.get("current_swipe") or 0)}
-        if refs:
-            entry["scene_image"].update({"reference_character_ids": list(context.get("reference_character_ids", [])), "reference_count": int(context.get("reference_count") or 0)})
-        if normalized_panels:
-            entry["scene_image"].update({"layout": storyboard_layout(len(normalized_panels)), "panels": normalized_panels, "compressed_count": compressed_count})
-        if explicit_panels_applied:
-            entry["scene_panels"] = deepcopy(normalized_panels)
-            entry.pop(self._STORYBOARD_CANDIDATE_KEY, None)
-        current.set_scene_image(reference)
-        try:
-            if self._dependencies.save_instance is None:
-                raise RuntimeError("save callback unavailable")
-            await self._dependencies.save_instance(current)
-        except Exception:
-            if old_entry is None: entry.pop("scene_image", None)
-            else: entry["scene_image"] = old_entry
-            if had_scene_panels:
-                entry["scene_panels"] = old_scene_panels
-            else:
-                entry.pop("scene_panels", None)
-            if old_candidate is None:
+        # The image request ran unlocked; attaching it to the archive takes the
+        # run authority so a run frozen meanwhile is never rewritten.
+        async with _run_authority(current) as entered:
+            if not entered:
+                return {"ok": False, "error_code": "RUN_READ_ONLY", "error": "本局已结团或正在准备结团，生成图片未写入存档"}
+            entry = next((item for item in reversed(current.log) if int(item.get("round") or 0) == target_round and str(item.get("gm_response") or "").strip()), None)
+            if entry is None:
+                return {"ok": False, "error": "目标 GM 叙事已被回滚，生成图片未写入存档"}
+            if storyboard_source_revision(entry) != source_revision:
+                return {"ok": False, "error": "目标剧情已变化，生成图片未写入旧版本存档"}
+            reference = {"kind": "generated", "asset_id": result.asset_id}
+            old_entry = deepcopy(entry.get("scene_image")); old_top = _scene_image_value(current)
+            # Explicit panels in a successful manual generation represent the
+            # user's applied storyboard.  Persist them as the public draft and
+            # clear only the matching un-applied candidate.  Do this after the
+            # image request succeeds so a failed generation leaves the candidate
+            # available for the next dialog open.
+            explicit_panels_applied = bool(requested_panels)
+            old_scene_panels = deepcopy(entry.get("scene_panels"))
+            had_scene_panels = "scene_panels" in entry
+            old_candidate = deepcopy(entry.get(self._STORYBOARD_CANDIDATE_KEY))
+            entry["scene_image"] = {"reference": reference, "generation_id": result.generation_id, "prompt": prompt, "revised_prompt": result.revised_prompt, "status": "ready", "swipe_index": int(entry.get("current_swipe") or 0)}
+            if refs:
+                entry["scene_image"].update({"reference_character_ids": list(context.get("reference_character_ids", [])), "reference_count": int(context.get("reference_count") or 0)})
+            if normalized_panels:
+                entry["scene_image"].update({"layout": storyboard_layout(len(normalized_panels)), "panels": normalized_panels, "compressed_count": compressed_count})
+            if explicit_panels_applied:
+                entry["scene_panels"] = deepcopy(normalized_panels)
                 entry.pop(self._STORYBOARD_CANDIDATE_KEY, None)
-            else:
-                entry[self._STORYBOARD_CANDIDATE_KEY] = old_candidate
-            _restore_scene_image(current, old_top)
-            return {"ok": False, "error": "图片生成成功，但存档保存失败，未写入图片引用"}
+            current.set_scene_image(reference)
+            try:
+                if self._dependencies.save_instance is None:
+                    raise RuntimeError("save callback unavailable")
+                await self._dependencies.save_instance(current)
+            except Exception:
+                if old_entry is None: entry.pop("scene_image", None)
+                else: entry["scene_image"] = old_entry
+                if had_scene_panels:
+                    entry["scene_panels"] = old_scene_panels
+                else:
+                    entry.pop("scene_panels", None)
+                if old_candidate is None:
+                    entry.pop(self._STORYBOARD_CANDIDATE_KEY, None)
+                else:
+                    entry[self._STORYBOARD_CANDIDATE_KEY] = old_candidate
+                _restore_scene_image(current, old_top)
+                return {"ok": False, "error": "图片生成成功，但存档保存失败，未写入图片引用"}
         return {"ok": True, **result.public_dict(), "reference": reference, "requested_round": requested_round, "target_round": target_round, "prompt_budget": context.get("prompt_budget", {}), **({"reference_character_ids": context.get("reference_character_ids", []), "reference_count": int(context.get("reference_count") or 0)} if refs else {}), **({"layout": storyboard_layout(len(normalized_panels)), "panels": normalized_panels, "compressed_count": compressed_count} if normalized_panels else {})}
 
     def _resolve_panel_participants(
