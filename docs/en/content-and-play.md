@@ -4,6 +4,18 @@ English | [简体中文](../zh/content-and-play.md)
 
 This guide covers the content and play workflows in the current application. See [application updates](updates.md) before upgrading an existing installation.
 
+## Find the right workspace
+
+| Navigation | What opens there |
+| --- | --- |
+| Overview | Create an adventure or resume a save. |
+| Play | Current game, actions, party and GM workspace. |
+| Characters | Reusable character card library and this game's characters. |
+| Content | Content library, World notes, Content packs and Rules. |
+| Manage | Memory, Logs, Plugins and Settings. |
+
+In **Content → Content library**, use the toolbar for the world gallery, adventure workbench, script import and source management. Worlds and adventures are library tools, not additional top-level navigation tabs. The library's search and content-language filter help narrow its cards. Player invitation pages expose the player's permitted controls rather than all owner workspaces.
+
 ## Worlds, lorebooks, rules and adventures
 
 | Content | Purpose |
@@ -20,7 +32,7 @@ Use **Content library** to browse worlds, adventures and lorebooks. World cards 
 
 Lorebook cards keep the book's own title and identify its associated worlds. A primary book initialized with its world's title displays “Primary lorebook” to distinguish it from the world; this is a display label, not a rename of saved data. Independent books are marked separately.
 
-In **World materials**, lorebook choices follow the current world/game scope and selected content language. A direct link can add its exact independent book, without adding the whole catalogue. Choosing another world, including through the language filter, clears the previous book and entry targets without changing the active game's saved state.
+In **World notes**, lorebook choices follow the current world/game scope and selected content language. A direct link can add its exact independent book, without adding the whole catalogue. Choosing another world, including through the language filter, clears the previous book and entry targets without changing the active game's saved state.
 
 **Settings → General → Interface language** shares the header's language selection and stores it on this device. **Settings → General → DF Agent** independently sets the maximum output tokens per Agent model request (default 4096). The Agent uses the main model; generation tools keep their own budgets. This setting is not a total task token or spending limit. See [AI and interface settings](ai-settings.md) for context limits, sampling and the independent check model.
 
@@ -32,12 +44,12 @@ After switching to module mode, choose a package before checking its required ru
 
 ## Install or create an adventure
 
-1. Open **Content packs** from the library. Choose online content or a local `.dfplugin` file.
+1. Open **Content → Content packs**, or source management from the library. Choose online content or a local `.dfplugin` file.
 2. Preview installation effects and resolve blocking errors. Confirm installation and check the resulting status or error message.
 3. Open a pack's details, choose an adventure and select **Use this adventure**.
 4. Review the world, rules, lorebooks and characters, then start the game.
 
-Use **Adventure packages** to create an original adventure, generate an AI draft, import a native package, import a script/external module, or organize existing text. Saved games pin the adventure's identity, version and digest. Updates, disable and uninstall are blocked when they would break those bindings; inspect the affected saves instead of deleting package files.
+Open the **adventure workbench** from **Content → Content library** to create an original adventure, generate an AI draft, import a native package, import a script/external module, or organize existing text. Saved games pin the adventure's identity, version and digest. Updates, disable and uninstall are blocked when they would break those bindings; inspect the affected saves instead of deleting package files.
 
 ## Import a script, PDF or external module
 
@@ -63,11 +75,11 @@ The text marker `@choice label -> scene_id` defines a graph connection. Several 
 
 **Character card library** stores reusable cards; **This game's characters** manages participants in the active game. Applying a card to a character that has already acted requires GM authority. The reusable card and a character's current game state serve different purposes.
 
-On the play page, use **Invite players** beneath the party list. Share the actual invitation URL and let the player open it. Players do not need to extract or type `web|room|host` from a link. Invitations and seat credentials follow the server's access policy; a bare legacy player ID is not a credential. If an old link no longer authenticates, the GM should issue a new invitation.
+On the play page, use **Invite Player** beneath the party list. Share the actual invitation URL and let the player open it. Players do not need to extract or type `web|room|host` from a link. Invitations and seat credentials follow the server's access policy; a bare legacy player ID is not a credential. If an old link no longer authenticates, the GM should issue a new invitation.
 
 The GM can open **⋯ Member actions** on the right of each member card for control links, editing, away/return, AI control and removal. Available actions follow the member's current state. Kick appears after a divider in a danger color and requires confirmation; the host and current actor cannot be kicked. The workbench player list retains status and rest notices, while member management uses this menu.
 
-The menu's **Control link** resumes an existing character; **Invite players** beneath the list is for new players. Reissuing an existing seat link requires confirmation; reopening a valid link in the same GM session reuses it without disconnecting its player. Players do not see these management controls.
+The menu's **Control link** resumes an existing character; **Invite Player** beneath the list is for new players. Reissuing an existing seat link requires confirmation; reopening a valid link in the same GM session reuses it without disconnecting its player. Players do not see these management controls.
 
 AI-hosted seats and companions use the same server action and rules boundaries as human players. Their policy belongs to the game and survives saving/loading; narration cannot independently grant private information or bypass resource costs.
 
@@ -146,7 +158,9 @@ The owner's DF Agent can search documentation, inspect game/content state and pr
 
 Operations use the live tool catalog and current application state. Help is retrieved only when needed through `search_documentation`, using this installed version's bundled English or Simplified Chinese instructions. Development checkouts use their current local files. Moving remote manuals and older unversioned indexes do not describe the Agent's available actions or enter every conversation automatically.
 
-On phones, **Game tools** groups character information, scene maps and the party; the GM workspace retains its own top entry. The compact character status strip also opens the character drawer. These replace the duplicate floating navigation buttons.
+On phones, **Game tools** groups character information, scene maps and the party; the GM workspace retains its own top entry. The compact character status strip also opens the character drawer. When the character panel is not docked or open, the left-edge **Character Status** button provides another way to reopen it; the party has its own edge control.
+
+The DF Agent task workspace can fold to leave more room for conversation on phones. If its draggable launcher becomes hard to find, use **Manage → Settings → General → DF Agent** to reset the launcher position.
 The party rail is ordered **Party members → Party actions → Rules recap**.
 Each member shows their submitted, waiting-for-roll or away status. Rulesets
 with a registered rest interface offer **Party rest**, opening the character

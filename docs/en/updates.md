@@ -2,7 +2,7 @@
 
 [中文](../zh/updates.md) | English
 
-This page explains how to update DiceFrame itself. Plugins are updated separately through the Plugin Store under **Management → Plugins**.
+This page explains how to update DiceFrame itself. Plugins are updated separately through the Plugin Store under **Manage → Plugins**.
 
 ## Installation Methods
 
@@ -34,7 +34,7 @@ The unreleased save migration 44→45 separates kernel game configuration, narra
 
 ## Windows Portable
 
-Open **Management → Settings → About**, then use the Version Update section to download and apply the update. DiceFrame restarts automatically and refreshes the page when the update finishes.
+Open **Manage → Settings → About**, then use the Version Update section to download and apply the update. DiceFrame restarts automatically and refreshes the page when the update finishes.
 
 If the new version cannot start correctly, the launcher attempts to return to the previous program. That cannot undo migrated data; use the matching backup at a data-format boundary as described above. Downloaded packages and older unused versions are removed after a successful update.
 
@@ -42,7 +42,7 @@ When a previous payload is available, the Version Update section also shows **Re
 
 Portable installations keep at most two application payloads. The root-level `app/` and `python/` directories from the original archive count as the first payload and remain as the rollback copy after the first update. After the second and later successful updates, only the current and previous payloads under `versions/` are kept, and the legacy root-level `app/` and `python/` directories are removed. `data/`, `logs/`, and the root launcher are not version payloads and are never removed by this cleanup. User-installed plugin source code lives under `data/plugin-packages/` and is preserved with `data/` across versions; `app/plugins/` holds only built-in and example plugins and is cleared with old version payloads. If the current payload is unavailable, the launcher uses the version pointer to try the previous payload.
 
-DiceFrame keeps console output while also writing persistent runtime logs. Windows portable installations use the root-level `logs/` directory, managed Docker uses persistent `data/logs/`, and source runs default to the project-root `logs/` directory. Logs rotate daily and retain the latest 30 days. They can also be removed from **Management → Settings → General → Runtime logs**. Runtime logs are independent from game history, chat history, and saves.
+DiceFrame keeps console output while also writing persistent runtime logs. Windows portable installations use the root-level `logs/` directory, managed Docker uses persistent `data/logs/`, and source runs default to the project-root `logs/` directory. Logs rotate daily and retain the latest 30 days. They can also be removed from **Manage → Settings → General → Runtime logs**. Runtime logs are independent from game history, chat history, and saves.
 
 If Settings shows a new version but no Apply button, manually download the latest portable package from GitHub Releases once. Later updates can then be applied from Settings.
 
@@ -56,7 +56,7 @@ If you use a Git checkout, continue updating it with `git pull`.
 
 ## Docker and NAS
 
-Docker users must manually pull one baseline image that supports managed updates. Its stable launcher manages the current and previous application payloads under `data/_updater/docker-versions/`. After that migration, ordinary DiceFrame application releases can be downloaded and applied from the Version Update section under **Management → Settings → About**. The container ID stays unchanged, and a candidate is committed only after its health check and probation period succeed; otherwise the launcher returns to the previous version.
+Docker users must manually pull one baseline image that supports managed updates. Its stable launcher manages the current and previous application payloads under `data/_updater/docker-versions/`. After that migration, ordinary DiceFrame application releases can be downloaded and applied from the Version Update section under **Manage → Settings → About**. The container ID stays unchanged, and a candidate is committed only after its health check and probation period succeed; otherwise the launcher returns to the previous version.
 
 Managed Docker also exposes **Restore previous version** in the Version Update section. The stable launcher performs the health check and probation period, then swaps the `current.json` pointers while keeping both application payloads. This is available only for payloads that pass the existing `data_rollback_safe: true` contract.
 

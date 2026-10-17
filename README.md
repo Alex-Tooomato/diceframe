@@ -25,7 +25,7 @@ Missing or unreviewed central UI translations fall back to English. Community ca
 
 ## What It Does
 
-- A Web UI organized around Overview, Play, Characters, Content, and Management. Content contains Lorebook, Worlds, Adventures, and Rules; Management contains Memory, Logs, Plugins, and Settings.
+- A Web UI organized around Overview, Play, Characters, Content, and Manage. Content contains Content library, World notes, Content packs, and Rules; Manage contains Memory, Logs, Plugins, and Settings. The world gallery, adventure workbench and script import open from the content library.
 - English and Simplified Chinese core UI and documentation; Japanese, German and Russian community translations with English fallback.
 - Solo and multiplayer play, with invite links, waiting states, away players, GM force-advance, SSE updates, and experimental WebRTC player direct connect through one-time link codes.
 - Layered resolution for D&D 5e-inspired Lite, custom d20, CoC 7e-inspired d100, and no-dice narrative rules, including rule-declared advantage/disadvantage, CoC bonus/penalty dice, HP, gold, items, XP, death, revival, and scene changes.
@@ -49,9 +49,9 @@ GitHub maintains the [Contributors](https://github.com/diceframe/diceframe/graph
 
 ### Windows Portable
 
-Download the latest `DiceFrame-vX.Y.Z-windows-portable.zip` from [Releases](https://github.com/diceframe/diceframe/releases/latest), extract it, and run `DiceFrame.exe`. Open **Management → Settings → Model API**, then add an AI provider with its name, API format, Base URL, API key, and model catalog. Use **Management → Settings → Model routing** to assign the main model, fallbacks, embedding, TTS, ASR, and image-generation roles.
+Download the latest `DiceFrame-vX.Y.Z-windows-portable.zip` from [Releases](https://github.com/diceframe/diceframe/releases/latest), extract it, and run `DiceFrame.exe`. Open **Manage → Settings → Model API**, then add an AI provider with its name, API format, Base URL, API key, and model catalog. Use **Manage → Settings → Model Routing** to assign the main model, fallbacks, embedding, TTS, ASR, and image-generation roles.
 
-Windows portable builds can check for and apply updates from the Version Update section under **Management → Settings → About**.
+Windows portable builds can check for and apply updates from the Version Update section under **Manage → Settings → About**.
 
 ### From Source
 
@@ -81,7 +81,7 @@ Open:
 http://localhost:18000
 ```
 
-On first launch, add the endpoint and model catalog under **Management → Settings → Model API → AI Providers**, then assign the main model, fallbacks, and optional AI roles under **Model routing**.
+On first launch, add the endpoint and model catalog under **Manage → Settings → Model API → AI Providers**, then assign the main model, fallbacks, and optional AI roles under **Model Routing**.
 
 **Breaking AI configuration contract:** connections use only `ai_providers` and capability `*_provider_ref` fields; keys are stored as `ai_provider_key_<id>` in secret storage. Legacy inline endpoints, keys, API formats and `TRPG_LLM_*`, `TRPG_EMBEDDING_*`, `TRPG_TTS_*`, `TRPG_ASR_*`, `TRPG_IMAGEGEN_*` environment inputs are no longer activated. No automatic migration or provider creation occurs. Updates containing old fields return HTTP 400 `unsupported AI config fields`; add providers and assign roles manually in Settings.
 
@@ -150,7 +150,7 @@ If the container was originally started with `docker run`, do not switch to Comp
 1. Open the Web UI.
 2. Switch the app language to English if needed.
 3. Add an AI provider and assign the main model in Settings.
-4. Go to Create.
+4. Open **Overview → Create Adventure**, or start from a world or adventure in **Content → Content library**.
 5. Choose Game Language: English.
 6. Pick the English fantasy template, create or import characters, then enter Play.
 7. Submit actions in natural language.
@@ -162,7 +162,7 @@ More player-facing help is in the [DiceFrame user guide](https://github.com/dice
 
 ## Plugins and Chat Adapters
 
-The built-in QQ/NapCat plugin receives its DiceFrame Bot API Token automatically; users configure only the NapCat connection under **Management → Plugins**. External bridges such as MaiBot copy the service URL and token from **Management → Settings → Bot API**.
+The built-in QQ/NapCat plugin receives its DiceFrame Bot API Token automatically; users configure only the NapCat connection under **Manage → Plugins**. External bridges such as MaiBot copy the service URL and token from **Manage → Settings → Bot API**.
 
 The Bot follows the bound game's language for help and primary operation messages, with native Chinese and English commands available.
 
@@ -170,7 +170,7 @@ Players can ask the GM an out-of-character question with `@Bot ask kp <question>
 
 The DiceFrame plugin store lets you browse and install community plugins published by their authors through GitHub Releases. Installing or updating always requires confirmation, with an additional risk warning when a plugin requests external-process access or expanded permissions. Locally or privately shared plugins can also be installed from `.dfplugin` files.
 
-DiceFrame Hub provides review information, version status, and details for the plugin store under **Management → Plugins**. Installed plugins and local games continue to work if Hub is temporarily unavailable. Anonymous usage statistics are disabled by default and can be managed under **Management → Settings → Advanced → DiceFrame Hub and privacy**.
+DiceFrame Hub provides review information, version status, and details for the plugin store under **Manage → Plugins**. Installed plugins and local games continue to work if Hub is temporarily unavailable. Anonymous usage statistics are disabled by default and can be managed under **Manage → Settings → Security → DiceFrame Hub and privacy**.
 
 To develop or publish a plugin, see the [plugin development guide](https://github.com/diceframe/diceframe-content/blob/main/docs/en/plugin-development.md) and [plugin registry and review rules](https://github.com/diceframe/diceframe-content/blob/main/docs/en/plugin-registry.md).
 
