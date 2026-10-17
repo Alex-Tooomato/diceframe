@@ -8,9 +8,9 @@
 >
 > - Repository: `diceframe/diceframe`
 > - Branch: `main`
-> - Commit: `d2246e0d0d32867e8e090c238b588441bad96a28`
-> - Release: `2.6.1`
-> - Upstream GameInstance persisted schema: `44`; this local implementation writes `46` (45 splits table ownership; 46 fences story/development/finale authority).
+> - Commit: `0ad98b3e9a30a9b89334448a1fcddeeb6cb5975e`
+> - Release: `3.0.0-beta.1`
+> - Upstream GameInstance persisted schema: `46`; the current implementation writes `46` (45 splits table ownership; 46 fences story/development/finale authority).
 > - Local state ownership: `game_config` is kernel configuration; `room_access` and the economy ledger are mandatory kernel dependencies. `narration_preferences` and `check_presentation` contribute optional projections and new-run preference carry through hooks. Migration 44→45 moves the old table fields and `economy.reward_policy` without rescaling or changing transaction state; opaque extras are retained and unknown/mixed shapes are refused. See [ADR-0007](adr/0007-runtime-state-ownership.md).
 > - R9-b: `scene` authority lives in `modules.narrative_notes.scene`, upgrading that slot to v2; migration 39→40 removes the old top-level key and keeps the value verbatim. Reset still clears it. Transactions that write the scene (run opening, round processing, swipe, ruleset batches and Director automation, ruleset transaction restore, reset) preflight the narrative owner through `module_hooks.preflight(..., NARRATIVE_VIEW)`. The `scene` in list, detail, lobby (including the password gate), SSE, recap and the LLM view is unchanged.
 > - R9-a: `adventure_progress` and `play_mode` have their authority in `modules.adventure_runtime` under `progress` and `play_mode`; migration 38→39 removes the old top-level keys. Adventure identity stays only in top-level `adventure_binding`. An empty or unknown play mode is still derived from the binding on load; in-place reset clears progress and keeps the play mode; a new run (reset/restart/seed) keeps the play mode and re-initializes v2 progress, all through the module owner after a preflight.
@@ -20,7 +20,7 @@
 > - R8-c1: `last_check`, `last_checks`, `round_checks_prepared`, and `manual_roll_requests` live in `modules.checks`; GameInstance property entry points are retired; readers and writers use module owners, and migration 30→31 removes the old top-level keys. Reset continues to preserve manual roll requests.
 > - R8-a: `total_llm_calls`, `total_tokens`, `started_at`, and `last_activity` live in `modules.session_stats`; GameInstance property entry points are retired; readers and writers use module owners, and migration 29→30 removes the old top-level keys.
 > - Current Lorebook SQLite schema (`PRAGMA user_version`): `12`
-> - Document verification date: 2026-10-14
+> - Document verification date: 2026-10-18
 >
 > **Explicitly excluded from the current architecture**
 >
