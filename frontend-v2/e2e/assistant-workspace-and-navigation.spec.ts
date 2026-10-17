@@ -86,9 +86,10 @@ for (const route of ['/#/library', '/#/settings?section=appearance']) test(`seco
   await page.screenshot({ path: info.outputPath('secondary-navigation-fixed.png'), scale: 'css' })
 })
 
-test('secondary navigation takes the top position as the primary header scrolls away', async ({ page }, info) => {
+for (const route of ['/#/library', '/#/settings?section=general']) test(`secondary navigation takes the top position as the primary header scrolls away ${route}`, async ({ page }, info) => {
   await page.setViewportSize({ width: page.viewportSize()!.width, height: 480 })
-  await page.goto('/#/settings?section=general')
+  await page.goto(route)
+  if (route.includes('library')) await expect(page.getByTestId('content-library')).toHaveAttribute('aria-busy', 'false')
   const header = page.locator('.app-header')
   const rail = page.locator('.content-workspace-rail')
   await expect(rail).toBeVisible()
@@ -106,12 +107,26 @@ test('secondary navigation takes the top position as the primary header scrolls 
     await expect.poll(async () => (await rail.boundingBox())!.y).toBeCloseTo(expectedTop, 0)
     await expect(rail.locator('a').first()).toBeInViewport()
     if (scrollY === 680) {
-      await expect.poll(async () => {
-        const railBox = (await rail.boundingBox())!
-        const settingsBox = (await page.locator('.settings-nav').boundingBox())!
-        return settingsBox.y - railBox.y - railBox.height
-      }).toBeGreaterThanOrEqual(8)
+      if (route.includes('settings')) {
+        await expect.poll(async () => {
+          const railBox = (await rail.boundingBox())!
+          const settingsBox = (await page.locator('.settings-nav').boundingBox())!
+          const gap = settingsBox.y - railBox.y - railBox.height
+          return gap >= 8 && gap <= 12
+        }).toBe(true)
+      }
       await page.screenshot({ path: info.outputPath('secondary-navigation-primary-hidden.png'), scale: 'css' })
     }
+  }
+
+  const originalWidth = page.viewportSize()!.width
+  for (const width of [originalWidth <= 800 ? 1024 : 390, originalWidth]) {
+    await page.setViewportSize({ width, height: 480 })
+    await expect.poll(async () => {
+      const headerBox = (await header.boundingBox())!
+      const railBox = (await rail.boundingBox())!
+      return Math.abs(railBox.y - headerBox.y - headerBox.height)
+    }).toBeLessThanOrEqual(1)
+    expect(await page.evaluate(() => document.documentElement.scrollWidth - innerWidth)).toBeLessThanOrEqual(1)
   }
 })

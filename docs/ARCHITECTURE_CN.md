@@ -669,6 +669,8 @@ frontend-v2/src/
 直接编辑所属样式，不再追加同页覆盖层。组织规则与外观对照方法见
 [样式说明](../frontend-v2/src/styles/README.md)。
 
+内容与管理栏目共用导航停靠契约；顶栏移出、二级导航接替及页面内菜单间距的约束与验收见 [工程规则 §14.1](ENGINEERING_RULES.md#141-navigation-layout-contract)。
+
 剧本导入的 AI 整理由 `src/webui/services/adventure_ai_import.py` 拥有。`POST /api/adventures/script/ai` 在 owner 与 token 用量确认后，复用主模型生成服务，分段整理资料并返回 NDJSON 工作进度；客户端断开时取消当前模型调用。输出只允许剧情与参考资料，保持原冒险身份、规则绑定与 GM 可见范围，经原生 Adventure owner 校验后交给前端预览。采用草稿和发布保存仍是分开的操作，保存继续走已有 review/commit 契约。
 
 ---

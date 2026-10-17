@@ -678,6 +678,8 @@ Tailwind and Markdown keep separate boundaries. The old `styles.css` / `styles/v
 cascade and historical patch sheets are retired. Edit the relevant owner instead of
 adding another late override sheet. See the [style guide](../frontend-v2/src/styles/README.md).
 
+Content and management sections share the [navigation layout contract](ENGINEERING_RULES.md#141-navigation-layout-contract), including header handoff, nested sticky menu spacing and browser acceptance criteria.
+
 AI organization of imported scripts is owned by `src/webui/services/adventure_ai_import.py`. `POST /api/adventures/script/ai` requires owner access and token-use consent, reuses the main-model generation service, and streams actual work progress as NDJSON; disconnecting cancels the active model call. Output is limited to story and reference material, preserving adventure identity, rules binding, and GM visibility, and is validated by the native Adventure owner before client preview. Adopting the draft and publishing remain separate; persistence still uses the existing review/commit contract.
 
 ---
