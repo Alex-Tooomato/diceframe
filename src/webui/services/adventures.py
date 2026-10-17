@@ -60,6 +60,37 @@ class AdventureDependencies:
     adventure_resolver: AdventureResolver | None = None
 
 
+def _user_adventure_root(
+    dependencies: AdventureDependencies,
+    *,
+    create: bool = False,
+) -> Path:
+    """Return the writable user source without falling back to builtin data.
+
+    The resolver deliberately keeps a registered user source even before its
+    directory exists.  Authoring code must use that explicit source; the
+    resolver's compatibility ``adventures_dir`` property is allowed to fall
+    back to builtin only for legacy read paths.
+    """
+
+    resolver = dependencies.adventure_resolver
+    if resolver is None and isinstance(dependencies.adventure_loader, AdventureResolver):
+        resolver = dependencies.adventure_loader
+    if resolver is not None:
+        source = resolver.source_for("user")
+        if source is None:
+            raise ValueError("custom adventures require a registered user Adventure source")
+        root = source.loader.adventures_dir
+    else:
+        root = dependencies.adventure_loader.adventures_dir
+        builtin_root = dependencies.builtin_adventures_dir
+        if builtin_root is not None and root.resolve() == Path(builtin_root).resolve():
+            raise ValueError("custom adventures require a separate user Adventure source")
+    if create:
+        root.mkdir(parents=True, exist_ok=True)
+    return root
+
+
 def _runtime_for_rule(
     dependencies: AdventureDependencies,
     rule_id: str,
@@ -337,7 +368,8 @@ def _validated_stage(
     directory_id: str,
     files: dict[str, Any],
 ) -> tuple[Path, Any]:
-    parent = dependencies.adventure_loader.adventures_dir.parent
+    parent = _user_adventure_root(dependencies).parent
+    parent.mkdir(parents=True, exist_ok=True)
     temporary = tempfile.TemporaryDirectory(prefix="diceframe-adventure-", dir=parent)
     root = Path(temporary.name) / directory_id
     root.mkdir()
@@ -358,7 +390,8 @@ def copy_adventure(
 ) -> dict[str, Any]:
     source = _resolve_bundle(dependencies, adventure_id, language)
     directory_id = validate_directory_id(body.get("directory_id"))
-    target = dependencies.adventure_loader.adventures_dir / directory_id
+    user_root = _user_adventure_root(dependencies)
+    target = user_root / directory_id
     if target.exists():
         raise ValueError(f"adventure directory already exists: {directory_id}")
     new_id = _validate_package_id(body.get("adventure_id") or f"user:{directory_id}")
@@ -390,6 +423,7 @@ def copy_adventure(
                 tutorial["summary"] = str(body["summary"]).strip()
     staged, temporary = _validated_stage(dependencies, directory_id, files)
     try:
+        user_root.mkdir(parents=True, exist_ok=True)
         shutil.move(str(staged), str(target))
     finally:
         temporary.cleanup()
@@ -411,7 +445,7 @@ def review_native_adventure_fork(dependencies: AdventureDependencies, payload: d
     directory = validate_directory_id(directory_id)
     identity = f"user:{directory}"
     _ensure_identity_available(dependencies, identity)
-    if (dependencies.adventure_loader.adventures_dir / directory).exists():
+    if (_user_adventure_root(dependencies) / directory).exists():
         raise ValueError("adventure target already exists")
     files = deepcopy(payload.get("files"))
     if not isinstance(files, dict) or not isinstance(files.get("manifest.json"), dict):
@@ -461,7 +495,8 @@ def create_adventure(
     optional and can be added later through the structured editor.
     """
     directory_id = validate_directory_id(body.get("directory_id"))
-    target = dependencies.adventure_loader.adventures_dir / directory_id
+    user_root = _user_adventure_root(dependencies)
+    target = user_root / directory_id
     if target.exists():
         raise ValueError(f"adventure directory already exists: {directory_id}")
     adventure_id = _validate_package_id(body.get("adventure_id") or f"user:{directory_id}")
@@ -558,6 +593,7 @@ def create_adventure(
         }
     staged, temporary = _validated_stage(dependencies, directory_id, files)
     try:
+        user_root.mkdir(parents=True, exist_ok=True)
         shutil.move(str(staged), str(target))
     finally:
         temporary.cleanup()
@@ -678,7 +714,8 @@ def import_adventure(
     adventure_id = _validate_package_id(manifest.get("adventure_id"))
     _ensure_identity_available(dependencies, adventure_id)
     wanted_directory = validate_directory_id(directory_id or root)
-    target = dependencies.adventure_loader.adventures_dir / wanted_directory
+    user_root = _user_adventure_root(dependencies)
+    target = user_root / wanted_directory
     if target.exists():
         raise ValueError(f"adventure directory already exists: {wanted_directory}")
     manifest["custom"] = True
@@ -687,6 +724,7 @@ def import_adventure(
         dependencies, wanted_directory, files,
     )
     try:
+        user_root.mkdir(parents=True, exist_ok=True)
         shutil.move(str(staged), str(target))
     finally:
         temporary.cleanup()

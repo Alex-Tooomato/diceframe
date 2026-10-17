@@ -1,12 +1,15 @@
 """A plan is copied to reviewed content, never exported with live authority."""
 from copy import deepcopy
 from dataclasses import replace
+from pathlib import Path
 
 import pytest
 
 from src.engine.modules import run_story
 from src.webui.services import adventure_script_import
 from src.webui.services.run_story import RunStoryService
+from src.adventures import AdventureResolver
+from src.adventures.script_import import parse_script
 from tests.test_adventure_management import _api
 from tests.test_run_story import adopt
 from tests.test_run_story_service import GM, PLAYER, setup
@@ -21,6 +24,15 @@ def service(tmp_path):
     svc = RunStoryService(replace(original.deps, prepare_adventure_draft=lambda draft: adventure_script_import.review(api.dependencies, draft)))
     body = {'run_id': instance.run_id, 'revision': run_story.snapshot(instance)['revision'], 'directory_id': 'my_story'}
     return svc, instance, save, api, body
+
+
+def _script_draft(api):
+    return parse_script(
+        b"# New story\n\n## Opening\nA quiet harbor.",
+        "new_story.md",
+        api.dependencies.default_runtime_requirement(),
+        "en",
+    )
 
 
 @pytest.mark.asyncio
@@ -96,3 +108,43 @@ async def test_http_plan_copy_requires_owner_and_does_not_broadcast_or_write(tmp
         save.assert_not_awaited()
     finally:
         await client.close()
+
+
+def test_review_rejects_builtin_only_source_without_writing(tmp_path):
+    _svc, _instance, _save, api, _body = service(tmp_path)
+    builtin_only = AdventureResolver.from_directories(
+        Path(__file__).parents[1] / "templates" / "adventures", None,
+    )
+    deps = replace(
+        api.dependencies,
+        adventure_loader=builtin_only,
+        adventure_resolver=builtin_only,
+    )
+
+    with pytest.raises(ValueError, match="registered user Adventure source"):
+        adventure_script_import.review(deps, _script_draft(api))
+
+    assert not (Path(__file__).parents[1] / "templates" / "adventures" / "text_*").exists()
+
+
+def test_review_and_commit_support_registered_user_source_before_directory_exists(tmp_path):
+    _svc, _instance, _save, api, _body = service(tmp_path)
+    builtin = Path(__file__).parents[1] / "templates" / "adventures"
+    user_root = tmp_path / "not-yet-created" / "adventures"
+    resolver = AdventureResolver.from_directories(builtin, user_root)
+    deps = replace(
+        api.dependencies,
+        adventure_loader=resolver,
+        adventure_resolver=resolver,
+    )
+    preview = adventure_script_import.prepare_text_adventure(
+        deps, "# New story\n\n## Opening\nA quiet harbor.", "reviewed_story", "en",
+    )
+
+    assert preview["blockers"] == []
+    assert not user_root.exists()
+    published = adventure_script_import.commit(deps, {
+        **preview["draft"], "reviewed": True, "plan_digest": preview["plan_digest"],
+    })
+    assert published["adventure_id"] == "user:reviewed_story"
+    assert (user_root / "reviewed_story" / "manifest.json").is_file()

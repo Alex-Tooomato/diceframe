@@ -40,6 +40,11 @@ Unknown profile versions and graph v1 fail closed. The writable user owner is
 retained even before its directory exists; authoring must not fall through to
 bundled templates.
 
+New package starters declare only the locales they actually ship (`en` and
+`zh-CN`). Other requested locales resolve to the manifest's default locale;
+contributors can add a locale by supplying and validating its translations,
+without making it a core-maintained language.
+
 The profile supports scenes, objectives, decisions, milestones, references and
 world/progress gates/outcomes. It rejects encounter nodes/references, `rules.*`
 gates, `item_reward` outcomes and mechanical item/reward/encounter resources.

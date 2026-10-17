@@ -15,6 +15,7 @@ from src.adventures.script_import import parse_script
 from src.adventures.external_import import parse_import
 from src.content_modules.refs import ContentDraft, build_commit_plan, commit_plan_digest, parse_content_ref
 from src.webui.services import adventures
+from src.webui.services.adventures import _user_adventure_root
 
 
 def preview(deps: adventures.AdventureDependencies, payload: bytes, filename: str, language: str) -> dict[str, Any]:
@@ -42,8 +43,7 @@ def prepare_text_adventure(deps: adventures.AdventureDependencies, text: str, di
 
 def review(deps: adventures.AdventureDependencies, draft: dict[str, Any]) -> dict[str, Any]:
     """Recompute plan for the *edited* draft; temporary validation leaves no content behind."""
-    if not deps.adventure_loader.adventures_dir.is_dir():
-        raise ValueError('script import requires an available user Adventure directory')
+    user_root = _user_adventure_root(deps)
     files = deepcopy(draft.get('files'))
     if not isinstance(files, dict):
         raise ValueError('script draft files are required')
@@ -74,7 +74,7 @@ def review(deps: adventures.AdventureDependencies, draft: dict[str, Any]) -> dic
     blockers: list[str] = []
     try:
         adventures._ensure_identity_available(deps, identity)
-        if (deps.adventure_loader.adventures_dir / directory).exists():
+        if (user_root / directory).exists():
             raise ValueError('adventure directory already exists; choose another identity')
     except ValueError as exc:
         blockers.append(str(exc))
