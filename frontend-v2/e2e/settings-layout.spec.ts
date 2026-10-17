@@ -29,11 +29,11 @@ test('settings keep search above navigation and render one aligned active pane',
     if (section === 'general') {
       await page.screenshot({ path: info.outputPath('settings-general-top.png'), scale: 'css' })
       expect(await page.evaluate(() => document.documentElement.scrollWidth - innerWidth)).toBeLessThanOrEqual(1)
-      for (const id of ['settings-language', 'settings-tts', 'settings-asr', 'settings-agent', 'settings-agent-budget', 'settings-runtime-logs', 'settings-test-timeout']) {
+      for (const id of ['settings-language', 'settings-tts', 'settings-agent', 'settings-agent-budget', 'settings-runtime-logs', 'settings-test-timeout']) {
         await expect(panes.locator(`#${id}`)).toBeVisible()
       }
       const cards = await panes.locator('.advanced-section').evaluateAll(elements => elements.map(element => ({ width: element.clientWidth, scrollWidth: element.scrollWidth })))
-      expect(cards).toHaveLength(6)
+      expect(cards).toHaveLength(5)
       for (const card of cards) expect(card.scrollWidth - card.width).toBeLessThanOrEqual(1)
       await page.locator('#settings-test-timeout').scrollIntoViewIfNeeded()
       await expect(page.locator('#settings-test-timeout')).toBeInViewport()

@@ -1,12 +1,12 @@
 <script setup lang="ts">
-import { computed, nextTick, onMounted, onUnmounted, ref, watch, type Component } from 'vue'
+import { computed, nextTick, onMounted, ref, watch, type Component } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { NButton, NInput, NInputNumber, NSelect, NSwitch, NTag, NIcon, NSpin, NProgress, NModal, NCollapse, NCollapseItem } from 'naive-ui'
 import {
   ServerOutline, CubeOutline, CloudDownloadOutline,
   LockClosedOutline, OptionsOutline, InformationCircleOutline, ShareSocialOutline, PeopleOutline,
   KeyOutline, CopyOutline, EyeOutline, RefreshOutline, ColorPaletteOutline,
-  ImageOutline, PowerOutline, MicOutline,
+  ImageOutline, PowerOutline,
   TrashOutline, CheckmarkCircleOutline, AlertCircleOutline, SparklesOutline,
   VolumeHighOutline, ShieldCheckmarkOutline, ChevronDownOutline,
 } from '@vicons/ionicons5'
@@ -18,20 +18,19 @@ import { shouldAutoDownloadUpdate, updateStateForVersion, useUpdater } from '@/c
 import { useLocale } from '@/composables/useLocale'
 import { selectReleaseNotes } from '@/utils/releaseNotes'
 import { initializeTts, ttsRate, setTtsRate } from '@/utils/tts'
-import { asrLanguageFor, initializeAsr, startRecording, type RecordingSession } from '@/utils/asr'
-import { ApiError, api, apiBlob, errorMessage } from '@/api/client'
+import { initializeAsr } from '@/utils/asr'
+import { api, apiBlob, errorMessage } from '@/api/client'
 import { speechApi } from '@/api/speech'
 import { pluginApi } from '@/api/plugins'
 import { securityApi, type SecurityTransportStatus } from '@/api/security'
-import { speechLocaleTag } from '@/i18n'
 import type { MessageKey } from '@/i18n'
 import type { SecretKey } from '@/stores/useSettingsStore'
 import type { AppConfig, HubPreferences, LoginAuditEntry, LoginAuditResponse, TestResult, TtsVoiceCatalog } from '@/api/types'
 import TestResultCard from '@/components/admin/TestResultCard.vue'
-import TtsVoiceProfiles from '@/components/admin/TtsVoiceProfiles.vue'
 import ProviderLibrary from '@/features/admin/settings/ProviderLibrary.vue'
 import ProviderCatalogModal from '@/features/admin/settings/ProviderCatalogModal.vue'
 import ModelRoutingPane from '@/features/admin/settings/ModelRoutingPane.vue'
+import { useSpeechModelTest } from '@/features/admin/settings/useSpeechModelTest'
 import ProviderModelRow from '@/features/admin/settings/ProviderModelRow.vue'
 import ProviderTestSection from '@/features/admin/settings/ProviderTestSection.vue'
 import HelpButton from '@/components/common/HelpButton.vue'
@@ -388,7 +387,6 @@ function setTtsRateValue(value: number | null) {
   setTtsRate(value)
 }
 const ttsVoices = ref<TtsVoiceCatalog | null>(null)
-const ttsTesting = ref(false)
 const ttsProvider = computed(() => String(store.config.tts_provider || 'browser'))
 const ttsVoiceOptions = computed(() => (
   ttsVoices.value?.voices.filter(voice => voice.engine === ttsProvider.value) || []
@@ -399,9 +397,9 @@ async function loadTtsVoices() {
   catch { ttsVoices.value = null }
 }
 
+// 引擎级参数（音频格式、缓存、超时）随模型配置保存，这里只存角色音色映射。
 const TTS_CONFIG_KEYS = [
-  'tts_audio_format', 'tts_default_voice', 'tts_gm_voice', 'tts_player_voice',
-  'tts_timeout_seconds', 'tts_cache_mb',
+  'tts_default_voice', 'tts_gm_voice', 'tts_player_voice', 'tts_timeout_seconds',
 ]
 
 async function saveTts(showToast = true): Promise<boolean> {
@@ -416,37 +414,7 @@ async function saveTts(showToast = true): Promise<boolean> {
   }
 }
 
-async function testTts() {
-  ttsTesting.value = true
-  try {
-    if (!await saveTts(false)) return
-    const blob = await speechApi.test({
-      text: t('ttsTestText'),
-      voice: String(store.config.tts_gm_voice || store.config.tts_default_voice || ''),
-      language: speechLocaleTag(locale.value),
-      speed: ttsRateValue.value,
-    })
-    const url = URL.createObjectURL(blob)
-    const audio = new Audio(url)
-    audio.onended = () => URL.revokeObjectURL(url)
-    audio.onerror = () => URL.revokeObjectURL(url)
-    await audio.play()
-    toast.success(t('ttsTestStarted'))
-  } catch (error: unknown) {
-    toast.error(errorMessage(error))
-  } finally {
-    ttsTesting.value = false
-  }
-}
-
-// 语音识别（云端 ASR）：与 TTS 相同的保存/测试模式，测试改为录一段话再识别。
-const asrProvider = computed(() => String(store.config.asr_provider || 'disabled'))
-const asrTesting = ref(false)
-const asrTestRecording = ref(false)
-const asrTestText = ref('')
-let asrTestSession: RecordingSession | null = null
-
-const ASR_CONFIG_KEYS = ['asr_timeout_seconds']
+const { ttsTesting, asrTesting, asrTestRecording, asrTestText, testTts, testAsr } = useSpeechModelTest()
 
 const {
   providerDrafts,
@@ -504,59 +472,6 @@ const {
   refreshModelRuntimes: async () => {
     await Promise.all([initializeTts(true), initializeAsr(true), loadTtsVoices()])
   },
-})
-
-async function saveAsr(showToast = true): Promise<boolean> {
-  try {
-    await store.saveSection(ASR_CONFIG_KEYS, ['asr_api_key'])
-    await initializeAsr(true)
-    if (showToast) toast.success(t('settingsSaved'))
-    return true
-  } catch (error: unknown) {
-    toast.error(errorMessage(error))
-    return false
-  }
-}
-
-async function testAsr() {
-  if (asrTestRecording.value) {
-    await stopAsrTest()
-    return
-  }
-  asrTesting.value = true
-  asrTestText.value = ''
-  try {
-    if (!await saveAsr(false)) return
-    asrTestSession = await startRecording()
-    asrTestRecording.value = true
-  } catch (error: unknown) {
-    if (error instanceof Error && error.message === 'asr-mic-denied') toast.error(t('asrMicDenied'))
-    else toast.error(t('asrRecordFailed'))
-  } finally {
-    asrTesting.value = false
-  }
-}
-
-async function stopAsrTest() {
-  const session = asrTestSession
-  asrTestSession = null
-  asrTestRecording.value = false
-  if (!session) return
-  asrTesting.value = true
-  try {
-    const blob = await session.stop()
-    asrTestText.value = await speechApi.transcribeTest(blob, asrLanguageFor(locale.value))
-  } catch (error: unknown) {
-    toast.error(error instanceof ApiError && error.message ? error.message : t('asrFailed'))
-  } finally {
-    asrTesting.value = false
-  }
-}
-
-onUnmounted(() => {
-  asrTestSession?.cancel()
-  asrTestSession = null
-  asrTestRecording.value = false
 })
 
 const testing = ref(false)
@@ -1322,21 +1237,6 @@ function redownloadUpdatePackage() {
                   </div>
                   <NButton size="small" @click="section = 'models'">{{ t('modelRoutingOpen') }}</NButton>
                 </div>
-                <template v-if="ttsProvider !== 'browser'">
-                  <div v-if="ttsProvider !== 'edge-tts'" class="advanced-row">
-                    <div><strong>{{ t('ttsAudioFormat') }}</strong></div>
-                    <select :value="store.config.tts_audio_format ?? 'mp3'" @change="setStr('tts_audio_format', eventValue($event))">
-                      <option value="mp3">MP3</option><option value="wav">WAV</option><option value="opus">Opus</option><option value="flac">FLAC</option><option value="aac">AAC</option>
-                    </select>
-                  </div>
-                  <p v-if="ttsProvider === 'edge-tts'" class="muted tts-inline-hint">{{ t('ttsEdgeHint') }}</p>
-                  <div class="advanced-row">
-                    <div><strong>{{ t('ttsCacheSize') }}</strong></div>
-                    <NInputNumber :value="Number(store.config.tts_cache_mb ?? 256)" :min="16" :max="2048" :step="64" @update:value="setNum('tts_cache_mb', $event)" />
-                  </div>
-                  <TtsVoiceProfiles :provider="ttsProvider" @changed="loadTtsVoices" />
-                </template>
-
                 <div class="advanced-row tts-subheading-row">
                   <div><strong>{{ t('ttsRoleMapping') }}</strong><small>{{ t('ttsRoleMappingHint') }}</small></div>
                 </div>
@@ -1370,36 +1270,8 @@ function redownloadUpdatePackage() {
                 </div>
                 <footer class="advanced-save-row">
                   <NButton type="primary" @click="saveTts()">{{ t('saveAction') }}</NButton>
-                  <NButton v-if="ttsProvider !== 'browser'" :loading="ttsTesting" @click="testTts">{{ t('ttsSaveAndTest') }}</NButton>
+                  <NButton v-if="ttsProvider !== 'browser'" :loading="ttsTesting" @click="testTts(() => saveTts(false))">{{ t('ttsSaveAndTest') }}</NButton>
                 </footer>
-              </section>
-
-              <section id="settings-asr" class="advanced-section asr-section">
-                <header class="advanced-section-head">
-                  <NIcon :component="MicOutline" />
-                  <div><h3>{{ t('asrSettings') }}</h3><p>{{ t('asrSettingsHint') }}</p></div>
-                </header>
-                <div class="model-binding-summary advanced-binding-summary">
-                  <NIcon :component="MicOutline" />
-                  <div><strong>{{ t('modelRoleAsr') }}</strong><small>{{ asrProvider === 'disabled' ? t('asrProviderDisabled') : modelBindingSummary(store.config.asr_provider_ref, store.config.asr_model) }}</small></div>
-                  <NButton size="small" @click="section = 'models'">{{ t('modelRoutingOpen') }}</NButton>
-                </div>
-                <template v-if="asrProvider === 'openai-compatible'">
-                  <div class="advanced-row">
-                    <div><strong>{{ t('asrTimeout') }}</strong></div>
-                    <NInputNumber :value="Number(store.config.asr_timeout_seconds ?? 60)" :min="5" :max="300" :step="5" @update:value="setNum('asr_timeout_seconds', $event)" />
-                  </div>
-                  <p class="muted tts-inline-hint">{{ t('asrHint') }}</p>
-                </template>
-                <footer class="advanced-save-row">
-                  <NButton type="primary" @click="saveAsr()">{{ t('saveAction') }}</NButton>
-                  <NButton
-                    v-if="asrProvider === 'openai-compatible'"
-                    :loading="asrTesting && !asrTestRecording"
-                    @click="testAsr"
-                  >{{ asrTestRecording ? t('asrTestStop') : t('asrSaveAndTest') }}</NButton>
-                </footer>
-                <p v-if="asrTestText" class="muted tts-inline-hint">{{ t('asrTestResult', { text: asrTestText }) }}</p>
               </section>
             </section>
             <section id="settings-general-agent" class="settings-general-group" :aria-label="t('settingsSectionAgent')">
@@ -2164,6 +2036,13 @@ function redownloadUpdatePackage() {
             @open-providers="section = 'api'"
             @toggle-and-save="setModelRoutingBool"
             @test-embedding="runTest('embedding')"
+            :tts-testing="ttsTesting"
+            :asr-testing="asrTesting"
+            :asr-recording="asrTestRecording"
+            :asr-test-text="asrTestText"
+            @test-tts="testTts(saveModelRouting)"
+            @test-asr="testAsr(saveModelRouting)"
+            @tts-voices-changed="loadTtsVoices"
           />
           </div>
 

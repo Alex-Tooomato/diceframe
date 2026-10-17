@@ -17,9 +17,10 @@ describe('settings search', () => {
     expect(settingsSearchCopy('en').placeholder).toBe('Search')
     expect(settingsSearchTarget('agent-budget', 'zh-CN')?.path[0]).toBe('通用')
     expect(settingsSearchTarget('logs', 'zh-CN')?.path[0]).toBe('通用')
-    for (const id of ['tts', 'asr', 'agent', 'agent-budget', 'logs', 'test-timeout']) {
+    for (const id of ['tts', 'agent', 'agent-budget', 'logs', 'test-timeout']) {
       expect(settingsSearchTarget(id)?.section).toBe('general')
     }
+    for (const id of ['tts-model', 'asr']) expect(settingsSearchTarget(id)?.section).toBe('models')
   })
 
   it('localizes results, falls back to English, matches words and hides unavailable sections', () => {
