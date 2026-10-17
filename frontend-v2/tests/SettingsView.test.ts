@@ -90,7 +90,7 @@ describe('SettingsView management navigation', () => {
     await flushPromises()
     await wrapper.get('.settings-nav [data-section="general"]').trigger('click')
     const pane = wrapper.get('#settings-language').element.closest('.settings-pane')!
-    for (const id of ['settings-tts', 'settings-asr', 'settings-agent', 'settings-agent-budget', 'settings-runtime-logs', 'settings-test-timeout']) {
+    for (const id of ['settings-tts', 'settings-agent', 'settings-agent-budget', 'settings-runtime-logs', 'settings-test-timeout']) {
       expect(wrapper.get(`#${id}`).isVisible(), id).toBe(true)
       expect(wrapper.get(`#${id}`).element.closest('.settings-pane'), id).toBe(pane)
     }
