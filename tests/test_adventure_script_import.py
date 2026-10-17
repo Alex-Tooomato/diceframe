@@ -171,14 +171,21 @@ async def test_imported_graph_can_create_progress_and_restore_its_exact_binding(
         api._lore.close()
 
 
-def test_missing_user_directory_cannot_publish_into_builtin_templates(tmp_path):
+def test_missing_registered_user_directory_is_initialized_for_publish(tmp_path):
     from tests.test_adventure_resolver_sources import _make_api as make_playable_api
 
-    api = make_playable_api(tmp_path / 'data', runtime_dir=tmp_path / 'missing-adventures')
+    runtime_dir = tmp_path / 'missing-adventures'
+    api = make_playable_api(tmp_path / 'data', runtime_dir=runtime_dir)
     try:
-        with pytest.raises(ValueError, match='user Adventure directory'):
-            api.preview_adventure_script(SCRIPT.encode(), 'story.md', 'zh-CN')
-        assert not (tmp_path / 'missing-adventures').exists()
+        preview = api.preview_adventure_script(SCRIPT.encode(), 'story.md', 'zh-CN')
+        assert preview['ok'] and not preview['blockers']
+        directory_id = preview['draft']['directory_id']
+        result = api.commit_adventure_script({
+            **preview['draft'], 'reviewed': True, 'plan_digest': preview['plan_digest'],
+        })
+        assert result['ok']
+        assert (runtime_dir / directory_id).is_dir()
+        assert (runtime_dir / directory_id / 'manifest.json').is_file()
     finally:
         api._lore.close()
 
