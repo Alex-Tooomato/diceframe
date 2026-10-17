@@ -10,6 +10,7 @@ import { isStoredPlayerMember } from '@/utils/joinIdentity'
 import { readSeatToken, storeSeatToken } from '@/utils/seatToken'
 import { activePeerGameClient } from '@/peer/game/bridge'
 import { useGame } from '@/composables/useGame'
+import { usePlayReactions } from '@/features/play/usePlayReactions'
 import { useToast } from '@/composables/useToast'
 import { useConfirm } from '@/composables/useConfirm'
 import { useLocale, type Locale } from '@/composables/useLocale'
@@ -78,6 +79,7 @@ const isPlayer = computed(() => !!(route.query.user || route.query.share))
 function goBack() { router.push({ name: 'overview' }) }
 
 const game = useGame()
+usePlayReactions(game)
 const settings = useSettingsStore()
 const toast = useToast()
 const { confirm } = useConfirm()

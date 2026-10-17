@@ -41,6 +41,10 @@ import { useBackgroundImages, type BackgroundSlot } from '@/composables/useBackg
 import { useProviderModelSettings } from '@/composables/useProviderModelSettings'
 import { useAssistantPreferences } from '@/composables/useAssistantPreferences'
 import { resetAssistantLauncherPosition } from '@/composables/useAssistantLauncherPosition'
+import { loadAssistantVoiceConfig, useAssistantVoice } from '@/composables/useAssistantVoice'
+import { assistantSettingsCopy } from '@/features/assistant/settingsCopy'
+import { ASSISTANT_REACTION_CATEGORIES, assistantReactionCategoryCopy } from '@/features/assistant/reactions'
+import { ttsRuntimeConfig } from '@/utils/tts'
 import { assistantWorkspaceCopy } from '@/features/assistant/workspaceCopy'
 import { currentBackendUrl, isStandaloneFrontend, normalizeBackendUrl, setBackendUrl } from '@/api/connection'
 import { isSettingsSectionAvailable, legacySettingsFocus, normalizeSettingsSection, type SettingsSectionId } from '@/utils/settingsSections'
@@ -85,7 +89,28 @@ const {
   waitForApplicationRestart,
 } = useUpdater()
 const { t, locale } = useLocale()
-const { enabled: assistantEnabled, setEnabled: setAssistantEnabled } = useAssistantPreferences()
+const {
+  enabled: assistantEnabled, setEnabled: setAssistantEnabled,
+  reactions: assistantReactions, setReactions: setAssistantReactions,
+  voiceInput: assistantVoiceInput, setVoiceInput: setAssistantVoiceInput,
+  reactionSpeech: assistantReactionSpeech, setReactionSpeech: setAssistantReactionSpeech,
+  autoNavigate: assistantAutoNavigate, setAutoNavigate: setAssistantAutoNavigate,
+  disabledReactionCategories: assistantDisabledReactions, setReactionCategory: setAssistantReactionCategory,
+} = useAssistantPreferences()
+const assistantReactionCategories = computed(() => {
+  const copy = assistantReactionCategoryCopy(locale.value)
+  return ASSISTANT_REACTION_CATEGORIES.map(id => ({ id, ...copy[id], on: !assistantDisabledReactions.value.includes(id) }))
+})
+const { voiceReply: assistantVoiceReply, setVoiceReply: setAssistantVoiceReply, inputEngine: assistantInputEngine, outputEngine: assistantOutputEngine } = useAssistantVoice()
+const agentSettingsCopy = computed(() => assistantSettingsCopy(locale.value))
+const assistantInputHint = computed(() => ({
+  server: agentSettingsCopy.value.inputServer,
+  browser: agentSettingsCopy.value.inputBrowser,
+  none: agentSettingsCopy.value.inputNone,
+})[assistantInputEngine.value])
+const assistantOutputHint = computed(() => assistantOutputEngine.value === 'server'
+  ? agentSettingsCopy.value.outputServer(ttsRuntimeConfig.value.provider)
+  : assistantOutputEngine.value === 'browser' ? agentSettingsCopy.value.outputBrowser : agentSettingsCopy.value.outputNone)
 // Release 保持中英双语单文；展示层按界面语言选段，识别不到分段时整段回退。
 const releaseNotesText = computed(() =>
   selectReleaseNotes(updateInfo.value?.latest?.body, locale.value).text,
@@ -646,6 +671,7 @@ const systemStatusItems = computed<SystemStatusItem[]>(() => {
 })
 
 onMounted(() => {
+  void loadAssistantVoiceConfig(true)
   void initializeBackgrounds()
   void (async () => {
     await store.load()
@@ -1278,7 +1304,13 @@ function redownloadUpdatePackage() {
               <h3 class="settings-general-group-title">{{ t('settingsSectionAgent') }}</h3>
               <section id="settings-agent" class="advanced-section advanced-section-wide">
                 <header class="advanced-section-head"><NIcon :component="SparklesOutline" /><div><h3>{{ t('assistantTitle') }}</h3><p>{{ t('assistantAppearanceHint') }}</p></div></header>
-                <div class="advanced-row"><div><strong>{{ t('assistantTitle') }}</strong><small>{{ assistantWorkspaceCopy(locale).resetPositionHint }}</small></div><div class="switch-inline"><NSwitch :value="assistantEnabled" @update:value="setAssistantEnabled" /><span>{{ assistantEnabled ? t('enabled') : t('disabled') }}</span></div></div>
+                <div class="advanced-row"><div><strong>{{ t('assistantTitle') }}</strong><small>{{ agentSettingsCopy.enabledHint }}</small></div><div class="switch-inline"><NSwitch :value="assistantEnabled" @update:value="setAssistantEnabled" /><span>{{ assistantEnabled ? t('enabled') : t('disabled') }}</span></div></div>
+                <div class="advanced-row"><div><strong>{{ agentSettingsCopy.autoNavigate }}</strong><small>{{ agentSettingsCopy.autoNavigateHint }}</small></div><div class="switch-inline"><NSwitch data-testid="assistant-auto-navigate" :value="assistantAutoNavigate" @update:value="setAssistantAutoNavigate" /><span>{{ assistantAutoNavigate ? t('enabled') : t('disabled') }}</span></div></div>
+                <div class="advanced-row"><div><strong>{{ agentSettingsCopy.reactions }}</strong><small>{{ agentSettingsCopy.reactionsHint }}</small></div><div class="switch-inline"><NSwitch data-testid="assistant-reactions" :value="assistantReactions" @update:value="setAssistantReactions" /><span>{{ assistantReactions ? t('enabled') : t('disabled') }}</span></div></div>
+                <div v-if="assistantReactions" class="advanced-row assistant-reaction-types-row"><div><strong>{{ agentSettingsCopy.reactionTypes }}</strong><small>{{ agentSettingsCopy.reactionTypesHint }}</small></div><div class="assistant-reaction-types" role="group" :aria-label="agentSettingsCopy.reactionTypes"><button v-for="category in assistantReactionCategories" :key="category.id" type="button" class="assistant-reaction-chip" :class="{ on: category.on }" :aria-pressed="category.on" :title="category.hint" :data-testid="`assistant-reaction-${category.id}`" @click="setAssistantReactionCategory(category.id, !category.on)">{{ category.label }}</button></div></div>
+                <div v-if="assistantReactions" class="advanced-row"><div><strong>{{ agentSettingsCopy.reactionSpeech }}</strong><small>{{ agentSettingsCopy.reactionSpeechHint }}</small></div><div class="switch-inline"><NSwitch data-testid="assistant-reaction-speech" :value="assistantReactionSpeech" :disabled="assistantOutputEngine === 'none'" @update:value="setAssistantReactionSpeech" /><span>{{ assistantReactionSpeech ? t('enabled') : t('disabled') }}</span></div></div>
+                <div class="advanced-row"><div><strong>{{ agentSettingsCopy.voiceInput }}</strong><small>{{ assistantInputHint }}</small></div><div class="switch-inline"><NSwitch data-testid="assistant-voice-input" :value="assistantVoiceInput" :disabled="assistantInputEngine === 'none'" @update:value="setAssistantVoiceInput" /><span>{{ assistantVoiceInput ? t('enabled') : t('disabled') }}</span></div></div>
+                <div class="advanced-row"><div><strong>{{ agentSettingsCopy.voiceReply }}</strong><small>{{ agentSettingsCopy.voiceReplyHint }} {{ assistantOutputHint }}</small></div><div class="switch-inline"><NSwitch data-testid="assistant-voice-reply-setting" :value="assistantVoiceReply" :disabled="assistantOutputEngine === 'none'" @update:value="setAssistantVoiceReply" /><span>{{ assistantVoiceReply ? t('enabled') : t('disabled') }}</span></div></div>
                 <div class="advanced-row"><div><strong>{{ t('assistantResetPosition') }}</strong><small>{{ t('assistantResetPositionHint') }}</small></div><button type="button" data-testid="assistant-reset-position" @click="resetAssistantLauncherPosition">{{ assistantWorkspaceCopy(locale).resetPosition }}</button></div>
               </section>
               <section id="settings-agent-budget" class="advanced-section">

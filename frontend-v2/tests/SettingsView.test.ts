@@ -34,8 +34,11 @@ vi.mock('../src/composables/useBackgroundImages', () => ({ useBackgroundImages: 
 vi.mock('../src/composables/useProviderModelSettings', () => ({ useProviderModelSettings: () => ({
   providerDrafts: ref([]), providerTestModels: {}, providerTestModes: {}, providerSearch: ref(''), providerSaving: ref(false), providerTestingId: ref(''), providerFetchingModelsId: ref(''), providerTestedId: ref(''), providerTestedKind: ref(''), providerTestResult: ref(null), providerCatalogOpen: ref(false), activeProviderId: ref(''), activeCatalogProvider: ref(null), providerCatalogSourceModels: ref([]), providerLibrarySupported: true, providerSecretValue: vi.fn(() => ''), providerById: vi.fn(), providerMark: vi.fn(() => 'P'), providerStyle: vi.fn(() => ({})), providerDraftReady: vi.fn(() => false), providerModelCapabilityOptions: [], providerTestModeOptions: [], providerTestActionLabel: vi.fn(() => 'test'), activeProvider: ref(null), activeProviderModelGroups: ref([]), readyProviderIds: [], modelRoutingSaving: ref(false), catalogAssignmentBusy: '', catalogModelAssignmentOptions: vi.fn(() => []), catalogModelAssignmentValue: vi.fn(() => ''), catalogModelCanAssign: vi.fn(() => true), addProviderDraft: vi.fn(), fetchProviderModels: vi.fn(), toggleCatalogModel: vi.fn(), addAllCatalogModels: vi.fn(), assignCatalogModelRole: vi.fn(), openProviderCatalog: vi.fn(), saveProviderDraft: vi.fn(), removeProviderDraft: vi.fn(), testProviderDraft: vi.fn(),
 }) }))
-vi.mock('../src/utils/tts', () => ({ initializeTts: vi.fn(), ttsRate: vi.fn(() => 1), setTtsRate: vi.fn() }))
-vi.mock('../src/utils/asr', () => ({ asrLanguageFor: vi.fn(), initializeAsr: vi.fn(), startRecording: vi.fn() }))
+vi.mock('../src/utils/tts', async () => {
+  const { ref } = await import('vue')
+  return { initializeTts: vi.fn(), ttsRate: vi.fn(() => 1), setTtsRate: vi.fn(), ttsRuntimeConfig: ref({ provider: 'browser' }), speakingKey: ref(''), stripHtml: (value: string) => value, ttsSpeak: vi.fn(), ttsStop: vi.fn(), ttsSupported: vi.fn(() => true) }
+})
+vi.mock('../src/utils/asr', () => ({ asrLanguageFor: vi.fn(), initializeAsr: vi.fn(), startRecording: vi.fn(), serverAsrReady: vi.fn(() => false) }))
 vi.mock('../src/api/client', () => ({ api: mocks.api, apiBlob: mocks.api, errorMessage: (e: unknown) => String(e), ApiError: class extends Error {} }))
 vi.mock('../src/api/speech', () => ({ speechApi: { voices: vi.fn().mockResolvedValue({ voices: [] }), test: vi.fn(), transcribeTest: vi.fn() } }))
 vi.mock('../src/api/plugins', () => ({ pluginApi: { hubPreferences: vi.fn().mockResolvedValue(null), updateHubPreferences: vi.fn(), deleteHubIdentity: vi.fn() } }))

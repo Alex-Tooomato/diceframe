@@ -71,6 +71,7 @@ describe('DF Agent global shell', () => {
     })
     const wrapper = mount(AssistantShell, {
       props: { isHome: false },
+      attachTo: document.body,
       global: {
         plugins: [i18n],
         stubs: {

@@ -66,17 +66,22 @@ function isStoredMessage(value: unknown): value is AssistantMessage {
   if ((record.role !== 'user' && record.role !== 'assistant') || typeof record.content !== 'string' || record.content.length > 12_000) return false
   return record.events === undefined || (Array.isArray(record.events) && record.events.every(event => event && typeof event === 'object'))
 }
+/** The newest messages that fit the browser storage budget of one conversation. */
+export function compactConversation(source: AssistantMessage[]): AssistantMessage[] {
+  const selected: AssistantMessage[] = []; let chars = 0
+  for (const message of [...source].reverse()) {
+    if (selected.length >= MAX_MESSAGES) break
+    const size = JSON.stringify(message).length
+    if (selected.length && chars + size > MAX_STORED_CHARS) break
+    selected.push(message); chars += size
+  }
+  return selected.reverse()
+}
+export function storedConversationMessages(value: unknown): AssistantMessage[] {
+  return Array.isArray(value) ? value.filter(isStoredMessage).slice(-MAX_MESSAGES) : []
+}
 function persist() {
-  try {
-    const selected: AssistantMessage[] = []; let chars = 0
-    for (const message of [...messages.value].reverse()) {
-      if (selected.length >= MAX_MESSAGES) break
-      const size = JSON.stringify(message).length
-      if (selected.length && chars + size > MAX_STORED_CHARS) break
-      selected.push(message); chars += size
-    }
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(selected.reverse()))
-  } catch { /* optional */ }
+  try { localStorage.setItem(STORAGE_KEY, JSON.stringify(compactConversation(messages.value))) } catch { /* optional */ }
 }
 
 const SECRET_KEY = /(password|passwd|token|secret|api[_-]?key|authorization|credential|cookie)/i
@@ -350,8 +355,16 @@ async function invalidateApproval(draftId?: string) {
   try { await confirmAssistantAgent(currentSession, pending.approval_id, pending.plan_digest, false) } catch { /* The local dirty fence still prevents confirming the stale proposal. */ }
   finally { if (generation === requestGeneration) actionBusy.value = false }
 }
+function resetRuntime() {
+  ++requestGeneration; activeQueue?.cancel(); activeQueue = null; activeDisplayResolve?.(); activeDisplayResolve = null; controller?.abort(); controller = null; activeAssistant = null; streaming.value = false; actionBusy.value = false; status.value = ''; pendingApproval.value = null; drafts.value = {}; receipts.value = []; navigation.value = null; actionError.value = ''; dirtyDraftIds.clear()
+}
 function clear() {
-  ++requestGeneration; activeQueue?.cancel(); activeQueue = null; activeDisplayResolve?.(); activeDisplayResolve = null; controller?.abort(); controller = null; activeAssistant = null; messages.value = []; streaming.value = false; actionBusy.value = false; status.value = ''; pendingApproval.value = null; drafts.value = {}; receipts.value = []; navigation.value = null; actionError.value = ''; dirtyDraftIds.clear(); saveSessionId(null)
+  resetRuntime(); messages.value = []; saveSessionId(null)
   try { localStorage.removeItem(STORAGE_KEY) } catch { /* optional */ }
 }
-export function useAssistant() { return { messages, streaming, status, sessionId, pendingApproval, drafts, navigation, actionBusy, actionError, send, stop, retryLast, clear, restoreSession, confirmApproval, cancelApproval, reviewDraft, saveDraft, invalidateApproval } }
+/** Make another stored conversation the active one and reload its server session. */
+async function loadConversation(nextMessages: AssistantMessage[], nextSessionId: string | null) {
+  resetRuntime(); messages.value = storedConversationMessages(nextMessages); saveSessionId(nextSessionId?.trim() || null); persist()
+  await restoreSession()
+}
+export function useAssistant() { return { messages, streaming, status, sessionId, pendingApproval, drafts, navigation, actionBusy, actionError, send, stop, retryLast, clear, loadConversation, restoreSession, confirmApproval, cancelApproval, reviewDraft, saveDraft, invalidateApproval } }

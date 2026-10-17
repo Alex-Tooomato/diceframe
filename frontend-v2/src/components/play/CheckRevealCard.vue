@@ -7,6 +7,7 @@ import { cocCopy } from '@/features/play/dice/cocCopy'
 import PushDecisionPanel from '@/features/play/check-decisions/PushDecisionPanel.vue'
 import DiceTray from '@/features/play/dice/DiceTray.vue'
 import { dicePresentationCopy } from '@/features/play/dice/copy'
+import { reportAssistantReaction } from '@/composables/useAssistantReactions'
 
 const props = withDefaults(defineProps<{
   check: CheckResult
@@ -40,6 +41,8 @@ const trayCopy = computed(() => dicePresentationCopy(locale.value))
 watch(revealed, (value, previous) => {
   if (trayTimer !== undefined) window.clearTimeout(trayTimer)
   recentReveal.value = value && !previous
+  // Only live reveals reach the DF Agent avatar; history renders revealed.
+  if (recentReveal.value) reportAssistantReaction(status.value)
   // Keep the tray expanded after a live reveal.  The old timeout made the
   // result disappear again a few seconds after the animation, which is easy
   // to miss during play.  `trayExpanded` remains a user-controlled opt-out:
@@ -63,6 +66,7 @@ function stopRevealAnimation() {
 function startRevealTimer() {
   stopRevealAnimation()
   revealed.value = false
+  reportAssistantReaction('diceRoll')
   const reduced = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
   revealTimer = window.setTimeout(() => { revealed.value = true; revealTimer = undefined }, reduced ? 0 : 720)
 }

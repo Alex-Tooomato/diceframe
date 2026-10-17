@@ -6176,9 +6176,11 @@ ADR/*                       长期设计决策原因
 
 ## DF Agent 全局应用代理
 
-全局 `AssistantShell` 在 owner 应用壳中挂载，业务路由共享聊天与任务状态，设置 → 通用可关闭；公开/玩家页面不挂载。单一 `AssistantPanel` 支持侧边抽屉与居中大窗口布局，扩大时桌面聊天/任务工作区分栏、窄屏单列，切换不会重建面板或清空本地输入与草稿编辑。原 `/api/assistant/chat` 保留只读契约，新 `/api/assistant/agent/*` 为 owner-only 的执行、审查、确认与恢复接口。
+全局 `AssistantShell` 在 owner 应用壳中挂载，业务路由共享聊天与任务状态，设置 → 通用可关闭；公开/玩家页面不挂载。单一 `AssistantPanel` 放在入口旁弹出的非模态悬浮窗中，由 `useAssistantWindow` 负责标题栏拖动、边/角缩放、视口夹紧与浏览器本地几何持久化，窗口足够宽时切换为聊天/任务工作区分栏，并可最大化为居中大窗口；手机为全屏面板，切换不会重建面板或清空本地输入与草稿编辑。原 `/api/assistant/chat` 保留只读契约，新 `/api/assistant/agent/*` 为 owner-only 的执行、审查、确认与恢复接口。
 
 Agent 每次模型输出使用独立 `assistant_agent_max_tokens`（默认 4096），经 ConfigStore / 配置更新边界持久化与热更新，不改变各业务生成工具的预算。系统语言在右上角和设置 → 通用共享同一设备偏好，不改已有游戏的语言。内容库以 canonical Book 标题和 world bindings 分别展示资料册名称及所属世界；同名主册仅加展示标识，不改存储名称或 identity。
+
+悬浮入口是液态玻璃 d20 骰灵（`AssistantAvatar`），思考、聆听、播报、待确认与跑团互动都只是表现层表情。对局界面只通过 `reportAssistantReaction` 报告实时事件（检定揭示、战斗回放队列，以及 `usePlayReactions` 以每局首个快照为基线比较实时状态，加载对局不会重放历史）；`features/assistant/reactions.ts` 负责每种反应的类别、表情、优先级与文案，浏览器偏好可按类别关闭或朗读反应。反应不回流规则，也不进入 Agent 对话。会话记录由 `useAssistantConversations` 按浏览器保存，每段会话记住自己的 Agent session id，重新打开时恢复草稿与待确认操作。Agent 在回答过程中的 `navigate` 结果会直接跳转（浏览器偏好可关闭），并以带“返回上一页”的操作标签留在该条回复下；确认操作返回的跳转仍是显式按钮。语音走 owner-only 的 `/api/assistant/speech` 与 `/api/assistant/transcription`，复用设置中的 TTS/ASR 服务商、不需要对局上下文并计入 AI 请求；未配置服务商时使用浏览器语音。
 
 悬浮入口的 PointerEvent 拖动与浏览器位置持久化由 `useAssistantLauncherPosition` 负责，视口变化夹紧可见位置，拖动与点击/键盘打开分离；通用设置可将已挂载入口恢复到默认位置。`useAssistantWorkspace` 负责可折叠任务区与浏览器显示偏好，手机默认收起但保留状态提示，单列任务区最多占消息区域 45%；隐藏保留已挂载草稿和待确认计划。`SectionWorkspaceShell` 根据应用顶栏在视口内的底边动态停靠二级导航：顶栏滚出时上移至屏幕顶部，返回时恢复上下叠放；设置和日志内的吸顶菜单共享该偏移。模型返回多个已注册非审批查询/草稿工具时由框架顺序执行；含写审批、最终回答或未知工具的批次整批拒绝并纠正，仍保持单项服务器审批。格式重试耗尽返回 `MODEL_RESPONSE_INVALID`，保留既有草稿和会话。
 

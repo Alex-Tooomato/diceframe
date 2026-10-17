@@ -3835,3 +3835,30 @@ button.provider-catalog-row {
     padding-bottom: 14px !important;
   }
 }
+
+/* DF Agent table reaction categories. */
+.assistant-reaction-types {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+.assistant-reaction-chip {
+  min-height: 30px;
+  padding: 4px 12px;
+  border: 1px solid var(--df-border-soft);
+  border-radius: 999px;
+  color: var(--df-text-muted);
+  background: transparent;
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+  transition: color 0.15s ease, border-color 0.15s ease, background-color 0.15s ease;
+}
+
+.assistant-reaction-chip.on {
+  border-color: color-mix(in srgb, var(--df-accent-strong) 60%, var(--df-border-soft));
+  color: var(--df-accent-strong);
+  background: color-mix(in srgb, var(--df-accent-strong) 12%, transparent);
+}
