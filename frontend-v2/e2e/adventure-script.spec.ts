@@ -46,6 +46,7 @@ test('text script is reviewed, published, launched and advanced in a real game',
   expect(created.ok, JSON.stringify(created)).toBe(true)
   await expect(page).toHaveURL(/#\/play\?game=web/, { timeout: 20_000 })
   const panel = page.getByTestId('game-adventure-panel')
+  await panel.getByTestId('adventure-panel-toggle').click()
   await expect(panel).toContainText('修改后的码头场景。')
   await expect(panel).toContainText('凶手藏在仓库。')
   await panel.getByRole('button', { name: '确认队伍选择: 调查仓库', exact: true }).click()

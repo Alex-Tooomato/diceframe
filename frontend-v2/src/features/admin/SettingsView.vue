@@ -380,7 +380,7 @@ function syncRouteTarget() {
     section.value = requestedSection
   }
   if (queryValue(route.query.focus) === 'update') {
-    section.value = 'about'
+    section.value = 'general'
     void nextTick(() => {
       document.getElementById('settings-update')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
     })
@@ -1321,6 +1321,99 @@ function redownloadUpdatePackage() {
             </section>
             <section id="settings-maintenance" class="settings-general-group" :aria-label="t('settingsSectionSystem')">
               <h3 class="settings-general-group-title">{{ t('settingsSectionSystem') }}</h3>
+              <section id="settings-update" class="advanced-section update-maintenance-section" :aria-label="t('versionUpdate')">
+                <header class="advanced-section-head">
+                  <NIcon :component="CloudDownloadOutline" />
+                  <div><h3>{{ t('versionUpdate') }}</h3><p>{{ t('updateChannelHint') }}</p></div>
+                  <NTag :type="updateTagType" size="small" round>{{ updateTagLabel }}</NTag>
+                </header>
+                <div class="update-meta">
+                  <span>{{ t('currentVersion') }}: {{ updateInfo?.current_version || t('clickCheckVersion') }}</span>
+                  <span class="update-channel-inline" :title="t('updateChannelHint')">
+                    <NSwitch
+                      size="small"
+                      :value="updateChannel === 'preview'"
+                      :disabled="isUpdateBusy"
+                      @update:value="toggleUpdateChannel"
+                    />
+                    <span>{{ t('updateChannel') }}</span>
+                    <NTag v-if="updateChannel === 'preview'" size="small" type="warning">{{ t('previewChannel') }}</NTag>
+                  </span>
+                  <span v-if="updateInfo?.latest">{{ t('latestVersion') }}: {{ updateInfo.latest.tag_name || updateInfo.latest.version }}<NTag v-if="updateInfo?.latest?.prerelease" size="small" type="warning">{{ t('prereleaseTag') }}</NTag></span>
+                  <span v-if="updateInfo?.latest?.published_at">{{ t('publishedAt') }}: {{ updateInfo.latest.published_at.slice(0, 10) }}</span>
+                </div>
+                <p v-if="updateInfo?.error" class="muted">{{ t('checkFailed') }}: {{ updateInfo.error }}</p>
+                <p v-else-if="updateInfo?.no_release" class="muted">{{ updateInfo.message || t('repoNoReleaseMessage') }}</p>
+                <p v-else-if="updateInfo?.update_available" class="muted">{{ t('updateAvailableHelp') }}</p>
+                <div v-if="updateInfo?.latest?.body" class="update-notes">
+                  <strong>{{ t('releaseNotes') }}</strong>
+                  <pre>{{ releaseNotesText }}</pre>
+                </div>
+                <div v-if="updateStatus && (updateInfo?.update_available || updateStatus.rollback?.available)" class="update-download">
+                  <div v-if="!updateStatus.self_update.supported" class="muted">
+                    {{ updateStatus.self_update.reason === 'docker'
+                      ? t('updateDockerHint')
+                      : (updateStatus.self_update.hint || t('updateSelfUpdateUnsupported')) }}
+                  </div>
+                  <template v-else>
+                    <div v-if="updateStatus.rollback?.available" class="update-staged update-rollback-row">
+                      <NTag type="warning" size="small" round>{{ t('rollbackAvailable') }}</NTag>
+                      <span class="muted">{{ t('rollbackAvailableHint', { version: updateStatus.rollback.target_version || '' }) }}</span>
+                      <NButton type="warning" :disabled="isUpdateBusy" @click="rollbackProgram">{{ t('rollbackUpdate') }}</NButton>
+                    </div>
+                    <div v-if="displayedUpdateState === 'staged'" class="update-staged">
+                      <NTag type="success" size="small" round>{{ t('updateStaged') }}</NTag>
+                      <span class="muted">{{ t('updateStagedHint') }}</span>
+                      <div class="actions-row">
+                        <NButton v-if="updateStatus.kind === requiredUpdateKind" type="primary" @click="applyDownloadedUpdate">{{ t('applyUpdate') }}</NButton>
+                        <NButton v-if="requiredUpdateKind" @click="redownloadUpdatePackage">{{ t('redownloadUpdate') }}</NButton>
+                      </div>
+                    </div>
+                    <div v-else-if="displayedUpdateState === 'failed'" class="error-text">
+                      {{ updateStatus.path ? t('updateApplyFailed') : t('updateDownloadFailed') }}: {{ updateStatus.error }}
+                      <p v-if="dockerRuntimeUpgradeRequired">{{ t('updateDockerRuntimeRequired') }}</p>
+                    </div>
+                    <div v-else-if="displayedUpdateState === 'applying'" class="muted">
+                      {{ t('updateApplying') }}
+                    </div>
+                    <div v-else-if="displayedUpdateState === 'restarting'" class="muted">
+                      {{ t('updateRestarting') }}
+                    </div>
+                    <div v-else-if="displayedUpdateState === 'done'" class="update-staged">
+                      <NTag type="success" size="small" round>{{ updateStatus.operation === 'rollback' ? t('rollbackUpdateDone') : t('updateApplied') }}</NTag>
+                      <span v-if="reloadCountdown !== null" class="muted">{{ t('updateReloadCountdown', { seconds: reloadCountdown }) }}</span>
+                      <span v-else-if="updateStatus.restart_needed" class="muted">{{ t('updateRestartNeeded') }}</span>
+                    </div>
+                    <div v-else-if="displayedUpdateState === 'rolled-back'" class="error-text">
+                      {{ t('updateRolledBack') }}: {{ updateStatus.error }}
+                    </div>
+                    <div v-else-if="isDisplayedUpdateDownloading" class="update-progress">
+                      <div class="update-progress-head">
+                        <span>{{ t('updateDownloading') }}</span>
+                        <span class="muted">{{ updateStatus.mirror_used || '-' }}</span>
+                      </div>
+                      <NProgress :percentage="downloadPercent" />
+                    </div>
+                    <div v-if="!isDisplayedUpdateBusy && !['staged', 'done'].includes(displayedUpdateState)" class="actions-row">
+                      <NButton v-if="requiredUpdateKind" @click="downloadUpdatePackage(requiredUpdateKind)">
+                        {{ requiredUpdateKind === 'docker'
+                          ? t('downloadUpdateDocker')
+                          : requiredUpdateKind === 'portable'
+                            ? t('downloadUpdatePortable')
+                            : t('downloadUpdateSource') }}
+                      </NButton>
+                    </div>
+                  </template>
+                </div>
+                <div class="actions-row">
+                  <NButton :loading="updateChecking" @click="checkUpdate">{{ t('checkUpdate') }}</NButton>
+                  <NButton :disabled="!updateInfo?.release_url && !updateInfo?.releases_url && !updateInfo?.source_url" @click="openUpdateUrl">{{ t('openReleasePage') }}</NButton>
+                  <NButton type="warning" :loading="restartBusy" @click="restartProgram">
+                    <template #icon><NIcon :component="PowerOutline" /></template>
+                    {{ t('restartProgram') }}
+                  </NButton>
+                </div>
+              </section>
               <section id="settings-runtime-logs" class="advanced-section runtime-logs-section">
                 <header class="advanced-section-head">
                   <NIcon :component="TrashOutline" />
@@ -2079,100 +2172,6 @@ function redownloadUpdatePackage() {
           </div>
 
           <div v-show="section === 'about'" class="settings-pane about">
-            <section id="settings-update" class="update-card" :aria-label="t('versionUpdate')">
-              <div class="update-card-head">
-                <div>
-                  <h4>{{ t('versionUpdate') }}</h4>
-                </div>
-                <NTag :type="updateTagType" size="small" round>{{ updateTagLabel }}</NTag>
-              </div>
-              <div class="update-meta">
-                <span>{{ t('currentVersion') }}: {{ updateInfo?.current_version || t('clickCheckVersion') }}</span>
-                <span class="update-channel-inline" :title="t('updateChannelHint')">
-                  <NSwitch
-                    size="small"
-                    :value="updateChannel === 'preview'"
-                    :disabled="isUpdateBusy"
-                    @update:value="toggleUpdateChannel"
-                  />
-                  <span>{{ t('updateChannel') }}</span>
-                  <NTag v-if="updateChannel === 'preview'" size="small" type="warning">{{ t('previewChannel') }}</NTag>
-                </span>
-                <span v-if="updateInfo?.latest">{{ t('latestVersion') }}: {{ updateInfo.latest.tag_name || updateInfo.latest.version }}<NTag v-if="updateInfo?.latest?.prerelease" size="small" type="warning">{{ t('prereleaseTag') }}</NTag></span>
-                <span v-if="updateInfo?.latest?.published_at">{{ t('publishedAt') }}: {{ updateInfo.latest.published_at.slice(0, 10) }}</span>
-              </div>
-              <p v-if="updateInfo?.error" class="muted">{{ t('checkFailed') }}: {{ updateInfo.error }}</p>
-              <p v-else-if="updateInfo?.no_release" class="muted">{{ updateInfo.message || t('repoNoReleaseMessage') }}</p>
-              <p v-else-if="updateInfo?.update_available" class="muted">{{ t('updateAvailableHelp') }}</p>
-              <div v-if="updateInfo?.latest?.body" class="update-notes">
-                <strong>{{ t('releaseNotes') }}</strong>
-                <pre>{{ releaseNotesText }}</pre>
-              </div>
-              <div v-if="updateStatus && (updateInfo?.update_available || updateStatus.rollback?.available)" class="update-download">
-                <div v-if="!updateStatus.self_update.supported" class="muted">
-                  {{ updateStatus.self_update.reason === 'docker'
-                    ? t('updateDockerHint')
-                    : (updateStatus.self_update.hint || t('updateSelfUpdateUnsupported')) }}
-                </div>
-                <template v-else>
-                  <div v-if="updateStatus.rollback?.available" class="update-staged">
-                    <NTag type="warning" size="small" round>{{ t('rollbackAvailable') }}</NTag>
-                    <span class="muted">{{ t('rollbackAvailableHint', { version: updateStatus.rollback.target_version || '' }) }}</span>
-                    <NButton type="warning" :disabled="isUpdateBusy" @click="rollbackProgram">{{ t('rollbackUpdate') }}</NButton>
-                  </div>
-                  <div v-if="displayedUpdateState === 'staged'" class="update-staged">
-                    <NTag type="success" size="small" round>{{ t('updateStaged') }}</NTag>
-                    <span class="muted">{{ t('updateStagedHint') }}</span>
-                    <div class="actions-row">
-                      <NButton v-if="updateStatus.kind === requiredUpdateKind" type="primary" @click="applyDownloadedUpdate">{{ t('applyUpdate') }}</NButton>
-                      <NButton v-if="requiredUpdateKind" @click="redownloadUpdatePackage">{{ t('redownloadUpdate') }}</NButton>
-                    </div>
-                  </div>
-                  <div v-else-if="displayedUpdateState === 'failed'" class="error-text">
-                    {{ updateStatus.path ? t('updateApplyFailed') : t('updateDownloadFailed') }}: {{ updateStatus.error }}
-                    <p v-if="dockerRuntimeUpgradeRequired">{{ t('updateDockerRuntimeRequired') }}</p>
-                  </div>
-                  <div v-else-if="displayedUpdateState === 'applying'" class="muted">
-                    {{ t('updateApplying') }}
-                  </div>
-                  <div v-else-if="displayedUpdateState === 'restarting'" class="muted">
-                    {{ t('updateRestarting') }}
-                  </div>
-                  <div v-else-if="displayedUpdateState === 'done'" class="update-staged">
-                    <NTag type="success" size="small" round>{{ updateStatus.operation === 'rollback' ? t('rollbackUpdateDone') : t('updateApplied') }}</NTag>
-                    <span v-if="reloadCountdown !== null" class="muted">{{ t('updateReloadCountdown', { seconds: reloadCountdown }) }}</span>
-                    <span v-else-if="updateStatus.restart_needed" class="muted">{{ t('updateRestartNeeded') }}</span>
-                  </div>
-                  <div v-else-if="displayedUpdateState === 'rolled-back'" class="error-text">
-                    {{ t('updateRolledBack') }}: {{ updateStatus.error }}
-                  </div>
-                  <div v-else-if="isDisplayedUpdateDownloading" class="update-progress">
-                    <div class="update-progress-head">
-                      <span>{{ t('updateDownloading') }}</span>
-                      <span class="muted">{{ updateStatus.mirror_used || '-' }}</span>
-                    </div>
-                    <NProgress :percentage="downloadPercent" />
-                  </div>
-                  <div v-if="!isDisplayedUpdateBusy && !['staged', 'done'].includes(displayedUpdateState)" class="actions-row">
-                    <NButton v-if="requiredUpdateKind" @click="downloadUpdatePackage(requiredUpdateKind)">
-                      {{ requiredUpdateKind === 'docker'
-                        ? t('downloadUpdateDocker')
-                        : requiredUpdateKind === 'portable'
-                          ? t('downloadUpdatePortable')
-                          : t('downloadUpdateSource') }}
-                    </NButton>
-                  </div>
-                </template>
-              </div>
-              <div class="actions-row">
-                <NButton :loading="updateChecking" @click="checkUpdate">{{ t('checkUpdate') }}</NButton>
-                <NButton :disabled="!updateInfo?.release_url && !updateInfo?.releases_url && !updateInfo?.source_url" @click="openUpdateUrl">{{ t('openReleasePage') }}</NButton>
-                <NButton type="warning" :loading="restartBusy" @click="restartProgram">
-                  <template #icon><NIcon :component="PowerOutline" /></template>
-                  {{ t('restartProgram') }}
-                </NButton>
-              </div>
-            </section>
             <section class="about-card">
               <header class="about-identity">
                 <BrandLogo :size="58" :with-text="false" class="about-project-logo" />

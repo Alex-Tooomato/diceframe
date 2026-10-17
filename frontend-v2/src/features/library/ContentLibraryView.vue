@@ -246,8 +246,10 @@ function moduleCount(item: ModuleSummary): number {
 .hub-card h3 { margin: 0; font-size: 1rem; }
 .hub-card p { margin: .35rem 0; color: var(--df-text-muted); line-height: 1.45; }
 .hub-card small { color: var(--df-text-muted); }
-.hub-card-actions { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: .5rem; margin-top: auto; }
-.hub-card-actions .content-button { flex: 1; justify-content: center; }
+.hub-card-actions { grid-column: 1 / -1; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: stretch; gap: .5rem; margin-top: auto; min-width: 0; }
+.hub-card-actions .content-button { width: 100%; min-width: 0; min-height: 40px; box-sizing: border-box; justify-content: center; text-align: center; white-space: normal; overflow-wrap: anywhere; line-height: 1.3; }
+.hub-card-actions .content-button:only-child { grid-column: 1 / -1; }
+.hub-world-card .hub-card-actions .content-button:first-child:nth-last-child(3) { grid-column: 1 / -1; }
 .hub-section[data-testid="library-worlds"] .hub-card-grid { grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: .75rem; }
 /* Worlds and lorebooks share the same compact knowledge-card rhythm. */
 .hub-world-card { display: grid; grid-template-columns: auto minmax(0, 1fr); min-height: 220px; padding: 1rem; overflow: visible; }

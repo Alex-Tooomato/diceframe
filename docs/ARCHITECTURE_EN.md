@@ -9,7 +9,7 @@
 > - Repository: `diceframe/diceframe`
 > - Branch: `main`
 > - Commit: `0ad98b3e9a30a9b89334448a1fcddeeb6cb5975e`
-> - Release: `3.0.0-beta.1`
+> - Release: `3.0.0-beta.2`
 > - Upstream GameInstance persisted schema: `46`; the current implementation writes `46` (45 splits table ownership; 46 fences story/development/finale authority).
 > - Local state ownership: `game_config` is kernel configuration; `room_access` and the economy ledger are mandatory kernel dependencies. `narration_preferences` and `check_presentation` contribute optional projections and new-run preference carry through hooks. Migration 44→45 moves the old table fields and `economy.reward_policy` without rescaling or changing transaction state; opaque extras are retained and unknown/mixed shapes are refused. See [ADR-0007](adr/0007-runtime-state-ownership.md).
 > - R9-b: `scene` authority lives in `modules.narrative_notes.scene`, upgrading that slot to v2; migration 39→40 removes the old top-level key and keeps the value verbatim. Reset still clears it. Transactions that write the scene (run opening, round processing, swipe, ruleset batches and Director automation, ruleset transaction restore, reset) preflight the narrative owner through `module_hooks.preflight(..., NARRATIVE_VIEW)`. The `scene` in list, detail, lobby (including the password gate), SSE, recap and the LLM view is unchanged.
