@@ -44,6 +44,7 @@ from src.webui.services.ai_seats import AISeatDependencies, AISeatRuntime, AISea
 from src.webui.services.check_decisions import CheckDecisionDependencies, CheckDecisionService
 from src.webui.services.game_preferences import GamePreferenceDependencies, GamePreferenceService
 from src.webui.services.run_story import RunStoryDependencies, RunStoryService
+from src.webui.services.resource_recovery import RecoveryDependencies, RecoveryService
 from src.game_preferences import UNSET, validate_preferences
 from src.webui.services.check_modes import CheckModeDependencies, CheckModeService
 from src.commands.hosted_combat import HostedCombatScheduler
@@ -183,6 +184,13 @@ class WebAPI:
             get_instance=self.get_game_instance, save_instance=self._reg.save,
             load_rule=self._load_rule_for_game, get_runtime=self._load_runtime_for_game,
             get_defaults=lambda: validate_preferences((getattr(self, '_config_state', {}) or {}).get('game_defaults', {})),
+        ))
+        self.resource_recovery = RecoveryService(RecoveryDependencies(
+            get_instance=self.get_game_instance, save_instance=self._reg.save,
+            load_rule=self._load_rule_for_game,
+            advance_adventure_world=lambda instance: adventure_runtime.advance_adventure_world(
+                self._adventure_runtime_dependencies, instance,
+            ),
         ))
         self.run_story = RunStoryService(RunStoryDependencies(
             get_instance=self.get_game_instance, save_instance=self._reg.save,

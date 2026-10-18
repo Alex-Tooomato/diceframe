@@ -49,4 +49,9 @@ describe('settings search', () => {
     expect(searchSettings('')).toEqual([])
     expect(searchSettings('definitely-not-a-setting')).toEqual([])
   })
+
+  it('routes update searches to About and rollback searches to General maintenance', () => {
+    expect(settingsSearchTarget('about')).toMatchObject({ section: 'about', target: 'settings-update' })
+    expect(searchSettings('回退', 'zh-CN')[0]).toMatchObject({ section: 'general', target: 'settings-rollback' })
+  })
 })

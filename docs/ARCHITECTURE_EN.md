@@ -8,9 +8,9 @@
 >
 > - Repository: `diceframe/diceframe`
 > - Branch: `main`
-> - Commit: `0ad98b3e9a30a9b89334448a1fcddeeb6cb5975e`
+> - Commit: `dbc4b80af77015032007d4e0daa961af13c484d0`
 > - Release: `3.0.0-beta.2`
-> - Upstream GameInstance persisted schema: `46`; the current implementation writes `46` (45 splits table ownership; 46 fences story/development/finale authority).
+> - Upstream GameInstance persisted schema: `46`; the current local writer writes `47` (45 splits table ownership; 46 fences story/development/finale authority; 46→47 is the reader fence for recovery authority). Keep the upstream baseline separate from the local working-tree writer.
 > - Local state ownership: `game_config` is kernel configuration; `room_access` and the economy ledger are mandatory kernel dependencies. `narration_preferences` and `check_presentation` contribute optional projections and new-run preference carry through hooks. Migration 44→45 moves the old table fields and `economy.reward_policy` without rescaling or changing transaction state; opaque extras are retained and unknown/mixed shapes are refused. See [ADR-0007](adr/0007-runtime-state-ownership.md).
 > - R9-b: `scene` authority lives in `modules.narrative_notes.scene`, upgrading that slot to v2; migration 39→40 removes the old top-level key and keeps the value verbatim. Reset still clears it. Transactions that write the scene (run opening, round processing, swipe, ruleset batches and Director automation, ruleset transaction restore, reset) preflight the narrative owner through `module_hooks.preflight(..., NARRATIVE_VIEW)`. The `scene` in list, detail, lobby (including the password gate), SSE, recap and the LLM view is unchanged.
 > - R9-a: `adventure_progress` and `play_mode` have their authority in `modules.adventure_runtime` under `progress` and `play_mode`; migration 38→39 removes the old top-level keys. Adventure identity stays only in top-level `adventure_binding`. An empty or unknown play mode is still derived from the binding on load; in-place reset clears progress and keeps the play mode; a new run (reset/restart/seed) keeps the play mode and re-initializes v2 progress, all through the module owner after a preflight.
@@ -19,6 +19,8 @@
 > - R8-c2: `round_start_snapshot`, `round_entity_snapshot`, and `death_save_outcomes` live in `modules.round_safety`; GameInstance property entry points are retired; readers and writers use module owners, and migration 31→32 removes the old top-level keys. Reset clears only the two snapshots and preserves death-save caches.
 > - R8-c1: `last_check`, `last_checks`, `round_checks_prepared`, and `manual_roll_requests` live in `modules.checks`; GameInstance property entry points are retired; readers and writers use module owners, and migration 30→31 removes the old top-level keys. Reset continues to preserve manual roll requests.
 > - R8-a: `total_llm_calls`, `total_tokens`, `started_at`, and `last_activity` live in `modules.session_stats`; GameInstance property entry points are retired; readers and writers use module owners, and migration 29→30 removes the old top-level keys.
+> - R10: `modules.resource_recovery` (schema 1) is a mandatory authority slot for the current writer. It stores one-use recovery qualifications, receipts, consumption scopes, operation idempotency and command principals; character sheets still own current SAN/Luck values, `WorldState` owns the logical clock, and `StagedGameTransaction` publishes atomically. `src/rulesets/resource_recovery.py` exposes only an explicit fixed v1 strategy (`coc_light` / `coc7e_style` plus Luck `check`/`off`); an absent policy declaration disables the feature, while a declared malformed or future/unsupported policy fails closed with a validation error. The service persists the policy snapshot, run, seed and principal; positive legacy SAN/Luck narrator tags are rejected when a policy is declared, and ordinary recovery cannot revive 0 SAN or permanent madness. HTTP recovery routes enforce member/GM authority, while P2P forwards only the `recovery.read`, `recovery.request` and `recovery.claim` semantic operations. Settled receipts fence swipe/rewind; the 46→47 reader fence validates current and historical slots, rejects pending qualifications crossing an imported run, and never creates historical qualifications.
+> - R11: The local world-identity upgrade runs at the front of a cold-start `common_factory` build (`reuse` does not run it). It supports legacy Lorebook SQLite v4 and canonical v5–v12 world/book/binding layouts, plus the local writer's recognized save schemas. A stable hash of each old identity produces an ASCII canonical world ID, so same-named worlds remain distinct; known world/book references in `templates`, all `saves/state*.json` files and known JSON payloads are rebound while display titles, entry IDs, `game_key`, `memory_namespace` and chat/log text remain unchanged. SQLite receipts and a durable journal roll the upgrade forward after interruption. User edits, target collisions and invalid or future schemas fail closed without overwrite. New AI world generation also keeps IDs ASCII and budgets room for the `world:` primary-book prefix while prefixing generated entry IDs.
 > - Current Lorebook SQLite schema (`PRAGMA user_version`): `12`
 > - Document verification date: 2026-10-18
 >
@@ -89,6 +91,7 @@ All of these can appear to work in the short term, but they create a second auth
 | D&D Campaign / Session 0 | `src/rulesets/dnd2024/campaign/` | EventBatch / reducer | D&D Ruleset State |
 | D&D characters | `src/rulesets/dnd2024/character/` | ruleset character lifecycle | `ruleset_character` |
 | D&D rest | `src/webui/services/ruleset_rest.py` | D&D resting domain | D&D Runtime |
+| Recovery / rest, treatment, story rewards, intermission Luck | `src/webui/services/resource_recovery.py` | `src/engine/modules/resource_recovery.py`, `src/rulesets/resource_recovery.py`, `src/webui/services/recovery_projection.py` | Character resources, WorldState clock and one-use recovery ledger |
 | D&D advancement | `src/webui/services/ruleset_advancement.py` | progression / character reconciliation | D&D Runtime |
 | Ruleset capability | `src/rulesets/contracts.py` | `registry.py` | Runtime capability contract |
 | Generic combat extension | `src/webui/services/combat_extension.py` | `src/engine/combat_*` | Generic combat primitives |
@@ -495,6 +498,8 @@ This is one of the most important current **hard architecture boundaries**.
 Capability modules join the core flow through `src/engine/module_hooks.py`: the core calls fixed hook points (`round.reset`, `round.processing.begin`, `instance.reset.preflight`, `instance.reset`, `round.recovery.preflight`, `round.abort`, `round.rewind.begin`, `round.rewind.restore`, `round.commit`, `module.state.record`, `module.state.read`) and never names a module; a point with no registered handler is a no-op, and reads answer empty. `module.state.record` / `module.state.read` store and read module-held data by kind (e.g. `quick_actions`, `health_events`), answered by the module that owns the kind. The set of points is closed (registering an unknown point raises), and only modules under `src/engine/modules` may register (architecture guard). Modules on hooks so far: `world_reports` (overreach, world legality and world event round reports) and `round_presentation` (quick actions, recap, token budget bump, pending combat results, private GM directives) and `lorebook_runtime` (Lorebook sticky / cooldown / delay timers, ticked at `round.processing.begin`) and `health` (GM-visible degradation events and component status, which `engine.health` reads and writes as `health_events` / `health_status` module state), `check_reveals` (check reveal records), `player_control_state` (away-control policy, defaulting to `pause`) `private_channels` (private messages and table talk) and `seat_activity` (the "seat has acted" lock, via `seat.preflight` / `seat.acted` / `seat.forgotten` / `seat.has_acted`; without it no seat is locked, the behaviour before #480) and `legacy_combat` (the read-only combat turn view, read via `module_hooks.combat_view`; without it every game reads the neutral view) and `combat_extension_state` (the generic combat-extension payload and its per-round snapshots; the snapshot code moved from `round_snapshots` into the module and joins round commit / abort / rewind through hooks, with log entry fields unchanged) and `media` (scene-image reference and map background, read and written as `scene_image` / `map_background` module state; `payload_container`, used when importing a save package, is a storage contract and stays a direct call); removing any of them leaves a playable game that simply lacks those extras, with API payloads keeping their shape (empty list or `null`).
 
 ---
+
+`resource_recovery` is an authority exception here: its slot and lifecycle hooks are required by the current writer and must remain readable, validated and rewindable even when a ruleset declares no recovery policy. The feature is optional at the ruleset boundary; the authority module is not. An absent policy declaration disables the feature, but does not permit unloading or dropping the authority slot. A declared malformed or future/unsupported policy fails closed with a validation error. Luck recovery itself has only the explicit `check` / `off` setting.
 
 The creation group now follows [ADR0007](adr/0007-runtime-state-ownership.md): `room_access`, the transaction ledger `economy_state`, and `game_config` are kernel. `narrative_notes`, `narration_preferences` and `check_presentation` join read/write and preflight hooks. A new run preflights every participating source slot before creating a candidate, then owners deep-copy preferences. In-place reset preserves preferences. Disabled optional owners return neutral views and ignore their writes while preserving opaque storage.
 
@@ -2476,7 +2481,9 @@ retry; the Lorebook owner materializes canonical selections for it. Ordinary
 character-library import still follows its creation-field contract and is not
 equivalent to full-snapshot carry.
 
-Migration 45→46 is a reader fence, not historical plan/mark reconstruction.
+Migration 45→46 is the story/development/finale reader fence; 46→47 is the
+recovery-authority reader fence. Neither reconstructs historical plans, marks or
+recovery.
 Explicitly damaged module containers are refused before defaults can erase authority.
 Unsupported/future module versions reject writes. Persisted non-object slots
 are rejected before generic defaults can silently discard their authority.
@@ -2486,6 +2493,48 @@ receipt provenance. Plan state and historical plan snapshots rebind at import.
 This does not implement #446's full CoC Adventure runtime or guarantee arbitrary
 model prose never invents facts. See [ADR-0008](adr/0008-run-plans-and-finales.md)
 and the [user guide](en/run-story-and-finale.md).
+
+### 15.4.2.1 Resource recovery and intermissions
+
+`modules.resource_recovery` (schema 1) is the sole authority for recovery
+qualifications, receipts, consumption scopes and command idempotency. Character
+sheets continue to own current SAN/Luck values, `WorldState` continues to own
+the logical clock, and the service publishes through `StagedGameTransaction`
+with the existing bounded character-balance update. This does not create a
+second balance, clock or rest system.
+
+Recovery is a fixed ruleset-declared MVP contract, not a general DSL. A complete
+`resource_recovery` v1 declaration enables the feature: `coc_light` permits
+GM-approved overnight SAN recovery and treatment, while `coc7e_style` uses
+Psychoanalysis treatment over 30 days and does not restore SAN from overnight
+rest. Both profiles can explicitly select Luck `check` or `off`. An absent
+declaration disables the feature and does not infer or force a policy. A
+declared incomplete, malformed, future or unsupported policy fails closed with
+a validation error. This is a lightweight CoC-style service contract; it does
+not claim to implement the complete official CoC rules.
+
+Players request overnight rest or treatment from the recovery/rest panel in the
+character rail. After GM approval the server advances its logical clock for the
+required duration and settles the result. The service compares the required
+duration with elapsed time since the request and advances only the remaining
+difference, so an approval or retry never adds another full duration. Treatment uses a declared
+`psychoanalysis` skill (the light profile may also declare `psychology`). The GM
+can grant a SAN/Luck story reward, which the character player claims. After a
+real completed intermission the GM opens Luck recovery; the server rolls d100,
+and only a result above current Luck grants 1d10. A failed roll consumes that
+intermission opportunity as well. A character at 0 SAN or permanent madness,
+dead, unconscious, away or in combat cannot be revived or settled by ordinary
+recovery.
+
+When a policy is declared, positive legacy SAN/Luck narrator tags are never
+recovery authority and are rejected. Recovery must use the service path with a
+policy snapshot, server seed, run/principal identity, operation idempotency and
+one-use consumption ledger. Web routes enforce member and GM authority; P2P
+exposes only `recovery.read`, `recovery.request` and `recovery.claim`, while GM
+administrative actions remain server-authorized. Settled receipts fence
+swipe/rewind across the settled round. The 46→47 reader fence validates current
+and historical module slots, rejects pending qualifications crossing an imported
+run, and never reconstructs qualifications, resources or rewards from old logs.
 
 ---
 
@@ -5263,6 +5312,12 @@ It must not affect mechanics.
 
 # 41. Frontend Capability Gating
 
+The play view places the `AdventurePanel` trigger beside Checks in the scene header. Its contents use the shared `Modal` teleported to the document body: closing it leaves no panel space in chat, and opening it does not resize the timeline or composer. Adventure projection and node actions retain their existing game-scoped permissions and server endpoints.
+
+On desktop and mobile the GM workbench closes through its explicit toggle or Escape; outside clicks and nested dialogs leave it open, and unfinished inputs stay mounted. Invite player and the GM-only Room password entry sit together below party members. `RoomPasswordDialog` owns password creation, replacement and explicit removal using the existing server validation and authorization endpoint. Game settings submit only edited reward and away policies and no longer own password fields or password writes.
+
+Version checks, update channels, downloads and installation belong to Settings → About; only the retained-version rollback entry belongs to General → System maintenance. Search and update-notification deep links target the corresponding locations. Rollback retains the existing confirmation and launcher flow.
+
 The frontend should not do:
 
 ```ts
@@ -6353,6 +6408,19 @@ GameInstance schema 44 preserves main's migrations through 43 and initializes mi
 Unreleased local schemas 36-38 used the same numbers for different changes. `src/migrations/local_instance_branch.py` recognizes only the known room_access v1 plus AI/check-slot shape before replaying main's content-binding and credential migrations. Unknown mixed variants are rejected. Historical checks and pending Push data are retained without rolling again.
 
 Lorebook SQLite 12 adds owner-private recovery records after main's external identity and source tracking. `src/migrations/lorebook_branches.py` recognizes the local v10 journal, establishes main's identity columns in the normal SQLite transaction, then applies v11/v12. Existing books, entries, bindings and journals remain intact; failures roll back all steps.
+
+The local world-identity upgrade is a cold-start repair at the front of a fresh
+`common_factory` build; a `reuse` build does not run it. It accepts legacy
+Lorebook SQLite v4 and canonical v5–v12 world/book/binding layouts, and only
+rewrites known world/book references in `templates`, every `saves/state*.json`
+file and known JSON payloads for save schemas recognized by the local writer.
+The replacement ID is a stable hash of the old identity in an ASCII canonical
+form, keeping same-named worlds distinct. Display titles, entry IDs, `game_key`,
+`memory_namespace` and chat/log text stay unchanged. SQLite receipts plus a
+durable journal roll the plan forward after an interrupted process; user-edited
+files, target collisions, invalid schemas and future schemas fail closed without
+overwriting data. New AI world generation keeps IDs ASCII, budgets for the
+`world:` primary-book prefix and prefixes generated entry IDs.
 
 AI seats and check grants register their cleanup/reset lifecycle hooks in their own modules. `adventure_commands.py` owns node/choice transactions, authoritative admission, current-run fences, module preflight and owner-mediated compensation. Game Lorebook selection also restores through its content-binding owner; preview round reads do not materialize missing slots. The imagegen game projection captures storyboard inputs so core round orchestration does not increase narrative-module coupling.
 

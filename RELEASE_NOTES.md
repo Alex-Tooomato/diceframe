@@ -1,8 +1,16 @@
-# DiceFrame v3.0.0-beta.2
+# DiceFrame v3.0.0-beta.3
 
 > 预览版本：DiceFrame 3.0 的模块化运行时、通用内容与冒险包、DF Agent、剧情计划和新的多人安全边界首次整合到同一条主线。它是公开测试版本，适合验证新功能与升级流程。
 
 ## 中文
+
+### 相较 beta.2
+
+- **CoC 资源恢复**：新增恢复/休整面板，支持申请过夜休整与治疗、GM 审批、SAN/Luck 剧情奖励领取和幕间 Luck 恢复检定。规则需显式启用恢复策略；服务端统一处理时钟、权限、一次性回执和重复提交，普通恢复不能解除永久疯狂。
+- **旧数据升级**：启动时安全重绑定旧世界与资料册引用，修复旧世界标题被用作标识后无法开局的问题；保留展示名称、条目和角色数据。歧义、冲突及不支持的未来存档会在写入前拒绝迁移。
+- **冒险面板**：入口移到场景标题栏的检定旁，点击后打开独立弹窗；修复长内容的滚轮滚动，不再挤占桌面或手机对话区。角色栏的地图移到角色感知上方，并移除重复的当前冒险条目。
+- **GM 与联机操作**：GM 工作台点击外部保持打开，保留连续操作和输入草稿；房间密码独立放在邀请玩家旁。补充普通邀请与已有角色认领链接的用途说明，修复专业角色卡未完成时的提交与错误提示。
+- **更新入口**：检查、下载与安装更新仍位于设置的“关于”；只有上一版本回退入口放到“通用 → 系统维护”。创建模组冒险时，不使用额外内容包的选项也有明确说明。
 
 ### 主要更新
 
@@ -26,20 +34,28 @@
 
 ### 升级说明
 
-- 这是 `3.0.0-beta.2` 预览版。升级重要对局前请备份完整的 `data/` 文件夹，并保留 `data/_updater/`、`data-bindings/` 和 `data-pending/`。
-- 支持的 GameInstance 存档迁移到 schema `46`，资料册数据库迁移到 schema `12`。44→45 拆分本局配置与展示偏好，45→46 建立剧情、成长和结团写入的读者隔离边界；不会猜测历史计划、成长标记或回滚记录。未知未来版本和歧义格式会明确拒绝。
+- 这是 `3.0.0-beta.3` 预览版。升级重要对局前请备份完整的 `data/` 文件夹，并保留 `data/_updater/`、`data-bindings/` 和 `data-pending/`。
+- 支持的 GameInstance 存档迁移到 schema `47`，资料册数据库迁移到 schema `12`。44→45 拆分本局配置与展示偏好，45→46 建立剧情、成长和结团写入的读者隔离边界，46→47 增加一次性资源恢复的权威记录边界；不会猜测历史计划、成长标记或恢复资格。beta.2 及更早版本不能直接读取升级后的存档；降级应使用对应版本的保留数据或升级前备份。未知未来版本和歧义格式会明确拒绝。
 - AI 配置只接受服务商目录、独立凭据和能力级引用。旧直填地址/密钥不会自动猜测转换；升级后如能力显示未配置，请在设置中选择有效服务商引用。
 - 支持托管更新的 Docker 在 Python ABI 和系统运行时兼容时可直接应用版本化更新包；基础镜像、Python ABI、系统库、CA、字体或 launcher 协议变化仍需重新拉取镜像。预览版不会移动 Docker `latest` 标签。
 - 移动端最低支持版本为 `0.6.0`。插件和内容包应声明自己的 runtime、schema 与最低版本，未知或不兼容的包会在安装/运行边界拒绝。
 
 ### 下载与校验
 
-- **普通 Windows 用户**：`DiceFrame-v3.0.0-beta.2-windows-portable.zip`
-- **源码运行用户**：`DiceFrame-v3.0.0-beta.2-windows.zip`
-- **托管 Docker 更新**：`DiceFrame-v3.0.0-beta.2-docker-update-linux-amd64.zip`
-- Release 同时提供每个压缩包的 `.sha256` 和合集 `SHA256SUMS`。
+- **普通 Windows 用户**：`DiceFrame-v3.0.0-beta.3-windows-portable.zip`
+- **源码运行用户**：`DiceFrame-v3.0.0-beta.3-windows.zip`
+- **托管 Docker 更新**：`DiceFrame-v3.0.0-beta.3-docker-update-linux-amd64.zip`
+- Release 提供统一的 `SHA256SUMS` 文件校验以上三个压缩包。
 
 ## English
+
+### Since beta.2
+
+- **CoC resource recovery**: a Recovery / rest panel supports overnight and treatment requests, GM approval, SAN/Luck story rewards and intermission Luck checks. Rules explicitly opt in; the server owns time advancement, authorization, one-use receipts and retry safety. Ordinary recovery cannot reverse permanent madness.
+- **Legacy data upgrades**: startup safely rebinds legacy world and Book references that used display titles as identifiers, preserving titles, entries and characters. Ambiguous, conflicting and unsupported future saves stop migration before writes.
+- **Adventure panel**: the entry now sits beside Checks in the scene header and opens an independent dialog. Long content scrolls correctly without shrinking desktop or mobile chat. The character rail places the map above perception and removes the duplicate current-adventure section.
+- **GM and multiplayer controls**: outside clicks leave the GM workbench open and preserve unfinished inputs. Room password management sits beside Invite player. Join guidance distinguishes new-character invitations from existing-character claim links, and incomplete professional characters receive clearer submission handling and errors.
+- **Update navigation**: version checks, download and installation remain in Settings → About; only previous-version rollback lives under General → System maintenance. Module-adventure creation also clearly labels the option to use no additional content pack.
 
 ### Highlights
 
@@ -63,15 +79,15 @@
 
 ### Upgrade notes
 
-- This is the `3.0.0-beta.2` preview release. Back up the complete `data/` directory before upgrading an important campaign, including `data/_updater/`, `data-bindings/`, and `data-pending/`.
-- Supported GameInstance saves migrate to schema `46` and Lorebook databases to schema `12`. Migration 44→45 separates table configuration and presentation preferences; 45→46 establishes a reader fence for story, growth, and finale writes without guessing historical plans, growth marks, or reversals. Unknown future versions and ambiguous layouts are rejected.
+- This is the `3.0.0-beta.3` preview release. Back up the complete `data/` directory before upgrading an important campaign, including `data/_updater/`, `data-bindings/`, and `data-pending/`.
+- Supported GameInstance saves migrate to schema `47` and Lorebook databases to schema `12`. Migration 44→45 separates table configuration and presentation preferences; 45→46 fences story, growth and finale writes; 46→47 adds the one-use recovery authority boundary without inventing historical plans, growth marks or recovery qualifications. Beta.2 and older readers cannot read upgraded saves; use the matching retained dataset or pre-upgrade backup when downgrading. Unknown future versions and ambiguous layouts are rejected.
 - AI configuration accepts only the provider directory, independent credentials, and capability-level references. Legacy inline URLs and keys are not guessed into providers; configure valid references if a capability is unconfigured after upgrade.
 - Managed Docker can apply the versioned update package when the Python ABI and system runtime are compatible. Base-image, Python ABI, system-library, CA, font, or launcher-protocol changes still require a new image. A preview release does not move the Docker `latest` tag.
 - The minimum supported mobile client version is `0.6.0`. Plugins and content packages should declare their runtime, schema, and minimum-version contracts; unknown or incompatible packages are rejected at the install/run boundary.
 
 ### Downloads and verification
 
-- **Regular Windows users**: `DiceFrame-v3.0.0-beta.2-windows-portable.zip`
-- **Source users**: `DiceFrame-v3.0.0-beta.2-windows.zip`
-- **Managed Docker update**: `DiceFrame-v3.0.0-beta.2-docker-update-linux-amd64.zip`
-- The Release also includes a `.sha256` sidecar for each archive and a combined `SHA256SUMS` file.
+- **Regular Windows users**: `DiceFrame-v3.0.0-beta.3-windows-portable.zip`
+- **Source users**: `DiceFrame-v3.0.0-beta.3-windows.zip`
+- **Managed Docker update**: `DiceFrame-v3.0.0-beta.3-docker-update-linux-amd64.zip`
+- The Release includes one combined `SHA256SUMS` file for these three archives.

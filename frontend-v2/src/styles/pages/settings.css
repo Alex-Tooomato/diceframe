@@ -1883,18 +1883,25 @@ body.light .reference-settings-page .system-status-card {
   align-items: center;
 }
 
-.reference-settings-page .update-maintenance-section {
-  border-color: color-mix(in srgb, var(--df-info) 30%, var(--df-border-soft));
-  background: color-mix(in srgb, var(--df-info) 4%, var(--df-surface-1));
-}
-
-.reference-settings-page .update-maintenance-section .advanced-section-head > div {
+.reference-settings-page .about .update-card {
+  display: grid;
+  gap: 12px;
   min-width: 0;
-  flex: 1 1 auto;
+  padding: 16px 18px;
+  border: 1px solid color-mix(in srgb, var(--df-info) 30%, var(--df-border-soft));
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--df-info) 7%, var(--df-surface-1));
 }
 
-.reference-settings-page .update-maintenance-section .update-rollback-row {
-  padding-block: 2px;
+.reference-settings-page .update-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.reference-settings-page .update-card h4, .reference-settings-page .update-card p {
+  margin: 0;
 }
 
 .reference-settings-page .update-channel-inline {

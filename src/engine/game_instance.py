@@ -36,7 +36,7 @@ from src.engine.game_state_contracts import (
 )
 from src.engine.language import DEFAULT_LANGUAGE, normalize_language
 from src.engine.module_state import ensure_module_states
-from src.engine.modules import adventure_runtime_state, checks, economy_state, progression_state, room_access, round_safety, ruleset_runtime, run_finale, session_stats, skill_growth
+from src.engine.modules import adventure_runtime_state, checks, economy_state, progression_state, resource_recovery, room_access, round_safety, ruleset_runtime, run_finale, session_stats, skill_growth
 from src.engine.narrative_perspective import validate_narrative_perspective
 from src.engine.player_control import (
     PlayerControlError,
@@ -288,6 +288,7 @@ class GameInstance:
     def run_writable(self) -> bool:
         """Read-only run lifecycle admission, shared by locked legacy writers."""
         skill_growth.require_writable(self)
+        resource_recovery.require_writable(self)
         return self.state != GameState.ENDED and run_finale.writable(self) and bool(module_hooks.ask(
             module_hooks.AUTHORITATIVE_WRITE_ALLOWED, self, default=True,
         ))

@@ -16,7 +16,11 @@ from src.engine import module_hooks
 from src.engine.modules import adventure_runtime_state, content_binding, progression_state, storytelling
 from src.engine.narrative_perspective import validate_narrative_perspective
 from src.migrations import migrate_instance
-from src.webui.services._common import _GAME_KEY_SEP, resolve_default_scene_image
+from src.webui.services._common import (
+    _GAME_KEY_SEP,
+    professional_character_validation_error,
+    resolve_default_scene_image,
+)
 from src.webui.services import game_creation_phases
 from src.webui.game_lifecycle_context import (
     CreationPhase,
@@ -139,6 +143,13 @@ async def create_from_seed(
                 for character in players
             ]
     except ValueError as exc:
+        error_code, error = professional_character_validation_error(exc)
+        if error_code == "PROFESSIONAL_CHARACTER_BLUEPRINT_REQUIRED":
+            return {
+                "ok": False,
+                "error_code": error_code,
+                "error": error,
+            }
         if dict(getattr(target_inst, "adventure_binding", {}) or {}):
             return {
                 "ok": False,
@@ -147,8 +158,8 @@ async def create_from_seed(
             }
         return {
             "ok": False,
-            "error_code": "INVALID_PROFESSIONAL_CHARACTER",
-            "error": str(exc),
+            "error_code": error_code,
+            "error": error,
         }
     unique_id = f"{world_id}_{time.time_ns()}"
     game_key = ("web", unique_id, "web_bot")

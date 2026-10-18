@@ -8,7 +8,7 @@ import { accessTokenStorageKey } from '@/api/connection'
 import type { CharacterCard, CharacterCardsResponse, CharacterSheet, GameMutationResponse, GeneratedRuleResponse, GeneratedWorldResponse, GmStyle, RuleDetailResponse, RuleSummary, RuleTemplate, RulesResponse, SceneImageRef, StoryMode, WorldListResponse, WorldSummary, WorldTemplateSummary, WorldTemplatesResponse } from '@/api/types'
 import { useToast } from '@/composables/useToast'
 import { useLocale, type Locale } from '@/composables/useLocale'
-import { SUPPORTED_LOCALES, localeChain, normalizeLocale } from '@/i18n'
+import { i18n, SUPPORTED_LOCALES, localeChain, normalizeLocale } from '@/i18n'
 import CharacterWizard from '@/components/admin/CharacterWizard.vue'
 import AdventureLaunchSummary from '@/features/library/AdventureLaunchSummary.vue'
 import WorldLorebookSummary from '@/features/create/WorldLorebookSummary.vue'
@@ -620,6 +620,22 @@ function onRulesetSubmit(c: CharacterSheet) {
   showRulesetBuilder.value = false
   editIdx.value = null
 }
+function cancelRulesetBuilder() {
+  const idx = editIdx.value
+  if (idx !== null) {
+    const current = characters.value[idx]
+    const canonical = current?.ruleset_character
+    // Imported/legacy cards are staged before the review builder opens. If the
+    // player cancels without producing a canonical blueprint, discard that
+    // staged card so Create cannot submit an invalid professional payload.
+    if (!canonical || typeof canonical !== 'object' || Array.isArray(canonical)) {
+      characters.value.splice(idx, 1)
+      cardControl.value = removeCardControl(cardControl.value, idx)
+    }
+  }
+  showRulesetBuilder.value = false
+  editIdx.value = null
+}
 function onPickerPick(c: CharacterCard) {
   const character = characterFromCard(c)
   characters.value.push(character)
@@ -689,6 +705,17 @@ function requireApiConfiguration() {
   if (!showApiSetupHint.value) return
   throw new Error(t('apiSetupRequired'))
 }
+function throwMutationError(response: { ok?: boolean; error?: string; error_code?: string }) {
+  if (response.ok || !response.error) return
+  const code = String(response.error_code || '')
+  const localized = code === 'PROFESSIONAL_CHARACTER_BLUEPRINT_REQUIRED'
+    ? gameDefault(
+      '这个专业角色卡缺少规则数据。请重新打开当前规则的专业建卡器，完成建卡后再创建或加入。旧角色卡不能仅凭展示属性安全转换。',
+      'This professional character card is missing its rules data. Reopen the current professional character builder, finish it, and then create or join the game. Legacy cards cannot be converted from display fields alone.',
+    )
+    : ''
+  throw new Error(localized || response.error)
+}
 async function prepareAiRule() {
   if (mode.value !== 'ai' || !aiAutoRule.value || aiGeneratedRule.value?.rule_id) return
   requireApiConfiguration()
@@ -698,7 +725,7 @@ async function prepareAiRule() {
     method: 'POST',
     body: JSON.stringify({ prompt: aiPrompt.value, source_rule_id: aiRule.value, language: gameLanguage.value }),
   })
-  if (!r.ok && r.error) throw new Error(r.error)
+  throwMutationError(r)
   if (!r.rule_id) throw new Error(t('missingRuleId'))
   aiGeneratedRule.value = r
   const all = await api<RulesResponse>('/rules').catch(() => null)
@@ -707,6 +734,7 @@ async function prepareAiRule() {
 }
 async function nextStep() {
   if (!canNext() || step.value >= 4) return
+  if (step.value === 3 && reviewIncompleteProfessionalCard()) return
   busy.value = true; error.value = ''
   try {
     if (step.value === 1) await prepareAiRule()
@@ -715,8 +743,22 @@ async function nextStep() {
 }
 function prevStep() { if (step.value > 1) step.value = (step.value - 1) as Step }
 
+function reviewIncompleteProfessionalCard(): boolean {
+  if (!usesProfessionalBuilder.value) return false
+  const index = characters.value.findIndex(character => {
+    const blueprint = character.ruleset_character
+    return !blueprint || typeof blueprint !== 'object' || Array.isArray(blueprint)
+  })
+  if (index < 0) return false
+  step.value = 3
+  error.value = i18n.global.t('apiErrors.PROFESSIONAL_CHARACTER_BLUEPRINT_REQUIRED')
+  openWizard(index)
+  return true
+}
+
 async function create() {
   if (busy.value) return
+  if (reviewIncompleteProfessionalCard()) return
   busy.value = true; error.value = ''
   try {
     requireApiConfiguration()
@@ -741,7 +783,7 @@ async function create() {
       : (seed.value.trim() ? undefined : defaultSceneImageRef.value)
     if (seed.value.trim()) {
       const r = await api<GameMutationResponse>('/games/create-from-seed', { method: 'POST', body: JSON.stringify({ seed_code: seed.value.trim(), solo: solo.value, players, language: gameLanguage.value, scene_image: selectedSceneImage, narrative_perspective: narrativePerspective.value, story_mode: storyMode.value }) })
-      if (!r.ok && r.error) throw new Error(r.error)
+      throwMutationError(r)
       if (!r.game_key) throw new Error(t('missingGameId'))
       clearCreateDraft(draftSource.value)
       rememberCurrentGame(r.game_key, r.world_name || '')
@@ -766,7 +808,7 @@ async function create() {
       const selectedRule = activeRule.value
       payload.rule_id = selectedRule
       const gw = await api<GeneratedWorldResponse>('/generate-world', { method: 'POST', body: JSON.stringify({ prompt: aiPrompt.value, rule_id: selectedRule, language: gameLanguage.value }) })
-      if (!gw.ok && gw.error) throw new Error(gw.error)
+      throwMutationError(gw)
       worldId = gw.world_id; payload.world_id = worldId; payload.game_name = gw.world_name || gameDefault(DEFAULT_AI_WORLD_ZH, 'AI Generated World', DEFAULT_AI_WORLD_DE)
     }
     const lorePayload = applyLorebookSource(payload, loreChoice.value as LorebookSource, worldId, loreWorlds.value, undefined, {
@@ -774,7 +816,7 @@ async function create() {
       copied: gameDefault(' · 独立世界（引用资料册）', ' · Independent world (referenced book)', ' · Eigene Welt (Buchverweis)', ' · 独立した世界（資料集参照）', ' · Отдельный мир (ссылка на книгу)'),
     }, mode.value === 'template' && booksLoaded.value ? selectedBookIds.value : undefined, availableLorebooks.value)
     const r = await api<GameMutationResponse>('/games/create', { method: 'POST', body: JSON.stringify(lorePayload) })
-    if (!r.ok && r.error) throw new Error(r.error)
+    throwMutationError(r)
     if (!r.game_key) throw new Error(t('missingGameId'))
     if (r.generated_password) window.alert(t('roomPasswordGenerated', { pwd: r.generated_password }))
     rememberCurrentGame(r.game_key, r.world_name || String(lorePayload.game_name || ''))
@@ -1100,7 +1142,7 @@ async function create() {
     </div>
 
     <CharacterWizard v-if="showWizard" :rule-meta="ruleDetail" :rule-attrs="ruleAttrs" :attr-total="attrTotal" :skill-pool="skillPool" :rule-id="activeRule" :language="gameLanguage" :initial="editIdx !== null ? characters[editIdx] : undefined" @submit="onWizardSubmit" @cancel="showWizard = false" />
-    <RulesetExperienceHost v-if="showRulesetBuilder" :rule-id="activeRule" :language="gameLanguage" :initial="editIdx !== null ? characters[editIdx] : undefined" @submit="onRulesetSubmit" @cancel="showRulesetBuilder = false" />
+    <RulesetExperienceHost v-if="showRulesetBuilder" :rule-id="activeRule" :language="gameLanguage" :initial="editIdx !== null ? characters[editIdx] : undefined" @submit="onRulesetSubmit" @cancel="cancelRulesetBuilder" />
     <CharacterCardPicker v-if="showPicker" :cards="cards" :target-rule-id="activeRule" @pick="onPickerPick" @close="showPicker = false" />
   </section>
 </template>

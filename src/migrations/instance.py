@@ -28,7 +28,7 @@ from src.password_hashing import hash_password
 
 logger = logging.getLogger("trpg")
 
-CURRENT_INSTANCE_SCHEMA_VERSION = 46
+CURRENT_INSTANCE_SCHEMA_VERSION = 47
 
 # 内置 freeform_coc 在 Currency Model V2 中把 base_unit 从「美元」升级为
 # 「美分」（1 amount = 1 美分），存量 CoC 存档的所有 canonical 金额必须 ×100
@@ -1043,6 +1043,9 @@ def migrate_game_state_payload(data: Mapping[str, Any]) -> dict[str, Any]:
     version = int(payload.get("instance_schema_version", 1) or 1)
     if version < 1 or version > CURRENT_INSTANCE_SCHEMA_VERSION:
         raise ValueError(f"unsupported game instance schema version: {version}")
+    from src.migrations.resource_recovery import validate_recovery_state
+
+    validate_recovery_state(payload)
     from src.migrations.local_instance_branch import main_sequence_version
 
     version = main_sequence_version(payload, version)
@@ -1185,6 +1188,11 @@ def migrate_game_state_payload(data: Mapping[str, Any]) -> dict[str, Any]:
         # deferred improvement receipts. Missing optional slots remain absent;
         # never infer a historical plan, mark or reverse earlier skill gains.
         version = 46
+    if version == 46:
+        # Reader fence: older runtimes can bypass recovery authorization and
+        # cannot preserve consumed qualification identities. Do not materialize
+        # historical sources or infer resources/rewards for older saves.
+        version = 47
     payload["instance_schema_version"] = version
     from src.migrations.run_story import validate_slot_envelopes
     validate_slot_envelopes(payload)
@@ -1205,6 +1213,8 @@ def rebind_imported_game_state_payload(
     """
 
     payload = migrate_game_state_payload(data)
+    from src.migrations.resource_recovery import rebind_recovery_state
+    rebind_recovery_state(payload, run_id=run_id)
     from src.migrations.run_story import rebind_story_state
     rebind_story_state(payload, run_id=run_id)
     payload["game_key"] = list(game_key)

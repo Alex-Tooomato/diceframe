@@ -88,6 +88,67 @@ async def test_professional_character_is_rederived_bound_and_saved_without_field
 
 
 @pytest.mark.asyncio
+async def test_professional_join_rejects_legacy_card_with_actionable_blueprint_error(
+    web_api,
+):
+    api, _lorebook, registry, _fake_llm, worlds_dir = web_api
+    (api._rules_dir / "dnd2024_srd.json").write_text(
+        json.dumps({
+            "rule_id": "dnd2024_srd",
+            "rule_name": "5E 2024 SRD 专业规则",
+            "dice_system": "d20",
+            "combat_model": "hp_based",
+            "runtime": {"id": "core:dnd2024", "minimum_version": 1},
+            "attributes": [
+                {"key": key, "name": key.upper(), "min": 3, "max": 20}
+                for key in ("str", "dex", "con", "int", "wis", "cha")
+            ],
+        }, ensure_ascii=False),
+        encoding="utf-8",
+    )
+    write_world(worlds_dir, "dnd2024_legacy_join_world", default_rule="dnd2024_srd")
+    choices = api.ruleset_builder_choices("dnd2024_srd", {"locale": "zh-CN"}, "zh-CN")
+    preset = choices["choices"]["quick_presets"][0]
+    finalized = api.ruleset_builder_finalize(
+        "dnd2024_srd",
+        {**preset["draft"], "locale": "zh-CN", "name": "规则席位测试"},
+        "zh-CN",
+    )["character"]
+    legacy = {
+        "character_name": "旧版导入卡",
+        "race": "human",
+        "class": "fighter",
+        "attributes": {"str": 10, "dex": 10, "con": 10, "int": 10, "wis": 10, "cha": 10},
+    }
+    rejected_create = await api.create_game(
+        "dnd2024_legacy_join_world",
+        "旧卡创建测试",
+        rule_id="dnd2024_srd",
+        players=[legacy],
+    )
+    assert rejected_create["ok"] is False
+    assert rejected_create["error_code"] == "PROFESSIONAL_CHARACTER_BLUEPRINT_REQUIRED"
+    assert "专业建卡器" in rejected_create["error"]
+
+    created = await api.create_game(
+        "dnd2024_legacy_join_world",
+        "旧卡加入测试",
+        rule_id="dnd2024_srd",
+        players=[finalized],
+    )
+    assert created["ok"] is True
+    instance = registry.get(api._parse_key(created["game_key"]))
+    before = len(instance.players)
+
+    rejected = await api.create_player(created["game_key"], legacy)
+
+    assert rejected["ok"] is False
+    assert rejected["error_code"] == "PROFESSIONAL_CHARACTER_BLUEPRINT_REQUIRED"
+    assert "专业建卡器" in rejected["error"]
+    assert len(instance.players) == before
+
+
+@pytest.mark.asyncio
 async def test_professional_seed_restart_keeps_rule_and_prevalidates_before_mutation(
     web_api,
 ):
@@ -120,7 +181,26 @@ async def test_professional_seed_restart_keeps_rule_and_prevalidates_before_muta
         rule_id="dnd2024_srd",
         players=[finalized],
     )
+    original_instance = registry.get(api._parse_key(original["game_key"]))
+    original_players = deepcopy(original_instance.players)
+    original_rule_id = original_instance.rule_id
+    original_binding = deepcopy(getattr(original_instance, "ruleset_binding", {}))
     before_keys = {inst.game_key for inst in registry.list_all()}
+
+    missing_blueprint = deepcopy(finalized)
+    missing_blueprint.pop("ruleset_character")
+    missing_blueprint.pop("rule_binding", None)
+    rejected_blueprint = await api.create_from_seed(
+        original["seed_code"], players=[missing_blueprint],
+    )
+
+    assert rejected_blueprint["ok"] is False
+    assert rejected_blueprint["error_code"] == "PROFESSIONAL_CHARACTER_BLUEPRINT_REQUIRED"
+    assert "专业建卡器" in rejected_blueprint["error"]
+    assert {inst.game_key for inst in registry.list_all()} == before_keys
+    assert original_instance.players == original_players
+    assert original_instance.rule_id == original_rule_id
+    assert getattr(original_instance, "ruleset_binding", {}) == original_binding
 
     invalid = deepcopy(finalized)
     invalid["ruleset_character"]["rule_binding"]["runtime_version"] = 999

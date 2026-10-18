@@ -202,7 +202,7 @@ async function save(): Promise<void> {
     const path = props.target === 'card'
       ? `/character-cards/${encodeURIComponent(props.cardId)}/profile`
       : `/games/${encodeURIComponent(props.gameKey)}/character/${encodeURIComponent(props.userId)}/profile`
-    const response = await api<{ ok: boolean; character?: CharacterSheet; card?: CharacterSheet; error?: string }>(path, {
+    const response = await api<{ ok: boolean; character?: CharacterSheet; card?: CharacterSheet; error?: string; error_code?: string }>(path, {
       method: 'PATCH',
       body: JSON.stringify({
         character_name: form.character_name,
@@ -210,7 +210,15 @@ async function save(): Promise<void> {
         profile: form.profile,
       }),
     })
-    if (!response.ok) throw new Error(response.error || text('保存失败', 'Save failed'))
+    if (!response.ok) {
+      if (response.error_code === 'PROFESSIONAL_CHARACTER_BLUEPRINT_REQUIRED') {
+        throw new Error(text(
+          '这个专业角色缺少规则数据，请重新打开当前规则的专业建卡器完成后再保存。',
+          'This professional character is missing its rules data. Reopen the current professional character builder and finish it before saving.',
+        ))
+      }
+      throw new Error(response.error || text('保存失败', 'Save failed'))
+    }
     emit('saved', response.character || response.card || props.character, 'profile')
   } catch (cause: unknown) {
     failure.value = errorMessage(cause)

@@ -27,6 +27,7 @@ from src.rulesets.contracts import LiveAdvancementPolicyRuntime
 from src.webui.services._common import (
     _GAME_KEY_SEP,
     _is_safe_world_id,
+    professional_character_validation_error,
     resolve_default_scene_image,
 )
 from src.webui.services import game_creation_phases, game_seed_lifecycle
@@ -296,15 +297,23 @@ async def create_game(
                 for character in players
             ]
     except ValueError as exc:
-        error_code = (
-            "INCOMPATIBLE_ADVENTURE"
-            if str(adventure_id or "").strip()
-            else "INVALID_PROFESSIONAL_CHARACTER"
-        )
+        error_code, error = professional_character_validation_error(exc)
+        if error_code == "PROFESSIONAL_CHARACTER_BLUEPRINT_REQUIRED":
+            return {
+                "ok": False,
+                "error_code": error_code,
+                "error": error,
+            }
+        if str(adventure_id or "").strip():
+            return {
+                "ok": False,
+                "error_code": "INCOMPATIBLE_ADVENTURE",
+                "error": str(exc),
+            }
         return {
             "ok": False,
             "error_code": error_code,
-            "error": str(exc),
+            "error": error,
         }
 
     game_creation_phases.materialize_world(

@@ -114,6 +114,7 @@ function stateLabel(state?: string) {
       <p v-else class="party-rail__empty">{{ t('none') }}</p>
       <div v-if="$slots.membersActions" class="party-rail__members-actions">
         <slot name="membersActions" />
+        <p class="party-rail__invite-hint">{{ t('inviteNewCharacterQrHint') }}</p>
       </div>
     </section>
 
@@ -154,7 +155,10 @@ function stateLabel(state?: string) {
 .party-rail__section-head > span { color: var(--df-text-muted); font-size: 11px; }
 .party-rail__members { display: grid; gap: 7px; margin: 0; padding: 0; list-style: none; }
 .party-rail__members-actions { display: grid; gap: 7px; margin-top: 10px; }
+.party-rail__members-actions :deep(.party-rail__access-actions) { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 7px; }
+.party-rail__members-actions :deep(.party-rail__access-actions button) { min-width: 0; padding-inline: 5px; font-size: 12px; }
 .party-rail__members-actions :deep(button) { display: inline-flex; align-items: center; justify-content: center; gap: 6px; width: 100%; min-height: 36px; border-color: color-mix(in srgb, var(--df-interactive) 72%, var(--df-border-soft)); background: color-mix(in srgb, var(--df-interactive) 15%, var(--df-surface-1)); color: var(--df-interactive-strong, var(--df-interactive)); }
+.party-rail__invite-hint { margin: 0; color: var(--df-text-muted); font-size: 11px; line-height: 1.45; }
 .party-rail__member { display: grid; grid-template-columns: 34px minmax(0, 1fr) auto; align-items: center; gap: 8px; min-width: 0; padding: 7px; border: 1px solid color-mix(in srgb, var(--party-color, var(--df-border-soft)) 28%, transparent); border-left: 3px solid var(--party-color, var(--df-border-soft)); border-radius: var(--df-radius-sm); background: color-mix(in srgb, var(--party-color, var(--df-surface-2)) 7%, var(--df-surface-2)); }
 .party-rail__member .portrait-image { border-color: color-mix(in srgb, var(--party-color, var(--df-border-soft)) 72%, var(--df-border-soft)); box-shadow: 0 0 0 2px color-mix(in srgb, var(--party-color, transparent) 16%, transparent); }
 .party-rail__member.is-self { border-color: color-mix(in srgb, var(--df-interactive) 52%, var(--df-border-soft)); }

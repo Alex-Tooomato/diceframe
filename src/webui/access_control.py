@@ -534,6 +534,12 @@ class WebAccessControl:
         if len(parts) < 4:
             return ""
         tail = parts[3]
+        if tail == "recovery":
+            if request.method == "GET" and len(parts) == 4:
+                return "seat"
+            if request.method == "POST" and len(parts) == 5 and parts[4] in {"request", "claim"}:
+                return "seat"
+            return ""
         if request.method == "GET" and tail in _LOBBY_GET_TAILS and len(parts) == 4:
             return "lobby"
         if request.method == "POST" and tail in _LOBBY_POST_TAILS and len(parts) == 4:

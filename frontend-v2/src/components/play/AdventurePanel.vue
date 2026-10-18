@@ -4,6 +4,7 @@ import { useRouter } from 'vue-router'
 import { api } from '@/api/client'
 import { submitRulesetIntent } from '@/api/rulesets'
 import { useLocale } from '@/composables/useLocale'
+import Modal from '@/components/ui/Modal.vue'
 import AdventureNodeActions from '@/features/adventures/AdventureNodeActions.vue'
 
 type AdventureNode = {
@@ -140,39 +141,31 @@ async function load(): Promise<void> {
   }
 }
 
-watch(() => props.gameKey, () => { void load() })
+watch(() => props.gameKey, () => { open.value = false; void load() })
 onMounted(() => { void load() })
 </script>
 
 <template>
-  <section :class="['adventure-panel panel', { 'adventure-panel-open': open }]" data-testid="game-adventure-panel">
-    <header>
-      <div>
-        <span class="eyebrow">{{ isGm ? t('adventureGmEyebrow') : t('adventurePlayerEyebrow') }}</span>
-        <h3>{{ t('adventurePanelTitle') }}</h3>
-      </div>
-      <div class="adventure-panel-actions">
-        <button class="text-button" type="button" :disabled="loading" @click="load">{{ t('refresh') }}</button>
-        <button
-          class="adventure-panel-toggle"
-          data-testid="adventure-panel-toggle"
-          type="button"
-          :aria-expanded="open"
-          @click="open = !open"
-        >{{ open ? t('adventurePanelClose') : t('adventurePanelOpen') }}</button>
-      </div>
-    </header>
-    <p v-if="!open" class="muted adventure-panel-summary">
-      <template v-if="loading">{{ t('adventurePanelLoading') }}</template>
-      <template v-else-if="error">{{ error }}</template>
-      <template v-else-if="!adventure">{{ t('adventurePanelNone') }}</template>
-      <template v-else-if="!adventure.available">{{ t('adventurePanelUnavailable') }}</template>
-      <template v-else>{{ adventure.binding?.adventure_id }} · {{ adventure.binding?.version }}</template>
-    </p>
-    <div v-else class="adventure-panel-body">
+  <button
+    class="adventure-panel-trigger"
+    data-testid="adventure-panel-toggle"
+    type="button"
+    aria-haspopup="dialog"
+    :aria-expanded="open"
+    @click="open = true"
+  >{{ t('adventurePanelTitle') }}</button>
+  <Modal v-if="open" :title="t('adventurePanelTitle')" dialog-class="adventure-panel-dialog" close-test-id="adventure-panel-close" close-on-backdrop @close="open = false">
+    <div class="adventure-panel-tools">
+      <span class="eyebrow">{{ isGm ? t('adventureGmEyebrow') : t('adventurePlayerEyebrow') }}</span>
+      <button class="text-button" type="button" :disabled="loading" @click="load">{{ t('refresh') }}</button>
+    </div>
+    <section class="adventure-panel-body" data-testid="game-adventure-panel" :aria-busy="loading">
       <p v-if="loading" class="muted">{{ t('adventurePanelLoading') }}</p>
       <p v-else-if="error" class="error-copy">{{ error }}</p>
-      <p v-else-if="!adventure" class="muted">{{ t('adventurePanelNone') }}</p>
+      <template v-else-if="!adventure">
+        <p class="muted">{{ t('adventurePanelNone') }}</p>
+        <p class="muted">{{ t('adventurePanelFreeformHint') }}</p>
+      </template>
       <template v-else-if="!adventure.available">
         <p class="error-copy">{{ t('adventurePanelUnavailable') }}</p>
         <p class="muted">{{ unavailableReason }}</p>
@@ -214,40 +207,31 @@ onMounted(() => { void load() })
           <p v-for="milestone in graph.milestones" :key="milestone.id"><strong>{{ milestone.name || milestone.id }}</strong> — {{ linkedNames(milestone.node_ids) }}</p>
         </section>
       </template>
-    </div>
-  </section>
+    </section>
+  </Modal>
 </template>
 
 <style scoped>
-.adventure-panel { position: relative; display: grid; gap: 8px; margin-bottom: 6px; padding: 8px 12px; }
-.adventure-panel.adventure-panel-open { position: absolute; top: 44px; right: 12px; z-index: 30; width: min(560px, calc(100% - 24px)); max-height: calc(100% - 54px); margin: 0; overflow: auto; box-shadow: 0 18px 42px rgb(0 0 0 / .35); }
-.adventure-panel header { display: flex; justify-content: space-between; gap: 12px; align-items: center; }
-.adventure-panel-actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; justify-content: flex-end; }
-.adventure-panel h3, .adventure-panel h4, .adventure-panel p { margin: 0; }
-.adventure-panel h3 { font-size: 1rem; }
-.adventure-panel h4 { font-size: .86rem; color: var(--text-secondary); }
-.eyebrow { color: var(--primary); font-size: .72rem; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; }
-.text-button { border: 0; background: transparent; color: var(--primary); cursor: pointer; padding: 0; }
-.adventure-panel-toggle { min-height: 30px; padding: 4px 9px; border: 1px solid var(--df-border-soft); border-radius: 6px; color: var(--df-text); background: var(--df-surface-2); cursor: pointer; }
-.adventure-panel-toggle:hover { border-color: var(--primary); color: var(--primary); }
-.adventure-panel-summary { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: .78rem; }
-.adventure-panel-body { display: grid; gap: 12px; min-height: 0; }
+.adventure-panel-trigger { white-space: nowrap; }
+:global(.dialog.adventure-panel-dialog) { display: flex; flex-direction: column; gap: 12px; box-sizing: border-box; width: min(680px, 100%); max-height: calc(100dvh - 32px); overflow: hidden; }
+:global(.dialog.adventure-panel-dialog > header) { flex-shrink: 0; }
+.adventure-panel-tools { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-shrink: 0; }
+.adventure-panel-body { display: grid; gap: 12px; flex: 1 1 auto; min-height: 0; overflow: auto; overscroll-behavior: contain; padding-right: 4px; }
+.adventure-panel-body h4, .adventure-panel-body p { margin: 0; }
+.adventure-panel-body h4 { font-size: .86rem; color: var(--df-text-secondary); }
+.eyebrow { color: var(--df-accent-strong); font-size: .72rem; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; }
+.text-button { border: 0; background: transparent; color: var(--df-interactive-strong); cursor: pointer; }
 .adventure-binding { font-size: .78rem; overflow-wrap: anywhere; }
 .adventure-chapter, .adventure-goals { display: grid; gap: 8px; }
-.adventure-node { border-left: 2px solid var(--primary); padding-left: 10px; display: grid; gap: 5px; }
+.adventure-node { border-left: 2px solid var(--df-accent); padding-left: 10px; display: grid; gap: 5px; }
 .adventure-node-heading { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
-.adventure-node-heading span { color: var(--text-tertiary); font-size: .75rem; }
-.adventure-node p, .adventure-goals p { font-size: .82rem; line-height: 1.45; }
-.adventure-complete { justify-self: start; min-height: 32px; }
-.error-copy { color: var(--error); }
+.adventure-node-heading span { color: var(--df-text-muted); font-size: .75rem; }
+.adventure-node p, .adventure-goals p { font-size: .82rem; line-height: 1.45; overflow-wrap: anywhere; }
+.error-copy { color: var(--df-danger); }
 @media (max-width: 480px) {
-  .adventure-panel { gap: 10px; margin-bottom: 10px; }
-  .adventure-panel header { align-items: center; }
+  :global(.dialog.adventure-panel-dialog) { padding: 14px; }
   .adventure-node { padding-left: 8px; }
   .adventure-node-heading { align-items: flex-start; flex-direction: column; gap: 2px; }
   .recovery-button { width: 100%; min-height: 40px; }
-}
-@media (max-width: 800px) {
-  .adventure-panel.adventure-panel-open { position: fixed; inset: 104px 8px 8px; width: auto; max-height: none; }
 }
 </style>

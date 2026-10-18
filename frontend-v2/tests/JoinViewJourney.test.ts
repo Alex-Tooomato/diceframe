@@ -187,4 +187,33 @@ describe('JoinView recovery journey', () => {
     expect(wrapper.find('.join-party-preview__empty').text()).toContain('没有队伍成员')
     wrapper.unmount()
   })
+
+  it('explains that a generic invite creates a new bound character in both join forms', async () => {
+    const help = String(i18n.global.t('joinCharacterHelp'))
+    mocks.api.mockImplementation(async (path: string) => {
+      if (path.endsWith('/characters')) return { players: [], rule_attrs: [], rule_meta: {} }
+      if (path.endsWith('/character-cards')) return { cards: [] }
+      return { world_name: 'Generic invite table', has_room_password: false }
+    })
+
+    const ordinary = await render({ game: 'web|generic|gm', share: '1' })
+    expect(ordinary.find('.player-sheet-form .sheet-head p').text()).toBe(help)
+    ordinary.unmount()
+
+    mocks.api.mockImplementation(async (path: string) => {
+      if (path.endsWith('/characters')) {
+        return {
+          players: [],
+          rule_attrs: [],
+          rule_meta: {},
+          ruleset_runtime: { capabilities: { character_builder: 'professional' } },
+        }
+      }
+      if (path.endsWith('/character-cards')) return { cards: [] }
+      return { world_name: 'Professional invite table', has_room_password: false }
+    })
+    const professional = await render({ game: 'web|professional|gm', share: '1' })
+    expect(professional.find('.professional-join-form .sheet-head p').text()).toBe(help)
+    professional.unmount()
+  })
 })

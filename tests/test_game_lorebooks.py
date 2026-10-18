@@ -92,7 +92,7 @@ def test_auto_selection_marks_character_books_locked_and_is_read_only(store):
 
     result = service.selection("web|room|bot", "gm")
 
-    assert result == {
+    expected = {
         "ok": True, "game_key": "web|room|bot", "world_id": "world-1", "world_name": "World One",
         "mode": "auto", "max_books": 16,
         "books": [
@@ -100,6 +100,11 @@ def test_auto_selection_marks_character_books_locked_and_is_read_only(store):
             {"id": "world-book", "name": "world-book", "enabled": True, "entry_count": 0, "selected": True, "locked": False},
             {"id": "char-book", "name": "char-book", "enabled": True, "entry_count": 0, "selected": True, "locked": True},
         ],
+    }
+    # The catalogue orders by updated_at, which may change between fixture
+    # inserts. This contract protects membership and locks, not insertion order.
+    assert {**result, 'books': sorted(result['books'], key=lambda row: row['id'])} == {
+        **expected, 'books': sorted(expected['books'], key=lambda row: row['id']),
     }
     assert instance.modules == before
 

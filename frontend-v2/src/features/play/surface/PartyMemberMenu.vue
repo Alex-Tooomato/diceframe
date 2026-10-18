@@ -23,12 +23,14 @@ const emit = defineEmits<{
 }>()
 const { locale, t } = useLocale()
 const open = ref(false)
-const label = computed(() => `${locale.value === 'zh-CN' ? '成员操作' : 'Member actions'} · ${props.player.character_name || props.player.user_id}`)
+const memberName = computed(() => props.player.character_name || props.player.user_id)
+const label = computed(() => `${locale.value === 'zh-CN' ? '成员操作' : 'Member actions'} · ${memberName.value}`)
+const linkLabel = computed(() => props.player.control?.mode === 'unclaimed' ? t('inviteClaim') : t('operationLink'))
 const icon = (component: Component) => () => h(NIcon, { size: 16 }, { default: () => h(component) })
 const option = (key: string, text: string, component: Component): DropdownOption => ({ key, label: text, icon: icon(component), props: { role: 'menuitem' } })
 const options = computed<DropdownOption[]>(() => {
   const uid = props.player.user_id
-  const result: DropdownOption[] = [option('copy-link', t('operationLink'), LinkOutline), option('edit', t('edit'), CreateOutline)]
+  const result: DropdownOption[] = [option('copy-link', linkLabel.value, LinkOutline), option('edit', t('edit'), CreateOutline)]
   if (uid !== props.currentUserId) result.push(option('away', t(props.away ? 'back' : 'away'), props.away ? PlayCircleOutline : PauseCircleOutline))
   if (props.player.control?.mode === 'ai') {
     if (!props.player.control.temporary) result.push(option('control-human', t('controlStopAi'), PersonOutline))
@@ -59,7 +61,7 @@ function select(key: string | number) {
 
 <template>
   <NDropdown v-if="isGm" v-model:show="open" trigger="click" placement="bottom-end" size="large" :options="options" :menu-props="() => ({ role: 'menu', 'aria-label': label })" @select="select">
-    <button class="party-member-menu" data-testid="party-member-menu" :data-player-id="player.user_id" type="button" :title="label" :aria-label="label" aria-haspopup="menu" :aria-expanded="open" :disabled="busy" :aria-busy="busy" @keydown.down.prevent="open = true" @keydown.esc.prevent="open = false">
+    <button class="party-member-menu" data-testid="party-member-menu" :data-player-id="player.user_id" type="button" :title="player.control?.mode === 'unclaimed' ? t('inviteClaim') : label" :aria-label="player.control?.mode === 'unclaimed' ? t('inviteClaim') : label" aria-haspopup="menu" :aria-expanded="open" :disabled="busy" :aria-busy="busy" @keydown.down.prevent="open = true" @keydown.esc.prevent="open = false">
       <NIcon :component="EllipsisHorizontal" size="18" />
     </button>
   </NDropdown>

@@ -499,7 +499,7 @@ async function create() {
 
     <section v-else-if="usesProfessionalBuilder" class="join-form professional-join-form">
       <div class="sheet-head">
-        <div><h2>{{ t('createYourCharacter') }}</h2><p>{{ t('createCharacterHelp') }}</p></div>
+        <div><h2>{{ t('createYourCharacter') }}</h2><p>{{ t('joinCharacterHelp') }}</p></div>
         <span class="badge badge-active">5E 2024 SRD</span>
       </div>
       <label v-if="cards.length" class="sheet-field">{{ t('chooseFromSharedLibrary') }}
@@ -513,7 +513,7 @@ async function create() {
       <div class="sheet-head">
         <div>
           <h2>{{ t('createYourCharacter') }}</h2>
-          <p>{{ t('createCharacterHelp') }}</p>
+          <p>{{ t('joinCharacterHelp') }}</p>
         </div>
         <span class="badge badge-active">{{ detail.solo_mode ? t('soloAdventure') : t('multiplayerAdventure') }}</span>
       </div>
@@ -613,6 +613,10 @@ async function create() {
         <span class="join-party-preview__count">{{ partyPlayers.length }}</span>
       </header>
       <p class="join-party-preview__hint">加入前先查看当前队伍与角色状态，创建角色后会自动回到本局。</p>
+      <div v-if="partyPlayers.some(player => player.control?.mode === 'unclaimed')" class="join-party-preview__claim-hint" role="note">
+        <strong>{{ t('claimUnclaimedTitle') }}</strong>
+        <span>{{ t('claimUnclaimedHint') }}</span>
+      </div>
       <ul class="join-party-preview__list">
         <li v-for="player in partyPlayers" :key="player.user_id" class="join-party-preview__member" :style="{ '--party-color': playerColor(player.user_id) }">
           <PortraitImage :portrait="player.character_sheet?.portrait" :rule-id="String(detail.rule_id || '')" :seed="player.user_id" :name="player.character_name" :size="42" />
@@ -684,6 +688,8 @@ async function create() {
   font-weight: 800;
 }
 .join-party-preview__hint { margin: 0; color: var(--df-text-muted); font-size: 12px; line-height: 1.55; }
+.join-party-preview__claim-hint { display: grid; gap: 4px; padding: 9px 10px; border: 1px solid color-mix(in srgb, var(--df-accent) 35%, var(--df-border-soft)); border-radius: var(--df-radius-sm); background: color-mix(in srgb, var(--df-accent) 8%, var(--df-surface-1)); color: var(--df-text-secondary); font-size: 12px; line-height: 1.55; }
+.join-party-preview__claim-hint strong { color: var(--df-accent-strong); }
 .join-party-preview__list { display: grid; gap: 8px; margin: 0; padding: 0; list-style: none; }
 .join-party-preview__member {
   display: grid;

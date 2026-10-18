@@ -13,6 +13,7 @@ from src.llm.client import LLMClient, ProviderConfig
 from src.lorebook.bootstrap import seed_builtin_worlds
 from src.lorebook.matcher import KeywordMatcher
 from src.lorebook.store import LorebookStore
+from src.migrations.world_identity import migrate_legacy_world_ids
 from src.memory.delta import MemoryStore
 from src.rulesets.builtin import build_default_ruleset_registry
 from src.rulesets.registry import RulesetRuntimeRegistry
@@ -75,6 +76,10 @@ def create_trpg_subsystems(
     check_provider: ProviderConfig | None = None,
     reuse: TRPGSubsystems | None = None,
 ) -> TRPGSubsystems:
+    if reuse is None:
+        converted = migrate_legacy_world_ids(data_dir, worlds_dir)
+        if converted:
+            logger.info('已迁移 %d 个旧世界来源标识 / Upgraded legacy world identities', len(converted))
     save_dir = data_dir / "saves"
 
     registry = reuse.registry if reuse is not None else GameRegistry(save_dir)

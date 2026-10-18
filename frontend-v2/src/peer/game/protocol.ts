@@ -12,6 +12,9 @@ export type PeerGameOperation =
   | 'roll.requests'
   | 'check_modes.read'
   | 'check_modes.request'
+  | 'recovery.read'
+  | 'recovery.request'
+  | 'recovery.claim'
   | 'roll.resolve'
   | 'player.create'
   | 'player.rebind'
@@ -42,6 +45,9 @@ const GAME_OPERATIONS = new Set<PeerGameOperation>([
   'roll.requests',
   'check_modes.read',
   'check_modes.request',
+  'recovery.read',
+  'recovery.request',
+  'recovery.claim',
   'roll.resolve',
   'player.create',
   'player.rebind',

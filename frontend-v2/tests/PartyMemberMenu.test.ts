@@ -26,6 +26,21 @@ describe('party member menu', () => {
     wrapper.unmount()
   })
 
+  it('labels the seat link as a claim invitation for an unclaimed character', () => {
+    const wrapper = mountMenu({ player: { ...player, control: { mode: 'unclaimed' } } })
+    const link = wrapper.getComponent(NDropdown).props('options')![0]
+    expect(link.label).toBe('邀请认领此角色')
+    expect(wrapper.get('button').attributes('aria-label')).toBe('邀请认领此角色')
+    wrapper.unmount()
+  })
+
+  it('keeps the normal control-link label for a human-controlled character', () => {
+    const wrapper = mountMenu({ player: { ...player, control: { mode: 'human' } } })
+    const link = wrapper.getComponent(NDropdown).props('options')![0]
+    expect(link.label).toBe('操作链接')
+    wrapper.unmount()
+  })
+
   it('does not offer or dispatch kick for the host, current actor or sole member', () => {
     for (const context of [{ gmUid: 'seat-b' }, { currentUserId: 'seat-b' }, { memberCount: 1 }]) {
       const wrapper = mountMenu(context)

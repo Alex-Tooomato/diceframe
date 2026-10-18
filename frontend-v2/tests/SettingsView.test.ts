@@ -16,6 +16,7 @@ const mocks = vi.hoisted(() => {
     },
     api: vi.fn().mockResolvedValue({}),
     replace: vi.fn(),
+    updateStatus: null as Record<string, any> | null,
   }
 })
 
@@ -27,7 +28,7 @@ vi.mock('vue-router', () => ({ useRoute: () => ({ query: { section: 'models' } }
 vi.mock('../src/composables/useUpdateCheck', () => ({ useUpdateCheck: () => ({ updateInfo: ref(null), updateChecking: ref(false), checkForUpdates: vi.fn() }) }))
 vi.mock('../src/composables/useUpdater', () => ({
   shouldAutoDownloadUpdate: vi.fn(() => false), updateStateForVersion: vi.fn(),
-  useUpdater: () => ({ updateStatus: ref(null), reloadCountdown: ref(0), downloadPercent: ref(0), startDownload: vi.fn(), applyUpdate: vi.fn(), refreshStatus: vi.fn(), isUpdateBusy: ref(false), restartApplication: vi.fn(), waitForApplicationRestart: vi.fn() }),
+  useUpdater: () => ({ updateStatus: ref(mocks.updateStatus), reloadCountdown: ref(0), downloadPercent: ref(0), startDownload: vi.fn(), applyUpdate: vi.fn(), refreshStatus: vi.fn(), isUpdateBusy: ref(false), restartApplication: vi.fn(), waitForApplicationRestart: vi.fn() }),
 }))
 vi.mock('../src/composables/useTheme', () => ({ useTheme: () => ({ current: ref('dark'), skin: ref('midnight'), builtinSkins: [], apply: vi.fn(), applySkin: vi.fn(), pluginThemes: ref([]), pluginThemeId: ref(''), loadPluginThemes: vi.fn(), applyPluginTheme: vi.fn(), clearPluginTheme: vi.fn() }) }))
 vi.mock('../src/composables/useBackgroundImages', () => ({ useBackgroundImages: () => ({ options: [], previews: {}, custom: {}, loading: ref(false), initialize: vi.fn(), setBackground: vi.fn(), resetBackground: vi.fn(), resetAllBackgrounds: vi.fn() }) }))
@@ -59,6 +60,7 @@ describe('SettingsView management navigation', () => {
   beforeEach(() => {
     mocks.store.load.mockReset()
     mocks.api.mockClear()
+    mocks.updateStatus = null
   })
 
   it('lists an independent Agent token budget and includes it in the save request', async () => {
@@ -109,5 +111,25 @@ describe('SettingsView management navigation', () => {
     expect(details.attributes('open')).toBeUndefined()
     await details.find('summary').trigger('click')
     expect(details.attributes('open')).toBeDefined()
+  })
+
+  it('keeps updates in About and only version rollback in General maintenance', async () => {
+    mocks.updateStatus = { state: 'done', self_update: { supported: true }, rollback: { available: true, target_version: '3.0.0-beta.1' } }
+    const wrapper = shallowMount(SettingsView, { attachTo: document.body, global: { stubs: { Spin: { template: '<div><slot /></div>' }, Button: { template: '<button><slot /></button>' }, RouterLink: true } } })
+    await flushPromises()
+    await wrapper.get('.settings-nav [data-section="about"]').trigger('click')
+    expect(wrapper.get('#settings-update').isVisible()).toBe(true)
+    expect(wrapper.get('#settings-update').element.closest('.about')).not.toBeNull()
+    expect(wrapper.get('#settings-update').text()).toContain('checkUpdate')
+    expect(wrapper.get('#settings-update').text()).not.toContain('rollbackAvailableHint')
+    await wrapper.get('.settings-nav [data-section="general"]').trigger('click')
+    expect(wrapper.get('#settings-update').isVisible()).toBe(false)
+    const rollback = wrapper.get('#settings-rollback')
+    expect(rollback.isVisible()).toBe(true)
+    expect(rollback.element.closest('#settings-maintenance')).not.toBeNull()
+    expect(rollback.text()).toContain('rollbackAvailableHint')
+    expect(rollback.text()).not.toContain('updateApplied')
+    expect(rollback.text()).not.toContain('checkUpdate')
+    wrapper.unmount()
   })
 })

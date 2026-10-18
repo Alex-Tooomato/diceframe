@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onDeactivated, onMounted, ref, watch } from 'vue'
 import { NIcon } from 'naive-ui'
-import { BookOutline, ChatbubbleEllipsesOutline, ChevronBack, ChevronForward, PlayForwardOutline, ShareOutline, ShieldOutline, StatsChartOutline, TerminalOutline } from '@vicons/ionicons5'
+import { BookOutline, ChatbubbleEllipsesOutline, ChevronBack, ChevronForward, KeyOutline, PlayForwardOutline, ShareOutline, ShieldOutline, StatsChartOutline, TerminalOutline } from '@vicons/ionicons5'
 import { useRoute, useRouter } from 'vue-router'
 import { api, apiBlob, errorMessage as apiErrorMessage, hasAccessToken, isNotFoundError, retryOnRateLimit } from '@/api/client'
 import type { BotBindTokenResponse, CharacterCard, CharacterCardsResponse, CharacterListResponse, CharacterPortrait, CharacterSheet, CheckResult, CommandResponse, GameDetail, GmStyle, HealthResponse, JsonObject, LuckDecisionResponse, PendingPayment, Player, PlayerContextResponse, PublicAction, RuleMeta, RulesetDirectorProposal, RulesetGameplayView, StoryMode, WorldCandidate, WorldListResponse, WorldTemplatesResponse } from '@/api/types'
@@ -17,6 +17,7 @@ import { useLocale, type Locale } from '@/composables/useLocale'
 import { UI_LOCALES, uiLocaleLabel } from '@/i18n'
 import { useSettingsStore } from '@/stores/useSettingsStore'
 import InviteQrModal from '@/features/play/InviteQrModal.vue'
+import RoomPasswordDialog from '@/features/play/RoomPasswordDialog.vue'
 import { copyToClipboard } from '@/utils/clipboard'
 import { contentLanguageOf, filterByContentLanguage } from '@/utils/contentLanguage'
 import { cardAdoptionLocked, characterCardNeedsConversion, characterCardRuleName } from '@/utils/characterCards'
@@ -31,6 +32,7 @@ import TableTalkFeed from '@/components/play/TableTalkFeed.vue'
 import EconomyProposalCard from '@/components/play/EconomyProposalCard.vue'
 import GmChargeComposer from '@/features/play/economy/GmChargeComposer.vue'
 import GameSidebar from '@/components/GameSidebar.vue'
+import ResourceRecoveryPanel from '@/features/play/recovery/ResourceRecoveryPanel.vue'
 import PlayHelpCenter from '@/components/PlayHelpCenter.vue'
 import HealthPanel from '@/components/HealthPanel.vue'
 import Modal from '@/components/ui/Modal.vue'
@@ -68,8 +70,7 @@ import { fetchRulesetAvailableActions } from '@/api/rulesets'
 import { currencyLabel } from '@/utils/ruleSchema'
 import { currencyAmountToInputText, currencyEditableUnitLabel } from '@/utils/currency'
 import type { CurrencySystem } from '@/utils/currency'
-import { buildRewardPolicySave, buildRoomPasswordSave, isEconomyProposalActionable, isNonBlockingPersonalPurchase, nextEconomyProposal } from '@/features/play/economyPrompts'
-import { roomPasswordProblem, roomPasswordProblemMessage } from '@/utils/roomPassword'
+import { buildRewardPolicySave, isEconomyProposalActionable, isNonBlockingPersonalPurchase, nextEconomyProposal } from '@/features/play/economyPrompts'
 
 defineOptions({ name: 'PlayView' })
 
@@ -106,7 +107,8 @@ const gmPendingCount = computed(() => (
   + actionRecoveryStatus.value.count
 ))
 const workspaceCopy = computed(() => workbenchCopy(locale.value))
-const worldCandidates = ref<WorldCandidate[]>([]), showWorldSwitch = ref(false), showRoomPassword = ref(false), roomPasswordInput = ref('')
+const worldCandidates = ref<WorldCandidate[]>([]), showWorldSwitch = ref(false)
+const showGameSettings = ref(false), showRoomPassword = ref(false)
 // 邀请/接管二维码弹窗：title 非空即展示，关闭时置空。链接由弹窗自己按选中的
 // 可达地址算（见 InviteQrModal），这里只交代给谁开、开哪一局。
 const inviteTitle = ref(''), inviteHint = ref(''), inviteSeatToken = ref('')
@@ -181,20 +183,6 @@ function closeControls() {
   })
 }
 
-/**
- * The GM workbench is a drawer even on wide screens.  Keep the drawer's
- * explicit close button for keyboard users, but also make a pointer click on
- * the story surface dismiss it.  A document-level pointer handler avoids an
- * extra transparent layer over the timeline (which would otherwise swallow
- * the first click intended for the story).
- */
-function onPlayPointerDown(event: PointerEvent) {
-  if (!gmToolsOpen.value) return
-  const target = event.target
-  if (!(target instanceof Node)) return
-  if (gmDrawer.value?.contains(target) || gmToggle.value?.contains(target)) return
-  closeControls()
-}
 function focusActionRecovery() {
   closeControls()
   void nextTick(() => actionComposer.value?.focusRecovery())
@@ -310,7 +298,6 @@ const hasCampaignGuidance = computed(() => Boolean(
   game.detail.value?.ruleset_runtime?.capabilities?.session_zero
   || game.detail.value?.ruleset_runtime?.capabilities?.tutorial_coach,
 ))
-const hasAdventureBinding = computed(() => Boolean(game.detail.value?.adventure_binding?.adventure_id))
 type RulesetTool = 'campaign' | 'combat'
 const activeRulesetTool = ref<RulesetTool | ''>('')
 const directorProposal = ref<RulesetDirectorProposal | null>(null)
@@ -729,15 +716,10 @@ async function onAccess() {
   command('player-access', { open: opening })
 }
 
-// 房间级暂离语义：只有 GM 真正改过才提交，避免「保存密码」时把它一并覆盖掉。
+// 房间级暂离语义：只有 GM 真正改过才提交，避免保存其它设置时把它一并覆盖掉。
 const awayPolicyInput = ref<'pause' | 'ai_takeover'>('pause')
 const awayPolicyTouched = ref(false)
-// 密码同理：打开弹窗会清空输入框，无条件提交等于把原密码删掉。
-const passwordTouched = ref(false)
-
-function onRoomPassword() {
-  roomPasswordInput.value = ''
-  passwordTouched.value = false
+function openGameSettings() {
   awayPolicyInput.value = game.detail.value?.away_control_policy === 'ai_takeover' ? 'ai_takeover' : 'pause'
   awayPolicyTouched.value = false
   const policy = game.detail.value?.economy_reward_policy || {}
@@ -746,27 +728,12 @@ function onRoomPassword() {
     ? currencyAmountToInputText(policy.auto_reward_cap, economyCurrencySystem.value)
     : ''
   // 只有 GM 真正改动了奖励策略字段才提交：detail 未加载或未触碰时提交
-  // 会把空 mode 当作“清除本局覆盖”，改密码/超时就会误重置奖励策略。
+  // 会把空 mode 当作“清除本局覆盖”，修改暂离设置就会误重置奖励策略。
   rewardPolicyTouched.value = false
-  showRoomPassword.value = true
+  showGameSettings.value = true
 }
-async function setRoomPassword() {
+async function saveGameSettings() {
   try {
-    // 只有 GM 真的编辑过密码输入框才提交：否则「只改暂离设置」也会 POST 一个空
-    // 密码，把房间里已有的密码静默删掉。明确清空输入框仍是一次显式移除密码。
-    const passwordSave = buildRoomPasswordSave(passwordTouched.value, roomPasswordInput.value)
-    const passwordProblem = passwordSave ? roomPasswordProblem(passwordSave.password) : null
-    if (passwordProblem) {
-      // Checked before anything is saved, so a rejected password never leaves
-      // the other settings in this dialog half-applied.
-      const [key, params] = roomPasswordProblemMessage(passwordProblem)
-      toast.error(t(key, params))
-      return
-    }
-    if (passwordSave) {
-      const r = await api<{ ok?: boolean; error?: string }>(`/games/${encodeURIComponent(game.currentGame.value)}/room-password`, { method: 'POST', body: JSON.stringify(passwordSave) })
-      if (r.error || r.ok === false) throw new Error(r.error || t('settingFailed'))
-    }
     // 奖励策略仅在 GM 实际改动过时提交；显式选“跟随默认”仍会清除覆盖。
     const rewardSave = buildRewardPolicySave(
       rewardPolicyTouched.value, rewardPolicyMode.value, rewardPolicyCap.value,
@@ -783,11 +750,7 @@ async function setRoomPassword() {
       if (apR.error || apR.ok === false) throw new Error(apR.error || t('settingFailed'))
       toast.success(t('awayPolicySaved'))
     }
-    showRoomPassword.value = false
-    // 只在真的提交过密码时报告密码结果；没碰密码却提示"已取消密码"是误导。
-    if (passwordSave) {
-      toast.success(passwordSave.password ? t('roomPasswordUpdated') : t('roomPasswordCleared'))
-    }
+    showGameSettings.value = false
     await game.refresh()
   } catch (e: unknown) { toast.error(errorMessage(e)) }
 }
@@ -802,7 +765,7 @@ async function ensureSettingsLoaded() {
 async function invite() {
   await ensureSettingsLoaded()
   inviteSeatToken.value = ''
-  inviteHint.value = t('inviteQrHint')
+  inviteHint.value = t('inviteNewCharacterQrHint')
   inviteTitle.value = t('inviteLink')
 }
 
@@ -1252,7 +1215,6 @@ onMounted(() => {
   loadPlayContext()
   ensureSettingsLoaded()
   window.addEventListener('keydown', onPlayKeydown)
-  document.addEventListener('pointerdown', onPlayPointerDown)
 })
 watch(
   [() => game.detail.value, () => game.isGm.value, () => route.query.workbench, () => game.currentGame.value],
@@ -1303,7 +1265,6 @@ watch(showGmThinking, (thinking) => {
 })
 onBeforeUnmount(() => {
   window.removeEventListener('keydown', onPlayKeydown)
-  document.removeEventListener('pointerdown', onPlayPointerDown)
   if (rulesetToolPoll) window.clearInterval(rulesetToolPoll)
   sceneImageSequence += 1
   revokeSceneImageUrl(playSceneImageUrl.value)
@@ -1417,7 +1378,18 @@ function onPlayKeydown(event: KeyboardEvent) {
           @portrait-click="openPortraitEditor"
           @allocate-level-up="allocateLevelUp"
           @open-character-center="openCharacterCenter"
-        />
+        >
+          <template #after-character>
+            <ResourceRecoveryPanel
+              :game-key="game.currentGame.value"
+              :actor-id="actorId"
+              :is-gm="game.isGm.value"
+              :readonly="preview && !delegate"
+              :refresh-key="`${game.detail.value.run_id}:${game.detail.value.last_activity}`"
+              @changed="game.refresh(true)"
+            />
+          </template>
+        </GameSidebar>
       </aside>
 
       <KpQuestionDialog
@@ -1506,15 +1478,13 @@ function onPlayKeydown(event: KeyboardEvent) {
           <template #trailing>
             <CheckModePanel ref="checkModeTool" :game-key="game.currentGame.value" :run-id="game.detail.value.run_id || ''"
               :actor-id="actorId" :is-gm="game.isGm.value" :preview="preview" :delegate="delegate" @status="checkModeStatus = $event" @changed="game.refresh(true)" />
+            <AdventurePanel
+              :game-key="game.currentGame.value"
+              :is-gm="game.isGm.value"
+              @completed="refreshRulesetPanels"
+            />
           </template>
         </PlayStageHeader>
-
-        <AdventurePanel
-          v-if="hasAdventureBinding"
-          :game-key="game.currentGame.value"
-          :is-gm="game.isGm.value"
-          @completed="refreshRulesetPanels"
-        />
 
         <DirectorProposalCard
           v-if="directorProposal"
@@ -1714,16 +1684,16 @@ function onPlayKeydown(event: KeyboardEvent) {
           </button>
         </template>
         <template #membersActions>
-          <button
-            v-if="game.isGm.value"
-            class="party-rail__invite"
-            data-testid="play-invite-player"
-            type="button"
-            @click="invite"
-          >
-            <NIcon :component="ShareOutline" size="15" />
-            <span>{{ t('invitePlayer') }}</span>
-          </button>
+          <div v-if="game.isGm.value" class="party-rail__access-actions">
+            <button class="party-rail__invite" data-testid="play-invite-player" type="button" @click="invite">
+              <NIcon :component="ShareOutline" size="15" />
+              <span>{{ t('invitePlayer') }}</span>
+            </button>
+            <button data-testid="play-room-password" type="button" @click="showRoomPassword = true">
+              <NIcon :component="KeyOutline" size="15" />
+              <span>{{ t('roomPassword') }}</span>
+            </button>
+          </div>
         </template>
         <template #actions>
           <PartyActions
@@ -1782,7 +1752,7 @@ function onPlayKeydown(event: KeyboardEvent) {
           @cards="openCards"
           @world-switch="openWorldSwitch"
           @lorebooks="showGameLorebooks = true"
-          @room-password="onRoomPassword"
+          @game-settings="openGameSettings"
           @scene-image="openSceneImageEditor"
           @map-background="openMapBackgroundEditor"
           @payment="openPaymentComposer"
@@ -1860,8 +1830,13 @@ function onPlayKeydown(event: KeyboardEvent) {
         :title="t('mobileStatusLabel')"
         @click="openSidebar"
       ><NIcon :component="StatsChartOutline" /></button>
+      <div
+        v-if="!characterDocked && mobilePanel === 'controls'"
+        class="play-drawer-backdrop"
+        aria-hidden="true"
+      />
       <button
-        v-if="!characterDocked && (mobilePanel || sidebarOpen)"
+        v-else-if="!characterDocked && (mobilePanel || sidebarOpen)"
         class="play-drawer-backdrop"
         :aria-label="t('close')"
         @click="closeSidebar(); closeControls()"
@@ -1958,11 +1933,16 @@ function onPlayKeydown(event: KeyboardEvent) {
       @changed="game.refresh(true)"
     />
 
-    <div v-if="showRoomPassword" class="modal" @click.self="showRoomPassword = false">
-      <section class="dialog">
-        <header><h2>{{ t('gameSettings') }}</h2><button @click="showRoomPassword = false">×</button></header>
-        <p>{{ t('roomPasswordHelp') }}</p>
-        <label>{{ t('newPassword') }}<input type="password" v-model="roomPasswordInput" :placeholder="t('emptyCancelsPassword')" @input="passwordTouched = true" @keyup.enter="setRoomPassword"></label>
+    <RoomPasswordDialog
+      v-if="game.isGm.value && showRoomPassword"
+      :key="game.currentGame.value"
+      :game-key="game.currentGame.value"
+      :has-password="Boolean(game.detail.value?.has_room_password)"
+      @close="showRoomPassword = false"
+      @changed="game.refresh()"
+    />
+
+    <Modal v-if="game.isGm.value && showGameSettings" :title="t('gameSettings')" @close="showGameSettings = false">
         <label>{{ t('rewardPolicyMode') }}
           <select v-model="rewardPolicyMode" @change="rewardPolicyTouched = true">
             <option value="">{{ t('rewardPolicyFollowDefault') }}</option>
@@ -1979,11 +1959,10 @@ function onPlayKeydown(event: KeyboardEvent) {
         </label>
         <p class="muted">{{ t('awayPolicyHelp') }}</p>
         <div class="actions">
-          <button @click="showRoomPassword = false">{{ t('cancel') }}</button>
-          <button class="primary" @click="setRoomPassword">{{ t('saveAction') }}</button>
+          <button @click="showGameSettings = false">{{ t('cancel') }}</button>
+          <button class="primary" @click="saveGameSettings">{{ t('saveAction') }}</button>
         </div>
-      </section>
-    </div>
+    </Modal>
 
   </main>
 

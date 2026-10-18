@@ -170,4 +170,86 @@ describe('CreateView draft restoration', () => {
     expect(restored.activeRule).toBe('generated:custom')
     second.unmount()
   })
+
+  it('drops a legacy professional card when its review builder is canceled', async () => {
+    i18n.global.locale.value = 'en'
+    const rulesetBuilder = {
+      template: '<button data-testid="ruleset-cancel" @click="$emit(\'cancel\')">Cancel</button>',
+      emits: ['cancel'],
+    }
+    const wrapper = mount(CreateView, {
+      global: {
+        plugins: [i18n],
+        stubs: { ...stubs, RulesetExperienceHost: rulesetBuilder },
+      },
+    })
+    await flushPromises()
+    const vm = wrapper.vm as any
+    vm.characters = [{
+      character_name: 'Legacy card',
+      identity: {},
+      attributes: { str: 10 },
+      skills: [],
+    }]
+    vm.openWizard(0)
+    await flushPromises()
+    expect(vm.showRulesetBuilder).toBe(true)
+
+    await wrapper.get('[data-testid="ruleset-cancel"]').trigger('click')
+    expect(vm.characters).toHaveLength(0)
+    expect(vm.showRulesetBuilder).toBe(false)
+    wrapper.unmount()
+  })
+
+  it('keeps a canonical professional card when editing is canceled', async () => {
+    i18n.global.locale.value = 'en'
+    const rulesetBuilder = {
+      template: '<button data-testid="ruleset-cancel" @click="$emit(\'cancel\')">Cancel</button>',
+      emits: ['cancel'],
+    }
+    const wrapper = mount(CreateView, {
+      global: {
+        plugins: [i18n],
+        stubs: { ...stubs, RulesetExperienceHost: rulesetBuilder },
+      },
+    })
+    await flushPromises()
+    const vm = wrapper.vm as any
+    const canonicalCard = {
+      character_name: 'Canonical card',
+      identity: {},
+      attributes: { str: 10 },
+      skills: [],
+      ruleset_character: { build: { level: 1 }, rule_binding: { rule_id: 'dnd2024_srd' } },
+    }
+    vm.characters = [canonicalCard]
+    vm.openWizard(0)
+    await flushPromises()
+    await wrapper.get('[data-testid="ruleset-cancel"]').trigger('click')
+
+    expect(vm.characters).toHaveLength(1)
+    expect(vm.characters[0].character_name).toBe('Canonical card')
+    expect(vm.characters[0].ruleset_character).toEqual(canonicalCard.ruleset_character)
+    wrapper.unmount()
+  })
+
+  it('returns a restored legacy card to professional review before confirming or posting creation', async () => {
+    const wrapper = mount(CreateView, { global: { plugins: [i18n], stubs } })
+    await flushPromises()
+    const vm = wrapper.vm as any
+    vm.characters = [{ character_name: 'Legacy draft', identity: {}, attributes: { str: 10 }, skills: [] }]
+    vm.step = 3
+    await vm.nextStep()
+    expect(vm.step).toBe(3)
+    expect(vm.showRulesetBuilder).toBe(true)
+    expect(vm.error).toContain(i18n.global.t('apiErrors.PROFESSIONAL_CHARACTER_BLUEPRINT_REQUIRED'))
+    vm.showRulesetBuilder = false
+    vm.step = 4
+    mocks.apiPaths.length = 0
+    await vm.create()
+    expect(vm.step).toBe(3)
+    expect(vm.showRulesetBuilder).toBe(true)
+    expect(mocks.apiPaths).not.toContain('/games/create')
+    wrapper.unmount()
+  })
 })

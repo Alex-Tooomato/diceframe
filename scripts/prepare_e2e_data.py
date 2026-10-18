@@ -24,6 +24,7 @@ from src.rulesets.dnd2024.runtime import Dnd2024Runtime
 from src.webui.services.legal import bundled_documents
 from scripts.e2e_coc_fixture import E2E_COC_GAME_KEYS, write_coc_fixture
 from scripts.e2e_choice_fixture import E2E_CHOICE_GAME_KEYS, write_choice_fixtures
+from scripts.e2e_recovery_fixture import E2E_RECOVERY_GAME_KEYS, write_recovery_fixtures
 
 
 E2E_GAME_KEY = ("web", "e2e-room", "web_bot")
@@ -54,7 +55,7 @@ E2E_PARTY_GAME_KEYS = tuple(
 # in the corresponding fixture module so completeness checks stay meaningful.
 E2E_GAME_KEYS = (
     E2E_GAME_KEY, E2E_DND_GAME_KEY, E2E_ADVENTURE_GAME_KEY, E2E_LORE_GAME_KEY,
-    *E2E_PARTY_GAME_KEYS, *E2E_CHOICE_GAME_KEYS, *E2E_COC_GAME_KEYS.values(),
+    *E2E_PARTY_GAME_KEYS, *E2E_CHOICE_GAME_KEYS, *E2E_COC_GAME_KEYS.values(), *E2E_RECOVERY_GAME_KEYS,
 )
 
 E2E_MODULE_ID = "e2e-module"
@@ -381,6 +382,7 @@ def prepare_e2e_data(data_dir: Path) -> Path:
     lore_instance.players = _e2e_players()
     _write_save(data_dir, lore_instance)
     write_coc_fixture(data_dir, _write_save)
+    write_recovery_fixtures(data_dir, _write_save)
     return save_file
 
 
