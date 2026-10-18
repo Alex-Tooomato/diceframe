@@ -975,6 +975,29 @@ def game_adventure_projection(
     # The client receives only server-derived, viewer-safe active identities.
     # It never infers completable nodes from graph transitions.
     projection["progress"] = {"active_nodes": active_nodes}
+    if viewer_is_gm:
+        suggestions = progress.get("completion_suggestions")
+        projected_suggestions = [
+            {
+                "proposal_id": row["proposal_id"],
+                "node_id": row["node_id"],
+                "reason": row["reason"],
+                "evidence_rounds": list(row["evidence_rounds"]),
+            }
+            for row in suggestions[:64]
+            if isinstance(row, dict)
+            and isinstance(row.get("proposal_id"), str)
+            and 1 <= len(row["proposal_id"]) <= 80
+            and isinstance(row.get("node_id"), str)
+            and row["node_id"] in active_nodes
+            and isinstance(row.get("reason"), str) and 0 < len(row["reason"]) <= 500
+            and isinstance(row.get("evidence_rounds"), list)
+            and 1 <= len(row["evidence_rounds"]) <= 5
+            and all(isinstance(round_number, int) and not isinstance(round_number, bool)
+                    and round_number >= 0 for round_number in row["evidence_rounds"])
+        ] if isinstance(suggestions, list) else []
+        if projected_suggestions:
+            projection["progress"]["completion_suggestions"] = projected_suggestions
     visible_choices = {node['id']: {transition.get('choice_id') for transition in node.get('transitions', [])} for node in projection['nodes'] if node.get('choice_mode') == 'exclusive'}
     if visible_choices:
         selected = progress.get('selected_choices', {})

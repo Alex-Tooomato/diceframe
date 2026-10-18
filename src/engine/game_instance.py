@@ -1396,6 +1396,7 @@ class GameInstance:
         state_changes: list[str] | None = None,
         pre_combat_extension_snapshot: dict[str, Any] | None = None,
         story: dict[str, Any] | None = None,
+        adventure_completion_candidate: Any = None,
     ) -> None:
         """判定完成，记录本轮并开启下一轮。
 
@@ -1420,6 +1421,7 @@ class GameInstance:
                 state_changes=state_changes,
                 pre_combat_extension_snapshot=pre_combat_extension_snapshot,
                 story=story,
+                adventure_completion_candidate=adventure_completion_candidate,
             )
             turn_state.start_round_locked(self)
 
@@ -1429,6 +1431,7 @@ class GameInstance:
         original_round: int,
         state_changes: list[str] | None = None,
         story: dict[str, Any] | None = None,
+        adventure_completion_candidate: Any = None,
     ) -> None:
         """为已有轮次添加 swipe（不推进回合）。"""
         async with self._lock:
@@ -1438,6 +1441,7 @@ class GameInstance:
             economy_state.state(self)
             round_recovery.finish_judgment_with_swipe_locked(
                 self, gm_response, original_round, state_changes=state_changes, story=story,
+                adventure_completion_candidate=adventure_completion_candidate,
             )
 
     async def switch_swipe(self, round_num: int, swipe_idx: int) -> bool:

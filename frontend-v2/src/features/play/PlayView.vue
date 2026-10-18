@@ -283,6 +283,11 @@ const canAskKp = computed(() => Boolean(
   && (!preview.value || delegate.value),
 ))
 const rulesetRefreshKey = ref(0)
+const adventureRefreshKey = ref(0)
+watch(
+  () => [game.detail.value?.round_number, game.log.value] as const,
+  () => { adventureRefreshKey.value += 1 },
+)
 async function refreshRulesetPanels(): Promise<void> {
   rulesetRefreshKey.value += 1
   await game.refresh(true)
@@ -1481,6 +1486,7 @@ function onPlayKeydown(event: KeyboardEvent) {
             <AdventurePanel
               :game-key="game.currentGame.value"
               :is-gm="game.isGm.value"
+              :refresh-key="adventureRefreshKey"
               @completed="refreshRulesetPanels"
             />
           </template>

@@ -155,13 +155,17 @@ async def apply_memory_delta(instance: GameInstance, response: Any, memory_store
 
 
 def apply_plot_update(instance: GameInstance, response: Any) -> None:
-    if isinstance(response.plot_update, dict) and 'story_transition' in response.plot_update:
+    plot_update = response.plot_update
+    if isinstance(plot_update, dict) and "adventure_completion" in plot_update:
+        plot_update = dict(plot_update)
+        plot_update.pop("adventure_completion", None)
+    if isinstance(plot_update, dict) and 'story_transition' in plot_update:
         from src.engine import module_hooks
-        module_hooks.record(instance, 'story_candidate', response.plot_update['story_transition'])
-    if response.plot_update and instance.plot_tracker:
+        module_hooks.record(instance, 'story_candidate', plot_update['story_transition'])
+    if plot_update and instance.plot_tracker:
         try:
             changes = instance.plot_tracker.apply_update(
-                response.plot_update, progression_state.round_value(instance),
+                plot_update, progression_state.round_value(instance),
             )
             if changes:
                 logger.info("剧情更新: round=%d, changes=%s", progression_state.round_value(instance), changes)

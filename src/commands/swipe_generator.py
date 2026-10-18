@@ -280,10 +280,14 @@ class SwipeGenerator:
         if deferred_effects:
             deferred_effects["allowed_player_uids"] = None
             queue_effect_group(instance, queued_proposals, deferred_effects)
-        if data.get("plot_update") and instance.plot_tracker:
+        plot_update = data.get("plot_update")
+        if isinstance(plot_update, dict) and "adventure_completion" in plot_update:
+            plot_update = dict(plot_update)
+            plot_update.pop("adventure_completion", None)
+        if plot_update and instance.plot_tracker:
             try:
                 instance.plot_tracker.apply_update(
-                    data.get("plot_update", {}), progression_state.round_value(instance))
+                    plot_update, progression_state.round_value(instance))
             except Exception:
                 logger.exception("Swipe 剧情更新异常，已跳过 (round=%d)", round_num)
 
@@ -291,6 +295,10 @@ class SwipeGenerator:
             narration, round_num,
             state_changes=system_changes if system_changes else None,
             story=getattr(response, "story", None),
+            adventure_completion_candidate=(
+                data.get("plot_update", {}).get("adventure_completion")
+                if isinstance(data.get("plot_update"), dict) else None
+            ),
         )
         combat_narrative.consume_pending_events(
             instance, pending_combat_event_ids,

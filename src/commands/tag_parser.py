@@ -13,12 +13,14 @@ from src.llm.parser import normalize_tag_protocol
 from src.llm.protocol import normalize_protocol_line
 from src.commands.tag_handlers import (
     ACTION_TAGS,
+    ADVENTURE_TAGS,
     KNOWN_TAGS,
     LIMITS_BY_COMBAT_MODEL,
     LOOT_TAGS,
     PLAYER_TAGS,
     WORLD_TAGS,
     parse_action_tag,
+    parse_adventure_tag,
     parse_loot_tag,
     parse_player_tag,
     parse_world_tag,
@@ -30,7 +32,7 @@ def _new_result() -> dict:
         "state_update": {"players": {}, "npcs": {}, "scene_change": "", "loot": []},
         "memory_delta": {"add": [], "update": [], "forget": []},
         "info_asymmetry": {},
-        "plot_update": {"quests": [], "relations": [], "decisions": []},
+        "plot_update": {"quests": [], "relations": [], "decisions": [], "adventure_completion": None},
         "xp_rewards": {},  # uid -> xp_amount (LLM 可选标签)
         "milestone_grants": [],  # D&D live advancement entitlement targets
         "growth_skills": [],  # [{uid, skill}] 用于 CoC 技能成长检定
@@ -93,5 +95,7 @@ def parse_tag_state(text: str, combat_model: str = "hp_based") -> dict:
             parse_loot_tag(tag, value, result)
         elif tag in ACTION_TAGS:
             parse_action_tag(tag, value, result)
+        elif tag in ADVENTURE_TAGS:
+            parse_adventure_tag(tag, value, result)
 
     return result

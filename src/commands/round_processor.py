@@ -1537,6 +1537,10 @@ class RoundProcessor:
             state_changes=state_msgs,
             pre_combat_extension_snapshot=round_pre_combat_snapshot,
             story=getattr(response, "story", None),
+            adventure_completion_candidate=(
+                data.get("plot_update", {}).get("adventure_completion")
+                if isinstance(data.get("plot_update"), dict) else None
+            ),
         )
         # Keep the GM's public image directives with the completed round so
         # manual generation and later restores use the same source.

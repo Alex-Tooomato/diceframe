@@ -124,8 +124,29 @@ def format_scene_context(view: dict[str, Any] | None, language: str, *, max_char
     })]
     for goal in view.get("objectives", [])[:_MAX_ITEMS]:
         lines.append(f"- [{goal.get('status', 'active')}] {str(goal.get('name') or '')[:240]}")
+    gm_nodes = [node for node in view.get("current_nodes", [])[:_MAX_ITEMS]
+                if isinstance(node, dict) and isinstance(node.get("id"), str)]
     for node in view.get("current_nodes", [])[:_MAX_ITEMS]:
-        lines.append(f"- {str(node.get('name') or '')[:160]}")
+        node_id = str(node.get("id") or "") if isinstance(node, dict) else ""
+        name = str(node.get("name") or "") if isinstance(node, dict) else ""
+        lines.append(f"- [{node_id}] {name[:160]}" if node_id else f"- {name[:160]}")
+    if gm_nodes:
+        lines.append(localized_text(language, {
+            "en": (
+                "For a clearly completed active node, you may append one optional "
+                "ADVENTURE_COMPLETE JSON line after `---`: "
+                '{"format_version":1,"node_id":"active_node_id","reason":"brief evidence-based reason",'
+                '"evidence_rounds":[1]}. Cite only committed GM log round numbers. This is a suggestion for GM review; '
+                "never mark a node complete or trigger its outcomes yourself."
+            ),
+            "zh-CN": (
+                "仅当当前开放节点已有明确完成证据时，可在 `---` 后附加一条可选的 "
+                "ADVENTURE_COMPLETE JSON 行："
+                '{"format_version":1,"node_id":"开放节点ID","reason":"基于证据的简短理由",'
+                '"evidence_rounds":[1]}。只引用已提交 GM 日志中的回合号。这只是交由 GM 审核的建议；'
+                "不得自行标记节点完成或触发节点后果。"
+            ),
+        }))
     if view.get('plan') and 'revision' in view:
         import json
         plan = view['plan']
