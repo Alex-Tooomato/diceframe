@@ -28,6 +28,7 @@
 
 ### 重要修复
 
+- **前端依赖安全更新**：更新 Vue、DOMPurify 和相关依赖，修复当前 npm 审计报告中的已知漏洞。
 - 修复公开结团档案对旧 action 数据的过滤，非字符串内部字段不会再进入公开投影。
 - 修复冒险源所有权、只读页面发放房间凭据、Bot/KP 问答范围、撤销凭据后的 SSE 流和多人席位接管边界。
 - 修复世界书绑定、内容来源、导入回执、资料册语言范围和数据包 profile 的一致性问题。
@@ -74,6 +75,7 @@
 
 ### Notable fixes
 
+- **Frontend dependency security**: update Vue, DOMPurify, and related packages to address the known issues reported by npm audit.
 - Public finale archives now reject non-string legacy action values, preventing internal fields from entering public projections.
 - Adventure source ownership, read-only room-credential issuance, Bot/KP scope, revoked SSE streams, and multiplayer seat takeover boundaries are enforced server-side.
 - World/Book binding, content provenance, import receipts, locale-scoped lore, and data-only package profiles now fail closed on ambiguous inputs.
