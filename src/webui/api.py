@@ -945,6 +945,12 @@ class WebAPI:
         from src.webui.services.assistant_recovery_tools import recovery_tools
         from src.webui.services.game_lorebooks import GameLorebookDependencies, GameLorebookService
         from src.webui.services.assistant_game_lorebook_tools import game_lorebook_tools
+        from src.application_actions import ActionRegistry
+        from src.engine.participant_view import resolve_viewer
+        from src.webui.services.assistant_gameplay_tools import GameplayToolDependencies, gameplay_tools
+        from src.webui.services.assistant_world_tools import WorldToolDependencies, world_tools
+        from src.webui.services.assistant_plugin_tools import PluginActionDependencies, plugin_tools
+        from src.webui.services.assistant_library_tools import LibraryToolCallbacks, build_library_actions
         self._game_lorebooks = GameLorebookService(GameLorebookDependencies(
             store=self._lore, get_game=self.get_game_instance,
             list_books=lambda: self.list_lorebooks(include_all=True), save_instance=self._reg.save,
@@ -976,6 +982,15 @@ class WebAPI:
             invoke_plugin_tool=self.invoke_plugin_tool, update_plugin=self.update_plugin_config,
             runtime_logs=lambda: assistant_runtime_log_context(self._reg.save_dir.parent),
         ))
+        def agent_game_players(game_key, owner):
+            instance = self.get_game_instance(game_key)
+            if instance is None:
+                raise ValueError('Game does not exist')
+            viewer = resolve_viewer(instance, user_id=owner, owner_authenticated=True, player_preview=False)
+            if not viewer.is_gm:
+                raise PermissionError('GM access required')
+            return {'players': {uid: {} for uid in instance.players}}
+
         agent_tools += authoring_tools(AuthoringDependencies(
             list_worlds=self.list_worlds, update_world=self.update_world,
             list_book_entries=self.list_lorebook_entries, save_book_entry=self.save_lorebook_entry,
@@ -985,15 +1000,58 @@ class WebAPI:
             write_world_with_recovery=self._metadata_recovery.write_world,
             write_card_with_recovery=self._metadata_recovery.write_card,
             world_snapshot=world_snapshot, card_snapshot=card_snapshot,
+            game_players=agent_game_players,
         ))
         agent_tools += recovery_tools(self._content_recovery)
         agent_tools += game_lorebook_tools(self._game_lorebooks)
+        agent_tools += gameplay_tools(GameplayToolDependencies(
+            get_game=self.get_game_instance,
+            viewer_for=lambda instance, owner: resolve_viewer(
+                instance, user_id=owner, owner_authenticated=True, player_preview=False),
+            adventure_projection=lambda instance, viewer: self.game_adventure_projection(
+                instance.game_key, viewer_is_gm=viewer.is_gm, viewer_uid=viewer.uid),
+            adventure_command=lambda instance, body, uid, gm: self.ruleset_submit_intent(
+                instance.game_key, uid, gm, body),
+            run_story=self.run_story, recovery=self.resource_recovery,
+            rest=self.ruleset_rest_resolve_live,
+            room_preferences=self.game_preferences, set_room_preferences=self.update_game_preferences,
+            available_ruleset_actions=self.ruleset_available_actions,
+            submit_ruleset_intent=self.ruleset_submit_intent,
+        ))
+        agent_tools += world_tools(WorldToolDependencies(
+            get_game=self.get_game_instance,
+            viewer_for=lambda instance, owner: resolve_viewer(
+                instance, user_id=owner, owner_authenticated=True, player_preview=False),
+            save_instance=self._reg.save,
+        ))
+        agent_tools += build_library_actions(LibraryToolCallbacks(
+            list_worlds=self.list_world_templates, clone_world=self.clone_world_from_template,
+            list_lorebooks=lambda: self.list_lorebooks(include_all=True),
+            read_lorebook=self._lore.get_lorebook,
+            list_lorebook_bindings=self.list_lorebook_bindings,
+            create_lorebook=self.create_lorebook, update_lorebook=self.update_lorebook,
+            export_lorebook=self.export_lorebook,
+            preview_lorebook_import=self.preview_lorebook_import,
+            commit_lorebook_plan=self.commit_lorebook_plan,
+            list_adventures=self.list_adventures, copy_adventure=self.copy_adventure,
+            adventure_detail=self.adventure_detail,
+        ))
+        self.application_actions = ActionRegistry(agent_tools)
+        plugin_action_dependencies = PluginActionDependencies(
+            list_tools=self.list_plugin_tools, invoke=self.invoke_plugin_tool,
+        )
+        self.application_actions.register_source('plugins', lambda: plugin_tools(plugin_action_dependencies))
         self._assistant_agent = AgentRuntime(AgentDependencies(
             llm_client=lambda: self._llm_client, configuration_error=self._llm_configuration_error,
-            tools=agent_tools, storage_dir=self._reg.save_dir.parent / "assistant_agent",
+            tools=(), registry=self.application_actions, storage_dir=self._reg.save_dir.parent / "assistant_agent",
             answer=assistant.offline_answer, knowledge=assistant.agent_knowledge,
             review_content=agent_content.review, max_tokens=assistant_agent_max_tokens,
         ))
+
+    def register_application_actions(self, actions):
+        """Owning modules extend the live action directory without Agent changes."""
+        for action in actions:
+            self.application_actions.register(action)
 
 
     # ---- 跨域共享辅助 ----
@@ -1217,6 +1275,15 @@ class WebAPI:
 
     def assistant_agent_session(self, owner, session_id):
         return self._assistant_agent.snapshot(owner, session_id)
+
+    def assistant_agent_capabilities(self, owner, query='', domain=''):
+        return self._assistant_agent.capabilities(owner, query, domain)
+
+    def assistant_agent_authorize(self, owner, session_id, mode, scope, domains, max_steps):
+        return self._assistant_agent.authorize(owner, session_id, mode, scope, domains, max_steps)
+
+    def assistant_agent_cancel(self, owner, session_id):
+        return self._assistant_agent.cancel(owner, session_id)
 
     async def assistant_agent_plan(self, owner, tool, arguments, session_id=''):
         return await self._assistant_agent.plan(owner, tool, arguments, session_id)

@@ -81,6 +81,8 @@ def authoring_recovery_snapshot(dependencies: WorldDependencies, identity: str) 
         "name": str(world.get("world_name") or ""),
         "description": str(world.get("description") or ""),
         "language": str(world.get("language") or DEFAULT_LANGUAGE),
+        "world_setting": str(world.get("world_setting") or ""),
+        "starter_scene": str(world.get("starter_scene") or ""),
     }
     return {
         "target_name": fields["name"],

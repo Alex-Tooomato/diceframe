@@ -1,118 +1,89 @@
 # DF Agent 实现与能力边界
 
-DF Agent 是 DiceFrame 的全局应用代理。展示名称统一为 `DF Agent`；既有 assistant API、storage key 与内部 identity 保持稳定。
+状态：本地实现，尚未发布。本文记录当前源码已经提供的能力和边界；后续设计目标不视为已经实现的产品承诺。
 
-## 用户路径
+DF Agent 是 owner 应用壳中的应用代理。模型输出只是注册动作的候选，不能授予自己权限，也不能绕过领域服务、服务端 actor、规则引擎或插件宿主。
 
-- 所有房主业务页面共享悬浮入口，可在右侧抽屉与居中大窗口间切换，切换页面保留任务。悬浮入口支持鼠标和触屏拖动，位置保存在当前浏览器，窗口缩小后夹紧到可见区域；短点与键盘激活仍打开聊天，拖动不会误触打开。
-- 顶部“扩大窗口”按钮打开最大 1060×800 的居中窗口，四周保留页面空隙；同一按钮可缩回侧栏。桌面大窗口左侧聊天、右侧草稿/审批/结果工作区，窄屏采用单列。切换只调整同一组件的布局，保留正在输入的文字、未保存的草稿编辑和进行中的请求。
-- 设置 → 外观可关闭入口或恢复悬浮球到默认右下角；恢复位置不清空聊天、草稿或显示偏好。偏好存于当前浏览器。登录、公开分享、玩家与联机公开入口不挂载房主管理助手。
-- 操作依据真实工具目录与运行时观察。仅在需要使用说明时调用只读 `search_documentation`，不为每次聊天自动检索文档；使用当前本地说明或经过程序版本校验的内置索引，排除移动远程指南。没有主模型时给出服务商目录配置指引，并提供打开设置的入口。
-- 聊天收到 SSE 正文后，通过 `ProgressiveTextQueue` 平滑逐字显示，长段自动提高显示速度；后端仍先完成框架规划与输出校验，再返回答复。工具、草稿、审批与导航事件即时处理，不等待正文动画。停止保留全部已收文字，清空/重置取消旧队列；显示结束后再保存完整历史，扩大窗口与切页共享同一状态。
-- 生成世界、世界书、角色模板、冒险包先得到草稿。卡片允许编辑并重新审查；编辑使旧保存计划失效。
-- 保存内容、创建游戏、切换角色控制、提交行动、生成规则/图片、运行插件显示执行卡片。客户端只回传计划 ID、摘要和确认意图，不能改写待执行参数。
-- 活动确认卡、草稿与执行结果位于可折叠任务工作区；手机默认收起，标题栏仍提示等待确认、执行中或草稿数量。用户展开/收起偏好保存在当前浏览器，折叠只隐藏视图，不卸载草稿编辑、不确认或取消操作。单列布局下任务区最多占消息区域 45%，对话和任务各自滚动；桌面大窗口仍保持聊天/任务分栏。展开时滚动到末尾确认卡，编辑输入框时保留当前编辑位置。没有正文回复的审批步骤在最新回复显示“等待确认”，输入框旁保留同一状态提示。
-- 结果提供对应工作台或游戏页入口。继续任务会携带已有草稿摘要和执行结果，无需重新讲述目标。
+## 当前实现范围
 
-## 模块
+`src/application_actions.py` 定义唯一的应用动作契约 `ApplicationAction` 和 `ActionRegistry`。动作由 owning module 在应用组合根注册；路由、页面和 Agent 适配器复用同一领域 handler。每个动作都有稳定 `name`、`version`、JSON 参数 schema、`domain`、effect（`read`、`write`、`disclosure`、`destructive` 或 `external`）、是否自动处理、guard、preview 和 handler。动作描述不包含 handler 或其它私有回调。
 
-| 模块 | 职责 |
+`contract_digest` 是动作公开 descriptor 的 SHA-256；registry `revision` 是按 canonical action name 排序后的 descriptor 集合摘要。计划保存动作的 `contract_digest`，确认和执行时重新读取 registry 并拒绝已删除或契约已变化的动作。版本替换必须使用更高版本；重复注册和不合法 effect/schema 会失败。
+
+当前组合根注册的能力包包括：应用目录、内容/世界/角色叙事、资料册、游戏与冒险、规则/恢复、游戏本局资料册、权威世界事实、设置和插件动作。内容库适配器支持世界克隆、资料册元数据和绑定读取、原生 JSON 导出/导入计划、冒险复制与详情；原生导入重用 owning service 的预览和提交摘要，不支持任意路径文件读取。新增的已注册游戏、世界、资料册、设置或插件动作会出现在同一个 live registry 中，并可通过目录发现；这不等于 Agent 自动支持任意未注册的 Python 函数、HTTP route、插件 RPC、文件或数据库 API。
+
+变化中的动作集合可以通过 registry source 刷新。当前插件 source 每次刷新都会重新校验 descriptor；插件消失时动作移除，source 出错时该 source 的动作全部移除并在 `unavailable_sources` 中报告，不能保留旧 descriptor 冒充可用。未知或缺少必要字段的插件 effect 不会降级为低风险动作。
+
+## 发现与按需加载
+
+Agent 启动时只加载基础 application 动作、当前页面 domain、当前服务器授权 domain，以及两个发现动作。模型需要其它能力时调用：
+
+- `search_capabilities`：按 query/domain 查询 live registry，返回 `revision`、能力摘要、总数和不可用 source；
+- `describe_capability`：按稳定动作名读取当前完整 descriptor 和精确参数 schema。
+
+搜索和描述不会授予执行权限。描述或文档中的文字不能注册动作、扩大 scope 或改变 effect。registry 的结果和领域服务的实时观察才是 canonical ID、可用性与执行契约的来源。`search_documentation` 只在需要使用/部署说明时按需查询本地版本匹配的说明，不能扩展动作目录。
+
+## 服务端授权与确认
+
+授权由 `assistant_authorization.py` 在服务端保存，并按 owner/session 绑定。三种模式的当前语义是：
+
+| 模式 | 已实现行为 |
 | --- | --- |
-| `components/assistant/AssistantShell.vue` | 全局入口、抽屉、首页欢迎气泡 |
-| `composables/useAssistantPreferences.ts` | 浏览器显示偏好 |
-| `composables/useAssistantWorkspace.ts` | 手机默认折叠与浏览器工作区显示偏好 |
-| `composables/useAssistantLauncherPosition.ts` | 拖动、可见区域夹紧与外观设置的位置恢复 |
-| `composables/useAssistant.ts` | 会话、事件、恢复、确认与客户端历史 |
-| `composables/progressiveTextQueue.ts` | Unicode 码点安全的正文显示队列、积压加速与取消 |
-| `components/assistant/AgentTaskCard.vue` | 内容草稿编辑与重新审查 |
-| `routes/assistant_agent.py` | owner 门控、请求验证、SSE/JSON 传输 |
-| `services/assistant_agent.py` | 业务工具适配、计划、会话与执行记录 |
-| `services/assistant_agent_framework.py` | 直接使用 Pydantic AI Agent 执行器，适配现有模型传输 |
-| `services/assistant_agent_application.py` | 显式依赖适配现有应用服务 |
-| `services/assistant_content.py` | 无副作用生成 → 既有内容 review/commit |
-| `services/assistant_authoring.py` | 读取现有内容、修改自建世界/角色叙事、写入具有明确可见性的资料册条目 |
-| `services/content_recovery.py` / `content_metadata_recovery.py` | owner 私有快照、版本检查、内容撤销与回收站 |
-| `lorebook/operations.py` | owning SQLite 操作日志、无覆盖的 canonical 恢复 |
-| `services/game_lorebooks.py` | 开局后本局选书、portable refs、保存与补偿 |
+| `suggest` | 不建立连续写授权；修改动作逐项生成服务器计划并等待确认。 |
+| `routine` | 仅允许动作明确标记 `automatic=True` 且 effect 为普通 `write`，由已授权范围内自动执行。 |
+| `task` | 在已授权范围内允许普通 `write` 和 `disclosure` 连续执行；仍拒绝 `external`、`destructive` 和未满足动作 guard 的操作。 |
 
-## 已注册能力
+routine 授权有效 4 小时，task 授权有效 1 小时；两者都有 `remaining_steps`，步数必须为 1..64。可选 domain 必须是 registry 中已知 domain；每个动作的 domain 必须匹配。可选 scope 只接受 `game_key`、`world_id`、`book_id`、`card_id`，每一个给出的键都必须出现在动作参数中并逐字相等；缺失或跨目标都 fail closed。授权过期、步数耗尽、owner 不符或 session 不符均不放行。
 
-`read_catalog`、`read_game`、`navigate`、`draft_content`、`save_content`、`create_game`、`set_player_control`、`submit_action`、`create_rule`、`generate_image`、`invoke_plugin_tool`、`set_plugin_enabled`、`diagnose_runtime`、`read_content`、`edit_world`、`write_lorebook_entries`、`edit_character_card`。
+确认计划绑定 owner、session、动作名、参数、guard、contract digest 和有效期。审批前会再次执行 schema、authorize、guard 和 preview；确认时还会重新检查动作 descriptor、授权、资源版本和计划摘要。客户端只能提交 session/approval ID、摘要和确认意图，不能改写参数。
 
-另已注册 `list_content_operations`、`set_lorebook_enabled`、`set_lorebook_entries_enabled`、`archive_lorebook_entries`、`archive_lorebook`、`undo_content_operation`、`restore_content_operation`、`read_game_lorebooks`、`set_game_lorebooks`，合计 26 项。
+设置动作的 `patch_settings` 和插件启停被标为 `external`，不能由 routine/task 自动放行，必须人工确认。插件 descriptor 声明 `read_only` 或 `mutation` 时，宿主调用仍按 `external` 处理并人工确认；声明 `destructive` 时按 `destructive` 处理并人工确认。缺失、未知或不完整的声明 fail closed，回到手动插件流程；声明本身不是原生插件进程沙箱，也不是行为证明。
 
-目录可读取世界、世界模板、世界书、冒险、角色卡、规则、游戏、已安装插件与插件工具。模型须从目录选择 canonical ID。创建游戏明确选择角色卡、冒险来源与世界书引用，沿用游戏创建事务与规则校验；创建同时生成开场。已有内容的复杂编辑、导入/导出和设置通过对应工作台继续。
+取消会撤销服务器授权并阻止尚未派发的步骤。已经进入权威写入的确认使用 shield，浏览器断开或取消不会把已提交动作伪装成未执行。重复确认返回原 receipt；派发后结果不确定时标记 `recovery_required`，保留待核实计划并禁止盲目重放。取消不提供对已提交写入的万能回滚。
 
-内容草稿采用现有 `ContentTextReview` 契约。世界与角色模板是可复用的叙事内容，不推断专业规则数值；专业建卡仍由规则工作台处理。世界书草稿当前保存为一本完整资料册中的文本条目。冒险通过原生脚本解析器生成 graph v2；引用未解析、图无效或目标冲突阻止保存，文本不会被转换为未经授权的 mechanics。
+## 领域 authority 与隐私
 
-已接入用户批准的 [内容纠错、撤销与删除策略](DF_AGENT_DELETE_POLICY.md)。修改和启停可按记录撤销，自建条目与未被引用的非主册可有限归档并恢复；每批最多 10 条归档/启停条目，整册最多 10 条。内置、插件来源及整本主册受保护，永久删除留在手动流程。只有新路径记录的操作支持撤销，历史操作与世界/冒险/角色创建不自动回滚。插件调用仅接受明确 `agent_effect=read_only` 声明，未知或破坏性工具交给手动流程；此声明不替代宿主权限或原生进程安全边界。
+- 内容、资料册、恢复和游戏本局资料册动作复用各自 owning service 的校验、guard、快照/操作记录和权限边界；Agent 没有通用文件、SQL、shell 或任意 HTTP 写入能力。
+- 资料册可见性动作只修改既有 canonical entry 的 `visible_to` audience 字段，保留名称、正文和其它扩展字段。指定角色时，服务器从 live game roster 取得 canonical UID，并由组合根进行游戏存在、owner/GM 范围校验；显示名不能代替 UID。目标不存在、UID 不属于当前 live roster 或无 GM 权限时拒绝。
+- 世界事实可见性走正式 `worldops`（`apply_world_ops`、revision guard、权威写锁和保存），不在通用资料册或世界元数据里另造一个同名布尔字段。读取使用 viewer-safe world projection。
+- 规则结算、骰点、角色资源、回合和世界事实仍由现有规则/游戏 authority 执行；角色资源恢复复用 `ResourceRecoveryService`，内容撤销复用内容恢复服务，不形成第二套 mechanics 或权限模型。
+- 设置读取只暴露脱敏配置和 provider catalogue；凭据正文不进入模型、会话、receipt 或错误提示。AI 配置使用共享 `ai_providers`、独立 `ai_provider_key_<id>` 凭据和能力级 `*_provider_ref` 新格式；Agent 设置 patch 只处理允许的目录/reference 字段，旧直填地址、密钥或 API 字段被明确拒绝。
+- owner/session 隔离在路由和服务层同时执行。GM/private 数据必须在投影或服务端边界过滤，不能先发送给无权用户再靠 UI 隐藏。
 
-开局后可在 GM 工作台 → 场景 → 本局资料册调整最多 16 本来源，预览后确认，只替换本局绑定，角色来源锁定。内容 → 资料册 → 内容撤销 / 回收站提供同一服务器审批链的恢复界面，包含结果待核实、已撤销和已恢复状态；普通手动恢复/选书不需要模型调用。
+## Token、步骤与运行状态
 
-公开世界、世界书与角色模板不接收带隐私标记的生成或编辑结果，避免把 GM 内容写入公开字段。冒险的 `GM:` 行通过现有解析器成为 GM-only reference 节点。`write_lorebook_entries` 可批量补写/修改一本资料册，明确选择 public 或 gm；新条目缺省 GM-only，更新缺省保留原可见性，不能把 GM 标记写入公开条目。跨资料册猜测条目 ID 会拒绝；生产路径整批内容与快照在 owning SQLite 事务中提交，失败全部回滚。
+模型每次请求使用独立 `assistant_agent_max_tokens`（默认 4096）；业务生成工具保留各自预算。provider 返回的 `total_tokens` 在每次请求完成后检查并按响应累加到任务观测中；`max_tokens * steps` 是任务的派生观测上限/执行检查参数，不是费用、余额或 provider 账单的硬上限，也不保证跨请求的实际成本。请求数、工具调用数和动作步数仍受 framework/授权限制；领域工具的子调用预算由各自 owning service 管理，不由 Agent 目录创建一个全局预算。
 
-## API
+任务结果通过 SSE 发送 `session`、`status`、`task`、`tool_start`、`tool_result`、`draft`、`approval`、`authorization`、`navigate`、`sources`、`delta`/`done` 或 `error` 事件。framework 的内部 `usage` 通知汇入 `task.used_tokens/token_budget`，不是独立客户端事件。`GET /session/{session_id}` 提供 owner 可恢复的草稿、待审批计划、receipt、任务和当前授权摘要。会话和执行记录写入数据目录的 `assistant_agent`，不写入凭据。
 
-Agent 每次模型输出的预算来自独立的 `assistant_agent_max_tokens`（默认 4096，在设置 → 高级 → 生成参数单独列出，保存后热更新），不再依赖 `text_gen_max_tokens`。Agent 使用主模型服务商；生成内容、角色或规则的业务工具仍沿用各自预算。框架每轮独立限制 8 次模型请求与 8 次工具调用，没有配置整次会话的累计 token 或费用上限。达到轮次预算会保留已生成草稿并提示继续任务，模型服务商自身的上下文、输出和速率限制仍生效。
+当前持久化记录支持会话 TTL、重复确认、重启后的结果核对和不确定状态标记；它不是持久化工作流引擎，也没有跨模块的自动恢复、全局事务或万能 undo。跨文件/数据库操作必须依照具体 owning service 的 prepared、guard、receipt 和 recovery contract，无法证明结果时 fail closed。
 
-系统界面语言可在右上角或设置 → 外观调整；两处共享当前设备的语言偏好。它不重写已存游戏和内容的语言，也不是一个独立 Agent 语言配置。
+## HTTP contract
 
-| 方法 | 路径 | 作用 |
+所有 Agent route 都要求 owner authentication；页面 context 只用于发现和提示，不构成 actor、game 或权限授权。
+
+| 方法 | 路径 | 当前用途 |
 | --- | --- | --- |
-| POST | `/api/assistant/chat` | 保留原有只读问答契约 |
-| POST | `/api/assistant/agent/run` | messages/language/context/session_id → SSE |
-| POST | `/api/assistant/agent/review` | 重新校验当前会话草稿 |
-| POST | `/api/assistant/agent/confirm` | 确认或取消服务器保存的执行计划 |
-| POST | `/api/assistant/agent/plan` | 明确白名单工具的手动计划，无需模型 |
-| GET | `/api/assistant/agent/content-operations` | 当前 owner 的恢复记录元数据，不传快照正文 |
-| GET | `/api/games/{game_key}/lorebooks` | 房主读取本局实际来源与锁定角色来源 |
-| GET | `/api/assistant/agent/session/{session_id}` | 恢复草稿、计划与执行记录 |
+| `GET` | `/api/assistant/agent/capabilities` | 查询 live registry；支持 `q` 与 `domain`。 |
+| `POST` | `/api/assistant/agent/authorization` | 服务端创建/替换 suggest、routine 或 task 授权；校验 scope、domain、1..64 steps 和有效期。 |
+| `POST` | `/api/assistant/agent/cancel` | 撤销 session 授权并取消尚未派发的工作。 |
+| `POST` | `/api/assistant/agent/run` | 运行模型任务并以 SSE 返回规划、发现、工具、审批、使用量摘要和结果事件。 |
+| `POST` | `/api/assistant/agent/confirm` | 以 `approval_id`、`plan_digest` 和 `approved` 确认/拒绝一个服务器计划。 |
+| `GET` | `/api/assistant/agent/session/{session_id}` | 读取 owner 私有 session 快照、任务、授权和 receipt。 |
+| `POST` | `/api/assistant/agent/review` | 重新审查用户编辑后的内容草稿，并使旧保存计划失效。 |
+| `POST` | `/api/assistant/agent/plan` | 内容管理工作台为明确白名单恢复动作创建同一服务器计划。 |
+| `GET` | `/api/assistant/agent/content-operations` | 当前 owner 的内容恢复记录元数据，不传快照正文。 |
 
-SSE 保留 delta/sources/reset/done，并增加 session/status/tool_start/tool_result/draft/approval/navigate。导航只允许已知本地业务 route 和受限 query，模型不能提供可执行 URL。
+既有 schema 1 会话继续可读。没有动作 contract digest 的旧待审批计划必须取消并重新规划；已完成 receipt 仍可恢复，禁止将旧计划默认为新契约授权。
 
-## 运行保证
+`/api/assistant/chat` 保留原只读问答契约。Agent 导航只返回已知本地 route 和受限 query；模型不能提供可执行 URL。
 
-- 所有 Agent API 明确 owner-only。会话绑定服务端用户身份，页面上下文只是提示，不授权 actor/game/tool。
-- 执行内核直接使用 [Pydantic AI](https://github.com/pydantic/pydantic-ai/tree/v1.107.7) 的 `Agent`、`Tool`、`ModelRetry`、`DeferredToolRequests` 和 `UsageLimits`，依赖固定为 `pydantic-ai-slim==1.107.7`，支持项目的 Python 3.10+ 契约。MIT 许可保留于 `THIRD_PARTY_NOTICES.md`。
-- 移除自写 `agent_step / respond` 包装与循环。26 项业务工具分别公开具名函数和参数 schema；普通回答可使用正文或独立 `FinalAnswer` 输出，不再要求回答带空参数对象。工具和输出校验失败由框架携带纠错信息重试，单工具/输出最多 3 次重试，每轮最多 8 次模型请求及 8 次工具调用。模型一次返回多个已注册的非审批查询或草稿工具时，由框架按顺序执行；含审批写操作、最终回答或未知工具的批次整批拒绝，向下一轮附上明确格式纠正信息，不执行其中任何业务工具。审批仍每次只允许一个写操作。
-- 框架收到修改工具时先校验参数和业务前提，再产生延迟审批请求；它不会执行写操作。原确认接口仍拥有派发权，前端事件与持久化 schema 1 保持不变。
-- 现有 `LLMClient` 保留共享服务商引用、请求超时、代理和备用模型；Agent 明确选择 auto 工具模式。原游戏判定强制工具模式保持默认契约。不支持原生工具的服务商仍使用完整具名工具 schema 的 JSON 回退。框架历史保留工具结果、调用关联和纠错反馈；不另建配置来源。
-- 模型调用全部失败时保留 HTTP 状态事实。Agent 将服务商余额不足（402）、凭据/权限拒绝（401/403）、请求限制（429）和其它不可用状态转成明确的用户提示，不把服务商原始响应、地址或凭据放进错误卡片。
-- 工具或输出格式连续纠正失败时返回 `MODEL_RESPONSE_INVALID`，说明模型工具调用未通过校验和已有草稿仍可继续处理；不把框架堆栈或原始模型参数放进提示，也不再落入通用执行失败。
-- 修改必须确认。计划与会话、身份、参数、目标状态和 15 分钟有效期绑定；草稿修改或资源变化要求重新计划。
-- `data/assistant_agent` 保存 schema 1 会话与执行记录，不保存服务商凭据。会话 24 小时失效、每会话最多 16 个草稿。模型观察与结果中的凭据字段及常见令牌文本脱敏。
-- 确认并发串行，重复提交返回原执行记录。浏览器断开不取消已派发写操作；结果可恢复。
-- 重启遇到派发后尚未记录结果的操作，标为 recovery_required，禁止盲目重放。SQLite 内容修改整批提交；跨文件的世界/角色叙事与游戏选书先写 prepared 日志，未能核实结果时不标为可自动恢复，也不重复执行。
-- Agent 不提供 shell、任意 HTTP、任意文件/数据库写入或直接权威状态编辑。游戏行动使用当前服务器身份与服务器骰，插件调用仍经过宿主 schema 与现有权限边界。
-- 运行日志仅在用户明确请求诊断时进入上下文；文档、插件、草稿、日志和工具输出均按外部数据处理。
+## 前端边界
 
-## 验证
+owner 业务页面共享 `AssistantShell`/`AssistantPanel`；公开、玩家和分享入口不挂载 owner Agent。窗口、浮动入口、草稿和任务区的浏览器偏好由对应 composable 管理；这些偏好不改变服务端授权。草稿编辑、重新审查和确认使用服务器返回的 draft/plan，不把客户端卡片当作权威参数。
 
-覆盖全局入口/公开页隔离/显示偏好、真实格式草稿编辑、SSE 协议、owner 与会话隔离、参数伪造、计划完整性/失效/取消、重复与并发提交、持久化恢复、隐私标记拒绝，以及真实内容落库与游戏存档创建。执行器测试使用真实 Pydantic AI，模型响应使用可控替身；HTTP 集成覆盖真实 `LLMClient` 的 OpenAI、Anthropic 和 JSON 回退，以及错误参数纠正到审批的路径。生产模型响应质量依赖配置的服务商。
+## 验证与剩余边界
 
-### 2026-10-13 接入验收
+当前测试覆盖 registry revision/contract digest、动态 source 刷新和 fail-closed、发现后调用、owner/session 隔离、scope/domain/过期/步数、routine/task effect、插件 descriptor、设置脱敏、visibility-only 的 live UID 与 GM 校验、worldops revision guard、取消、shield、重复确认和 recovery_required。
 
-- 已移除生产路径中的自写执行循环与 `agent_step / respond` 包装；执行图、输出校验、纠错重试、步骤预算和延迟审批来自已固定版本的 Pydantic AI。
-- 现有 17 项能力、全局入口、设置开关、草稿编辑、确认/取消、恢复和幂等契约保持有效。真实领域服务覆盖内容落库及游戏创建，模型与客户端不能直接修改权威游戏状态。
-- 桌面与手机端完成草稿编辑 → 重新审查 → 保存确认 → 页面跳转 → 关闭入口。前端 Agent 定向 25 项测试、类型检查和构建通过。
-- 使用当前已配置服务商的真实模型，在临时数据目录完成世界书和冒险包生成、内容审查、保存计划、确认落库与重复确认。此验收不写入用户内容库或游戏存档。可显式设置 `DICEFRAME_AGENT_LIVE=1` 运行 live 验收；默认自动化不访问付费模型。
-- 便携版和 Docker 保留原有依赖版本，新增依赖全部使用实际 wheel 的 SHA-256 固定。两平台完整锁经 `--require-hashes` 下载验证；Windows 独立虚拟环境按完整锁安装，并通过真实框架和业务集成测试。许可声明进入源码与便携版打包范围。
-- 验收由本会话 Codex（GPT-6）主代理负责，`gpt-5.6-luna` 子代理仅执行限定的传输、测试夹具和依赖接入；没有另行安排高阶规划代理。
-- 正在运行的进程不会热更新已导入的 Python 模块；源码接入后需要通过应用的正常重启流程加载。本次没有改版本号、提交、发布、重置密码或覆盖用户配置。
-
-### 2026-10-14 六项问题验收
-
-- 日志复现模型响应被判为 `invalid_provider_response`、连续重试耗尽后落入通用执行失败。查询/草稿批次现在由真实框架顺序执行，包含审批或最终回答的批次仍整批拒绝；下一轮获得具体格式纠正信息，耗尽时返回明确错误并保留草稿。OpenAI、Anthropic 与 JSON 回退均覆盖该路径，写操作未确认前不派发。
-- 使用当前已配置服务商和原话“随便想一个冒险包”，在临时目录完成真实生成、脚本审查、保存确认、落库及重复确认。验收不写入用户资料库或存档。
-- 存档卡 hover/选中时仅背景艺术轻微放大，文字和按钮位置保持稳定；取消选中或移开恢复，减少动态效果偏好取消缩放变化。保留方形毛玻璃进入按钮。
-- 内容库“打开”携带 canonical book ID 和实际世界绑定；资料页选中目标册，entry 深链接选择对应条目。用户后续切换不被迟到响应覆盖，编辑期间保留草稿。普通资料册菜单明确显示“删除资料册”，主资料册展示保护说明；删除继续使用已有确认/API，不扩大 Agent 删除权限。
-- 悬浮入口完成真实鼠标与 Chromium 触屏拖动验收，拖动不打开聊天，短点/触摸/键盘可打开，刷新保留位置，缩窄视口后仍可见。
-- Freeform D&D 轻量装备编辑开放独立 `damage_dice` 字段，支持既有解析器的 `NdM`、`NdM+K`、`NdM-K`，固定伤害保留为无骰式时的回退。创建/编辑保存和显示保留骰式，非法公式在角色服务拒绝，弹窗保留输入并显示错误，手机控件换行。专业 `dnd2024` 继续使用自身已有的骰式装备/战斗契约。
-- 验证：195 项后端测试、97 项前端测试、真实模型冒险用例、生产构建与针对性 ESLint 通过。浏览器分批覆盖 15 个桌面/手机有效场景，包括原有草稿审批、回收站工具栏和赞助图回归；另有 3 个按输入设备/项目条件跳过的场景。主代理负责总验收，三个 `gpt-5.6-luna` 子代理执行限定修改，没有额外高阶规划代理。
-
-### 2026-10-14 关联世界缺失的资料册导航
-
-- 只读核实用户报错的资料册：Book 与 primary world binding 仍存在，关联世界数据库记录与模板文件已缺失，资料册当前为空。没有推断世界缺失的历史原因，也没有修改用户内容或关联。
-- 内容库链接只携带实际存在的世界；canonical book ID 决定打开目标。旧链接同时包含缺失 world 与有效 book 时独立打开资料册并提示；失效 world-only 链接继续拒绝。空册、条目定位、语言切换和手动换书后的刷新保持正确上下文，主资料册删除保护保留。
-- 先在隔离数据库复现新增与移入该 Book 的外键失败，再修复 owning store 的兼容投影：只有真实存在的 primary world 才投影到条目 `world_id`，否则为 NULL；canonical `book_id` 与原 binding 保持不变。独立浏览支持手动新增、编辑和导出，需要世界上下文的功能保持原有条件。
-- 验证：118 项后端、59 项前端测试，桌面/手机 4 项真实浏览器场景、生产构建和针对性 ESLint 通过。浏览器验证新增保存、编辑、导出、旧链接、条目定位和 primary 删除保护；核对前后 world 名单与 bindings 未改变。GPT-6 主代理完成总验收，Luna 协助限定前端修改，没有额外高阶规划代理。
+仍需单独补齐的能力必须先在 owning module 建立正式 contract，再注册到 registry：持久化多步工作流的暂停/继续、跨模块补偿语义、更多设置/插件写操作、导入导出和任意新的游戏机制。本文不把这些后续目标描述成现有能力，也不承诺 Agent 自动支持尚未注册的应用 API。

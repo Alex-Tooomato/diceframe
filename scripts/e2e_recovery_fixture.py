@@ -6,7 +6,8 @@ from src.engine.game_instance import GameInstance, GameState
 
 
 E2E_RECOVERY_GAME_KEYS = tuple(
-    ("web", f"e2e-resource-recovery-{viewport}", "web_bot")
+    ("web", f"e2e-{journey}-{viewport}", "web_bot")
+    for journey in ("resource-recovery", "rest-notices")
     for viewport in ("desktop", "mobile")
 )
 

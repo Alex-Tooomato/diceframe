@@ -1201,6 +1201,20 @@ AI review suggestion 不是自动执行命令；应用建议前应验证它是�
 
 ---
 
+## 21.6 Application actions and Agent integration
+
+新增用户可执行的业务能力 **SHOULD** 在 owning module 提供 `ApplicationAction`，由 composition root 注册至 `ActionRegistry`；暂不支持 Agent 时在该功能交付说明中写明原因。不能以新增中央提示词分支或第二套 Agent 专用业务实现代替领域命令。
+
+- 动作 **MUST** 声明稳定 ID、版本、参数 schema、所属领域和实际 effect；非兼容契约变更 **MUST** 更新版本，使旧计划重新规划。
+- handler **MUST** 复用领域权限、canonical identity、版本与权威写入。目录发现、聊天内容和授权模式均不能绕过领域拒绝。
+- 可自动执行的普通修改 **MUST** 显式标记并提供 guard；信息披露不得归为日常自动修改。外部副作用与 destructive 操作仍需具体确认，插件自报声明不等于宿主权限或进程沙箱。
+- 读操作不得隐藏持久化业务写入。预览、回执、取消和可恢复范围 **MUST** 反映实际领域契约，不得承诺通用事务或万能撤销。
+- 验证 **SHOULD** 覆盖注册后可发现并执行、参数/权限拒绝、契约失效、相关并发与重复提交行为；目录与真实 handler 是能力事实来源，不维护第二份静态工具数量表。
+
+See [ADR-0011](adr/0011-application-actions-and-agent-delegation.md).
+
+---
+
 ## 22. Intentional exceptions
 
 这些规则用于避免**无意的架构退化**，不是阻止**有意的架构演进**。

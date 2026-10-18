@@ -44,6 +44,29 @@ async def test_final_answer_is_a_typed_framework_output_not_an_empty_argument_wr
 
 
 @pytest.mark.asyncio
+async def test_reported_token_budget_stops_before_dispatch_and_retains_usage(tmp_path):
+    writes = []
+
+    async def handler(args, owner):
+        writes.append(args)
+        return {"ok": True}
+
+    class ExpensiveProvider:
+        async def call_tools(self, *args, **kwargs):
+            return LLMToolResponse([{"name": "change", "arguments": {"value": "must-not-run"}}],
+                                  40000, "test")
+
+    agent, events = await execute(tmp_path, ExpensiveProvider(), [tool(handler, mutation=True)])
+    sid = next(data["session_id"] for event, data in events if event == "session")
+    snapshot = agent.snapshot("owner", sid)
+    assert writes == [] and snapshot["pending"] is None
+    assert snapshot["task"]["status"] == "budget_reached"
+    assert snapshot["task"]["used_tokens"] == 40000
+    assert snapshot["task"]["token_budget"] == 4096 * 8
+    assert any(name == "task" and value.get("used_tokens") == 40000 for name, value in events)
+
+
+@pytest.mark.asyncio
 async def test_framework_corrects_invalid_arguments_before_any_business_execution(tmp_path):
     writes = []
     async def handler(args, owner):
@@ -116,11 +139,17 @@ async def test_provider_balance_error_is_actionable_and_excludes_raw_provider_de
     class UnavailableProvider:
         async def call_tools(self, *args, **kwargs):
             raise LLMToolCallError("private-provider-detail", frozenset({402}))
+    agent = AgentRuntime(AgentDependencies(lambda: UnavailableProvider(), lambda lang: None, (), tmp_path / "agent"))
+    events = []
+    async def emit(name, value):
+        events.append((name, deepcopy(value)))
     with pytest.raises(ValueError) as raised:
-        await execute(tmp_path, UnavailableProvider())
+        await agent.run("owner", [{"role": "user", "content": "help"}], "en", {}, "", emit)
     assert "402" in str(raised.value) and "Settings" in str(raised.value)
     assert "private-provider-detail" not in str(raised.value)
     assert raised.value.code == "MODEL_BALANCE_INSUFFICIENT"
+    sid = next(data["session_id"] for name, data in events if name == "session")
+    assert agent.snapshot("owner", sid)["task"]["status"] == "failed"
 
 
 @pytest.mark.asyncio

@@ -97,6 +97,7 @@ async def test_mutation_requires_server_held_plan_and_confirmation_and_replay_is
         await agent.confirm("bob", sid, approval["approval_id"], approval["plan_digest"], True)
     result = await agent.confirm("alice", sid, approval["approval_id"], approval["plan_digest"], True)
     assert result["ok"] and len(writes) == 1
+    assert agent.snapshot('alice', sid)['task']['status'] == 'completed'
     assert await agent.confirm("alice", sid, approval["approval_id"], approval["plan_digest"], True) == result
     assert len(writes) == 1
     assert agent.snapshot("alice", sid)["pending"] is None

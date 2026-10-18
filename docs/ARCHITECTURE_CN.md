@@ -4214,8 +4214,9 @@ store/get_game/catalog/save 依赖，最多替换 16 本本局可编辑来源，
 接入后已记录的内容操作，不回退规则、角色 mechanics、已确认剧情或存档回合。
 Agent 不提供永久清空，归档仅限 10 个明确自建条目或不超过 10 条的未引用非主册；
 插件、内置来源与整本主册受保护。插件具名工具进入 Agent 需明确声明
-`agent_effect=read_only`，未知、mutation、destructive 影响转手动插件路径；该声明不构成
-原生插件进程沙箱。详细边界见 `docs/design/DF_AGENT_DELETE_POLICY.md`。
+`agent_effect=read_only/mutation/destructive`；动态具名适配器对三类原生插件调用均要求具体人工确认，
+未知声明不注册。旧通用插件入口仍只接受 read_only。该声明不构成原生插件进程沙箱，
+插件副作用不提供通用撤销。详细边界见 `docs/design/DF_AGENT_DELETE_POLICY.md`。
 
 v4 → v5 → v6 migration 保留 worlds 与 entry ids，并为每个 world 创建 deterministic
 `world:<id>` primary book；`list_entries(world_id)` 是该 primary book 的兼容 façade。
@@ -6333,7 +6334,11 @@ Agent 每次模型输出使用独立 `assistant_agent_max_tokens`（默认 4096�
 
 悬浮入口的 PointerEvent 拖动与浏览器位置持久化由 `useAssistantLauncherPosition` 负责，视口变化夹紧可见位置，拖动与点击/键盘打开分离；通用设置可将已挂载入口恢复到默认位置。`useAssistantWorkspace` 负责可折叠任务区与浏览器显示偏好，手机默认收起但保留状态提示，单列任务区最多占消息区域 45%；隐藏保留已挂载草稿和待确认计划。`SectionWorkspaceShell` 根据应用顶栏在视口内的底边动态停靠二级导航：顶栏滚出时上移至屏幕顶部，返回时恢复上下叠放；设置和日志内的吸顶菜单共享该偏移。模型返回多个已注册非审批查询/草稿工具时由框架顺序执行；含写审批、最终回答或未知工具的批次整批拒绝并纠正，仍保持单项服务器审批。格式重试耗尽返回 `MODEL_RESPONSE_INVALID`，保留既有草稿和会话。
 
-`assistant_agent_framework.py` 直接使用 Pydantic AI 的 Agent 执行器、纠错重试、请求预算和延迟审批机制，通过明确适配器复用现有模型服务商传输；`assistant_agent.py` 拥有业务工具适配、会话与服务器确认计划。`assistant_agent_application.py` 和 `assistant_authoring.py` 以明确依赖接入已有内容、游戏、插件和图像服务。LLM 仅提出具名注册工具候选，参数经过 schema 验证，修改由框架延迟、经服务器保存的计划与确认后才执行；最终 authority 仍属各领域服务。
+`assistant_agent_framework.py` 直接使用 Pydantic AI 的执行器、纠错重试、请求与工具预算及延迟审批，复用既有模型传输。`application_actions.py` 的 `ApplicationAction/ActionRegistry` 是显式注册的应用动作目录，包含版本、参数、领域、影响、guard 与权限回调；不是从路由或 Python 成员推导权限。Agent 按页加载相关能力，并通过 `search_capabilities/describe_capability` 发现其它动作。插件源在目录读取、规划及确认边界刷新，动作契约变化使旧计划失效。
+
+`assistant_agent.py` 持有会话、授权、计划和回执。owner 在 Agent 权限面板选择建议、自动处理日常或接管本次任务；服务器保存资源/领域范围、期限和步骤余量。日常仅自动执行明确标记的 guarded 普通修改，任务模式可执行范围内的普通修改及信息披露；设置与原生插件操作始终具体确认。聊天、文档和浏览器偏好不能自行扩权。连续修改与人工确认复用同一 durable plan/receipt 边界，取消停止后续步骤，已派发写入完成记录，结果不确定时禁止重放。逐次累计服务商报告的 token 并在返回后检查预算，不能保证硬费用上限，领域生成工具保留独立预算。
+
+`assistant_authoring.py`、`assistant_gameplay_tools.py`、`assistant_world_tools.py`、`assistant_settings_tools.py` 和独立内容库/插件适配器接入所属服务。资料册可见性只提交 `visible_to` patch，指定角色使用当前对局 UID；世界事实走 World Runtime operations；休整、恢复、剧情、冒险及规则行动保留各自版本、身份与服务器骰权威。后续功能注册动作后可被发现，未注册功能仍需适配；完整契约见 [ADR-0011](adr/0011-application-actions-and-agent-delegation.md)。
 
 `assistant_agent_knowledge.py` 注册只读 `search_documentation`，只在 Agent 请求使用说明时检索。`assistant_knowledge.py` 的当前版本模式使用现有本地文档或版本匹配的预建索引，只接受本仓库版本文档来源；不查询移动远程指南，不自动注入每条聊天。能力、canonical ID 与可执行操作仍由真实工具目录和服务观察决定。
 
@@ -6386,3 +6391,17 @@ AI 席位和检定授权的离席/重开清理由所属模块注册生命周期 
 HTTP 业务写入和启动插件/外部 outbox 等待真实健康检查与观察期提交。`update_admission.py` 负责准入，bootstrap 委托激活 owner。旧入口继续使用原数据；再次向前升级复制当前时间线，手动降级选用保留的旧数据。`src/compat/program_rollback_access.py` 委托 room-access owner 清除历史凭据并关闭玩家入口，防止旧 token 重新生效；房主安全数据不回退。清理保留当前与上一配对，只移除验证过的退役副本。
 
 清单仍必须声明 `data_rollback_safe=true`；版本化包声明正整数存档/资料册版本并包含 bootstrap。该协议下共享配置、安全数据必须向后兼容；不兼容共享契约或系统运行时改动仍需单独审核的过渡。完整挂载数据（含副本、待定与已提交绑定）均须备份。见[应用更新](zh/updates.md)。
+
+## 队伍休息动态投影
+
+`src/webui/services/rest_activity.py` 从当前 run 的恢复来源/回执与现有协同休息会话，
+只读投影最多 40 条 `rest_activity` 到游戏详情。条目只包含稳定 ID、休息类型、
+申请/结算状态与当前队伍角色身份；治疗原因、SAN/Luck 数值、骰值、随机种子、
+操作主体和私有奖励不进入此投影。大厅和未绑定 P2P 访客继续使用白名单，
+不能取得队伍动态；已绑定玩家复用原游戏详情传输。没有新增休息账本或存档迁移。
+
+前端 owner 为 `features/play/rest-notices/`。`PlayView` 只组合入口与原恢复/休息面板。
+个人提醒默认开启，按设备中的游戏/身份保存，可关闭单次提示或静音；不写服务端偏好，
+不改变其他玩家或规则结算。服务器稳定条目 ID 用于去重，进入、刷新和切换身份只建立
+基线；已有记录不会补弹。提示通过 Teleport 展示，五秒消失、不移动焦点、不改变对话区
+几何；队伍栏可主动打开动态。记录是已有权威状态的有限投影，不保证独立的永久历史。

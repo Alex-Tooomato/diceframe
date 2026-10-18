@@ -10,6 +10,7 @@ import { useAssistant } from '@/composables/useAssistant'
 import { useAssistantWorkspace } from '@/composables/useAssistantWorkspace'
 import { renderSafeMarkdown } from '@/utils/markdown'
 import AgentTaskCard from '@/components/assistant/AgentTaskCard.vue'
+import AgentAuthorizationPanel from '@/components/assistant/AgentAuthorizationPanel.vue'
 import AssistantAvatar, { type AssistantAvatarMood } from '@/components/assistant/AssistantAvatar.vue'
 import { loadAssistantVoiceConfig, useAssistantVoice } from '@/composables/useAssistantVoice'
 import { assistantVoiceCopy } from '@/features/assistant/voiceCopy'
@@ -25,13 +26,28 @@ import { generatedImageUrl } from '@/api/generatedImages'
 const props = withDefaults(defineProps<{ expanded?: boolean; wide?: boolean }>(), { expanded: false, wide: false })
 const emit = defineEmits<{ close: []; toggleExpanded: [] }>()
 const { t, locale } = useLocale()
-const { messages, streaming, send, stop, retryLast, pendingApproval, drafts, status, navigation, actionBusy, actionError, confirmApproval, cancelApproval, reviewDraft, saveDraft, restoreSession, invalidateApproval } = useAssistant()
+const { messages, streaming, send, stop, retryLast, pendingApproval, drafts, status, navigation, actionBusy, actionError, confirmApproval, cancelApproval, reviewDraft, saveDraft, restoreSession, invalidateApproval, authorization, task, authorizationBusy, authorizationError, authorize } = useAssistant()
 const draftList = computed(() => Object.values(drafts.value))
 const eventList = computed(() => messages.value.flatMap(message => message.events || []))
 const agentCopy = computed(() => assistantCopy(locale.value))
 const workspaceCopy = computed(() => assistantWorkspaceCopy(locale.value))
 const { collapsed: workspaceCollapsed, toggle: toggleWorkspace } = useAssistantWorkspace()
 const workspaceId = useId()
+const locationHash = ref(typeof window === 'undefined' ? '' : window.location.hash)
+const agentContext = computed(() => {
+  const query = locationHash.value.split('?')[1]?.split('#')[0]
+  if (!query) return {}
+  const params = new URLSearchParams(query)
+  // Use the most specific page object. Requiring its parent IDs as extra
+  // action arguments would prevent otherwise valid scoped book/card edits.
+  for (const [target, keys] of [['book_id', ['book', 'book_id']], ['card_id', ['card', 'card_id']], ['game_key', ['game', 'game_key']], ['world_id', ['world', 'world_id']]] as const) {
+    for (const key of keys) {
+      const value = params.get(key)?.trim()
+      if (value && value.length <= 200) return { [target]: value }
+    }
+  }
+  return {}
+})
 const imageUrls = ref<Record<string, string>>({})
 const imageLoads = new Set<string>()
 const draft = ref('')
@@ -189,7 +205,7 @@ function statusText(value: string): string {
 }
 function toolLabel(tool: unknown): string { return assistantToolLabel(locale.value, tool) }
 const currentHash = ref(typeof window === 'undefined' ? '' : window.location.hash)
-const onHashChange = () => { currentHash.value = window.location.hash }
+const onHashChange = () => { currentHash.value = window.location.hash; locationHash.value = window.location.hash }
 onMounted(() => window.addEventListener('hashchange', onHashChange))
 onBeforeUnmount(() => window.removeEventListener('hashchange', onHashChange))
 function navigationHash(target: { route: string; query?: Record<string, string> }): string {
@@ -334,6 +350,15 @@ function followNavigation() {
       </NButton>
       </div>
     </header>
+    <AgentAuthorizationPanel
+      :locale="locale"
+      :authorization="authorization"
+      :task="task"
+      :busy="authorizationBusy || streaming || actionBusy"
+      :error="authorizationError"
+      :context="agentContext"
+      :on-authorize="authorize"
+    />
 
     <div class="assistant-body" :class="{ 'assistant-body-history': historyOpen }">
     <aside v-if="historyOpen" class="assistant-history" data-testid="assistant-history" :aria-label="conversationCopy.history">

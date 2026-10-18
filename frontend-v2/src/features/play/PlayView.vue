@@ -4,7 +4,7 @@ import { NIcon } from 'naive-ui'
 import { BookOutline, ChatbubbleEllipsesOutline, ChevronBack, ChevronForward, KeyOutline, PlayForwardOutline, ShareOutline, ShieldOutline, StatsChartOutline, TerminalOutline } from '@vicons/ionicons5'
 import { useRoute, useRouter } from 'vue-router'
 import { api, apiBlob, errorMessage as apiErrorMessage, hasAccessToken, isNotFoundError, retryOnRateLimit } from '@/api/client'
-import type { BotBindTokenResponse, CharacterCard, CharacterCardsResponse, CharacterListResponse, CharacterPortrait, CharacterSheet, CheckResult, CommandResponse, GameDetail, GmStyle, HealthResponse, JsonObject, LuckDecisionResponse, PendingPayment, Player, PlayerContextResponse, PublicAction, RuleMeta, RulesetDirectorProposal, RulesetGameplayView, StoryMode, WorldCandidate, WorldListResponse, WorldTemplatesResponse } from '@/api/types'
+import type { BotBindTokenResponse, CharacterCard, CharacterCardsResponse, CharacterListResponse, CharacterPortrait, CharacterSheet, CheckResult, CommandResponse, GameDetail, GmStyle, HealthResponse, JsonObject, LuckDecisionResponse, PendingPayment, Player, PlayerContextResponse, PublicAction, RestActivity, RuleMeta, RulesetDirectorProposal, RulesetGameplayView, StoryMode, WorldCandidate, WorldListResponse, WorldTemplatesResponse } from '@/api/types'
 import { queryString } from '@/stores/gameContext'
 import { isStoredPlayerMember } from '@/utils/joinIdentity'
 import { readSeatToken, storeSeatToken } from '@/utils/seatToken'
@@ -33,6 +33,7 @@ import EconomyProposalCard from '@/components/play/EconomyProposalCard.vue'
 import GmChargeComposer from '@/features/play/economy/GmChargeComposer.vue'
 import GameSidebar from '@/components/GameSidebar.vue'
 import ResourceRecoveryPanel from '@/features/play/recovery/ResourceRecoveryPanel.vue'
+import RestNotifications from '@/features/play/rest-notices/RestNotifications.vue'
 import PlayHelpCenter from '@/components/PlayHelpCenter.vue'
 import HealthPanel from '@/components/HealthPanel.vue'
 import Modal from '@/components/ui/Modal.vue'
@@ -95,6 +96,7 @@ const aiAttentionCount = ref(0)
 const actionRecoveryStatus = ref({ count: 0, message: '' })
 const actionComposer = ref<{ focusRecovery: () => void } | null>(null)
 const recoveryRefreshToken = ref('')
+const resourceRecoveryPanel = ref<{ open: () => void } | null>(null)
 const gmToggle = ref<HTMLButtonElement | null>(null)
 const utilityMenu = ref<InstanceType<typeof PlayUtilityMenu> | null>(null)
 const unresolvedHealthCount = computed(() => (health.value.events || []).filter(event => !event.resolved && !event.ignored).length)
@@ -498,6 +500,11 @@ function openCharacterRest() {
   characterCenterFocus.value = 'rest'
   showCharacterCenter.value = true
   if (!characterDocked.value) mobilePanel.value = ''
+}
+
+function openRestNotice(kind: RestActivity['kind']) {
+  if (kind === 'short' || kind === 'long') openCharacterRest()
+  else resourceRecoveryPanel.value?.open()
 }
 
 function openCharacterCenter() {
@@ -1386,11 +1393,12 @@ function onPlayKeydown(event: KeyboardEvent) {
         >
           <template #after-character>
             <ResourceRecoveryPanel
+              ref="resourceRecoveryPanel"
               :game-key="game.currentGame.value"
               :actor-id="actorId"
               :is-gm="game.isGm.value"
               :readonly="preview && !delegate"
-              :refresh-key="`${game.detail.value.run_id}:${game.detail.value.last_activity}`"
+              :refresh-key="JSON.stringify([game.detail.value.run_id, game.detail.value.last_activity, game.detail.value.rest_activity])"
               @changed="game.refresh(true)"
             />
           </template>
@@ -1706,6 +1714,11 @@ function onPlayKeydown(event: KeyboardEvent) {
             :game-key="game.currentGame.value" :detail="game.detail.value" :players="game.players.value" :player="game.player.value"
             :actor-id="actorId" :is-gm="game.isGm.value" :preview="preview" :delegate="delegate"
             @rest="openCharacterRest"
+          />
+          <RestNotifications
+            :game-key="game.currentGame.value" :run-id="String(game.detail.value.run_id || '')"
+            :actor-id="actorId" :activity="game.detail.value.rest_activity || []"
+            @open-rest="openRestNotice"
           />
         </template>
       </PartyRail>

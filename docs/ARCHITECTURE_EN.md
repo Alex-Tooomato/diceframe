@@ -4273,9 +4273,11 @@ approval boundary for new recorded operations only; mechanics, confirmed story
 and save rounds are not rewound. Agent has no permanent purge. Archives are
 limited to 10 explicit authored entries or an unreferenced non-primary book with
 at most 10 entries; builtins, plugin sources and whole primary books are protected.
-Plugin tools require explicit `agent_effect=read_only`; unknown, mutation and
-destructive declarations use the manual plugin flow. Declarations are not native
-process sandboxing. See `docs/design/DF_AGENT_DELETE_POLICY.md` for precise limits.
+Named plugin tools require explicit `agent_effect=read_only/mutation/destructive`.
+All three native-process classes require concrete manual approval; unknown effects
+are not registered. The legacy generic entry remains read-only. Declarations do not
+sandbox native processes, and plugin side effects have no generic undo. See
+`docs/design/DF_AGENT_DELETE_POLICY.md` for precise limits.
 
 The v4 → v5 → v6 migrations preserve worlds and entry IDs, and create a deterministic
 `world:<id>` primary book for every world. `list_entries(world_id)` remains the
@@ -6396,7 +6398,11 @@ The launcher is a liquid-glass d20 familiar (`AssistantAvatar`): purely presenta
 
 `useAssistantLauncherPosition` owns PointerEvent dragging, browser-local position persistence and viewport clamping, separating a drag from click or keyboard activation; DF Agent settings can reset the mounted launcher to its default position. `useAssistantWorkspace` owns task folding and the browser preference: phones fold by default while retaining a status summary, and a single-column task area occupies at most 45% of the message area. Hiding it preserves mounted drafts and pending approvals. `SectionWorkspaceShell` anchors sticky secondary navigation to the application header's visible bottom edge: it moves to the viewport top as the header scrolls away and stacks beneath it again on return. Sticky settings and log menus share this offset. Batches of registered immediate read/draft tools execute sequentially in the framework. Batches containing deferred writes, final output or unknown tools are rejected as a whole and corrected, preserving one server-held approval at a time. Exhausted format retries return `MODEL_RESPONSE_INVALID` while retaining the session and existing drafts.
 
-`assistant_agent_framework.py` directly uses Pydantic AI's Agent executor, validation retries, usage limits and deferred approvals, adapting the existing configured model transport. `assistant_agent.py` owns business-tool adapters, sessions and server-held confirmation plans. `assistant_agent_application.py` and `assistant_authoring.py` adapt existing content, game, plugin and image services through explicit dependencies. Model output is an untrusted named-tool candidate; schemas, framework deferral and server-held confirmation plans gate mutations, while domain services retain authority.
+`assistant_agent_framework.py` uses Pydantic AI's executor, validation retries, request/tool budgets and deferred approvals over the existing configured transport. `application_actions.py` owns explicit `ApplicationAction/ActionRegistry` contracts: version, parameters, domain, effect, guard and authorization callback. It does not infer access from routes or Python members. Page context loads relevant capabilities; `search_capabilities/describe_capability` discovers others. Dynamic plugin sources refresh at catalog, planning and confirmation boundaries, and contract changes invalidate old plans.
+
+`assistant_agent.py` owns sessions, server-held grants, plans and receipts. The owner selects Suggest, Handle routine work or Take over this task in the Agent access panel. Grants bind resource/domain scope, expiry and remaining steps. Routine mode permits only explicitly automatic guarded ordinary writes; task mode additionally covers scoped disclosures. Settings and native plugin calls always require concrete approval. Chat, documentation and browser preferences cannot grant access. Automatic and manual writes share the same durable plan/receipt path. Cancel stops later steps while dispatched writes finish recording; uncertain outcomes cannot be replayed. Provider-reported tokens accumulate and are checked after responses, not as a hard billing cap; domain generation tools keep separate budgets.
+
+Independent authoring, gameplay, world, settings, library and plugin adapters delegate to their owners. Lorebook visibility submits only `visible_to` patches and uses live game UIDs for individual audiences. World facts use World Runtime operations. Rest, recovery, story, adventure and rules actions retain domain revisions, identities and server dice. New registered actions become discoverable; unregistered features still need adapters. See [ADR-0011](adr/0011-application-actions-and-agent-delegation.md).
 
 `assistant_agent_knowledge.py` registers read-only `search_documentation`, retrieved only when the Agent asks for usage guidance. The current-version mode in `assistant_knowledge.py` uses current local files or a version-matched bundled index and accepts only this repository's versioned document sources. Moving remote guides are excluded and no documentation is injected into every chat. Actual tools and service observations determine capabilities, canonical IDs and executable operations.
 
@@ -6452,3 +6458,22 @@ The candidate copies quiescent business data, with SQLite backup including commi
 HTTP business writes and startup plugins/outbox delivery wait for the existing launcher's real health/probation commitment. `update_admission.py` owns admission; bootstrap delegates to the activation owner. The original root dataset remains available to old entrypoints. A forward upgrade copies the active timeline, while a manual downgrade selects the retained older dataset. `src/compat/program_rollback_access.py` delegates credential sanitation to the room-access owner and closes player entrances, preventing historical tokens from becoming valid again. Host security is not reverted. Current/previous data pairs survive pruning; only validated retired copies are removed.
 
 `data_rollback_safe=true` remains mandatory. Versioned packages declare positive instance/Lorebook schema versions and include the data bootstrap. Shared host configuration/security must remain backward compatible under this protocol; incompatible shared or system-runtime changes need a separately reviewed transition. The complete mounted data directory, including versioned data, pending and committed bindings, is part of backup scope. See [application updates](en/updates.md).
+
+## Party rest activity projection
+
+`src/webui/services/rest_activity.py` reads current-run recovery sources/receipts
+and the existing cooperative rest session, projecting at most 40 `rest_activity`
+items into game detail. Items contain only stable identity, rest kind, request or
+settlement status and current roster identities. Treatment reasons, SAN/Luck
+values, rolls, seeds, command principals and private rewards remain excluded.
+Lobby and unbound P2P visitors retain their allowlists; bound members reuse the
+existing game-detail transport. There is no new rest ledger or save migration.
+
+The frontend owner is `features/play/rest-notices/`; `PlayView` only composes the
+entry and existing rest/recovery panels. Reminders default on and are a personal
+device preference scoped by game and identity. Dismissal/muting never changes
+server preferences, other members or settlement. Stable server item IDs deduplicate
+notices; entry, refresh and identity changes establish a baseline without replay.
+Teleported notices expire after five seconds, do not move focus and do not resize
+chat. The party rail provides manual access. Records are a bounded projection of
+existing authority, rather than an independent permanent history.

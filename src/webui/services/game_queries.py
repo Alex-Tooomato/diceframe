@@ -21,6 +21,7 @@ from src.llm.parser import sanitize_narration
 from src.rulesets.contracts import GameDetailProjectionRuntime
 from src.rulesets.registry import RulesetRuntimeRegistry
 from src.webui.services._common import _GAME_KEY_SEP
+from src.webui.services.rest_activity import rest_activity
 from src.webui.ruleset_rest_projection import public_rest_session
 from src.game_profiles.projection import routing_descriptor
 
@@ -243,6 +244,7 @@ def game_detail(
         "max_players": room_access.max_players(instance),
         "multiplayer": instance.multiplayer_status(),
         "rest_session": public_rest_session(instance),
+        "rest_activity": rest_activity(instance),
         "run_lifecycle": module_hooks.read_value(instance, module_hooks.RUN_LIFECYCLE_VIEW) or {'status': 'playing'},
         "gm_workspace_revision": module_hooks.gm_workspace_revision(instance) if viewer_is_gm else None,
         "plot_tracker": (

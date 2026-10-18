@@ -103,6 +103,8 @@ class DiceFrameModel(Model):
         except LLMToolCallError as exc:
             raise provider_unavailable(exc, self.language) from exc
         calls = getattr(response, "tool_calls", None)
+        reported_tokens = max(0, int(getattr(response, 'total_tokens', 0) or 0))
+        await self.emit('usage', {'total_tokens': reported_tokens})
         text = getattr(response, "content", "")
         parts = []
         self.response_correction = "Return one registered function call with JSON object arguments, or a nonempty final answer."
@@ -139,7 +141,7 @@ class DiceFrameModel(Model):
         else:
             self.response_correction = ""
         return ModelResponse(parts, model_name=self.model_name,
-            usage=RequestUsage(output_tokens=max(0, int(getattr(response, "total_tokens", 0) or 0))))
+            usage=RequestUsage(output_tokens=reported_tokens))
 
 
 async def execute_agent(client, tools, instructions: str, payload: dict, emit: Callable,
@@ -156,7 +158,8 @@ async def execute_agent(client, tools, instructions: str, payload: dict, emit: C
 
     try:
         result = await agent.run(json.dumps(payload, ensure_ascii=False),
-            usage_limits=UsageLimits(request_limit=max_steps, tool_calls_limit=max_steps), infer_name=False)
+            usage_limits=UsageLimits(request_limit=max_steps, tool_calls_limit=max_steps,
+                                     total_tokens_limit=max_tokens * max_steps), infer_name=False)
     except UnexpectedModelBehavior as exc:
         raise AgentModelResponseInvalid(language) from exc
     return result.output
