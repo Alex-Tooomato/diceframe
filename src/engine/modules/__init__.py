@@ -34,4 +34,5 @@ from src.engine.modules import (  # noqa: F401
     run_story,
     skill_growth,
     run_finale,
+    resource_recovery,
 )

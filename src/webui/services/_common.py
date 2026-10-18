@@ -13,6 +13,18 @@ MAX_ACTIONS_PER_TURN = 3
 MAX_SEED_CHARS = 2000
 
 
+def professional_character_validation_error(exc: ValueError) -> tuple[str, str]:
+    """Return a stable API error while keeping professional validation fail-closed."""
+
+    code = str(getattr(exc, "error_code", "") or "")
+    if code == "PROFESSIONAL_CHARACTER_BLUEPRINT_REQUIRED":
+        return code, (
+            "专业角色缺少可重建的规则数据，请使用当前规则的专业建卡器完成后再创建或加入。"
+            "旧角色卡不能仅凭展示属性安全转换。"
+        )
+    return "INVALID_PROFESSIONAL_CHARACTER", str(exc)
+
+
 def _is_safe_game_key_part(s: str) -> bool:
     """校验 game_key 片段不可影响存档路径结构。"""
     return "/" not in s and "\\" not in s and ".." not in s and "#" not in s and ":" not in s

@@ -36,7 +36,7 @@ from src.engine.game_state_contracts import (
 )
 from src.engine.language import DEFAULT_LANGUAGE, normalize_language
 from src.engine.module_state import ensure_module_states
-from src.engine.modules import adventure_runtime_state, checks, economy_state, progression_state, room_access, round_safety, ruleset_runtime, run_finale, session_stats, skill_growth
+from src.engine.modules import adventure_runtime_state, checks, economy_state, progression_state, resource_recovery, room_access, round_safety, ruleset_runtime, run_finale, session_stats, skill_growth
 from src.engine.narrative_perspective import validate_narrative_perspective
 from src.engine.player_control import (
     PlayerControlError,
@@ -288,6 +288,7 @@ class GameInstance:
     def run_writable(self) -> bool:
         """Read-only run lifecycle admission, shared by locked legacy writers."""
         skill_growth.require_writable(self)
+        resource_recovery.require_writable(self)
         return self.state != GameState.ENDED and run_finale.writable(self) and bool(module_hooks.ask(
             module_hooks.AUTHORITATIVE_WRITE_ALLOWED, self, default=True,
         ))
@@ -1395,6 +1396,7 @@ class GameInstance:
         state_changes: list[str] | None = None,
         pre_combat_extension_snapshot: dict[str, Any] | None = None,
         story: dict[str, Any] | None = None,
+        adventure_completion_candidate: Any = None,
     ) -> None:
         """判定完成，记录本轮并开启下一轮。
 
@@ -1419,6 +1421,7 @@ class GameInstance:
                 state_changes=state_changes,
                 pre_combat_extension_snapshot=pre_combat_extension_snapshot,
                 story=story,
+                adventure_completion_candidate=adventure_completion_candidate,
             )
             turn_state.start_round_locked(self)
 
@@ -1428,6 +1431,7 @@ class GameInstance:
         original_round: int,
         state_changes: list[str] | None = None,
         story: dict[str, Any] | None = None,
+        adventure_completion_candidate: Any = None,
     ) -> None:
         """为已有轮次添加 swipe（不推进回合）。"""
         async with self._lock:
@@ -1437,6 +1441,7 @@ class GameInstance:
             economy_state.state(self)
             round_recovery.finish_judgment_with_swipe_locked(
                 self, gm_response, original_round, state_changes=state_changes, story=story,
+                adventure_completion_candidate=adventure_completion_candidate,
             )
 
     async def switch_swipe(self, round_num: int, swipe_idx: int) -> bool:

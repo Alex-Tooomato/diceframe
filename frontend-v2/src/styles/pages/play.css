@@ -1943,12 +1943,22 @@ body.light .play-main {
 }
 
 .play-main .scene-trailing {
+  display: flex;
+  align-items: center;
+  gap: 6px;
   width: auto;
-  max-width: 150px;
+  min-width: 0;
 }
 
 .play-main .scene-trailing .check-mode-panel {
   margin: 0;
+}
+
+.play-main .scene-trailing .check-mode-trigger,
+.play-main .scene-trailing .adventure-panel-trigger {
+  min-height: 32px;
+  padding: 5px 8px;
+  font-size: 12px;
 }
 
 .play-control-rail .gm-toolbar {

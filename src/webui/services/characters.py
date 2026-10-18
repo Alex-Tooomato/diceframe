@@ -50,6 +50,7 @@ from src.commands.economy_effects import pending_decision_notice
 from src.commands.state_items import grant_classified_item
 from src.rulesets.contracts import GameDetailProjectionRuntime, PlayerJoinRuntime
 from src.webui.character_contracts import MAX_BIO_CHARS
+from src.webui.services._common import professional_character_validation_error
 from src.webui.character_sheet_authority import (
     EDITABLE_SHEET_FIELDS,
     adopt_requires_gm_failure,
@@ -1444,10 +1445,11 @@ async def _create_player_authority(dependencies: CharacterDependencies, inst: Ga
                     rule, character, getattr(inst, "language", ""),
                 )
             except ValueError as exc:
+                error_code, error = professional_character_validation_error(exc)
                 return {
                     "ok": False,
-                    "error_code": "INVALID_PROFESSIONAL_CHARACTER",
-                    "error": str(exc),
+                    "error_code": error_code,
+                    "error": error,
                 }
             canonical = character.get("ruleset_character")
             binding = canonical.get("rule_binding") if isinstance(canonical, dict) else None

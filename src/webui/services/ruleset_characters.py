@@ -156,7 +156,8 @@ def normalize_character_card_blueprint(
     binding = canonical.get("rule_binding") if isinstance(canonical, dict) else None
     if not isinstance(canonical, dict) or not isinstance(binding, dict):
         raise RulesetCharacterOperationError(
-            "INVALID_RULESET_CHARACTER", "专业角色卡缺少可重建的权威规则数据",
+            "PROFESSIONAL_CHARACTER_BLUEPRINT_REQUIRED",
+            "专业角色卡缺少可重建的权威规则数据，请使用当前规则的专业建卡器完成后再保存。",
         )
     rule_id = str(binding.get("rule_id") or character.get("rule_id") or "").strip()
     if not rule_id:
@@ -184,8 +185,9 @@ def normalize_character_card_blueprint(
             rule, deepcopy(character), locale,
         )
     except (TypeError, ValueError) as exc:
+        code = str(getattr(exc, "error_code", "") or "")
         raise RulesetCharacterOperationError(
-            "INVALID_RULESET_CHARACTER", f"专业角色卡未通过规则校验: {exc}",
+            code or "INVALID_RULESET_CHARACTER", f"专业角色卡未通过规则校验: {exc}",
         ) from exc
 
     profile_patch: dict[str, Any] = {}
@@ -284,7 +286,8 @@ def _apply_profile(
     canonical = current.get("ruleset_character")
     if not isinstance(canonical, dict):
         raise RulesetCharacterOperationError(
-            "INVALID_RULESET_CHARACTER", "专业角色缺少权威规则数据",
+            "PROFESSIONAL_CHARACTER_BLUEPRINT_REQUIRED",
+            "专业角色缺少权威规则数据，请使用当前规则的专业建卡器完成后再保存。",
         )
     canonical = deepcopy(canonical)
     binding = canonical.get("rule_binding")
@@ -454,7 +457,10 @@ async def _adopt_character_card_authority(
             rule, deepcopy(card), str(getattr(instance, "language", "") or ""),
         )
     except ValueError as exc:
-        return _failure("INVALID_RULESET_CHARACTER", str(exc))
+        return _failure(
+            str(getattr(exc, "error_code", "") or "INVALID_RULESET_CHARACTER"),
+            str(exc),
+        )
     canonical = normalized.get("ruleset_character")
     binding = canonical.get("rule_binding") if isinstance(canonical, dict) else None
     # 绑定由游戏在创建时决定；采用角色卡只能匹配，不能反向建立绑定。

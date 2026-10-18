@@ -3,6 +3,28 @@ import { accessToken } from './support'
 
 const token = accessToken
 
+test('updates stay in About while rollback lives in General maintenance', async ({ page }, info) => {
+  await page.route('**/api/system/update/status', route => route.fulfill({ json: {
+    state: 'done', version: '3.0.0-beta.2', current_version: '3.0.0-beta.2', kind: 'portable',
+    self_update: { supported: true, mode: 'portable', reason: '', hint: '' },
+    rollback: { available: true, target_version: '3.0.0-beta.1' },
+  } }))
+  await page.route('**/api/system/update-check', route => route.fulfill({ json: {
+    ok: true, current_version: '3.0.0-beta.2', update_available: false,
+  } }))
+  await page.goto('/#/settings?section=general&focus=update')
+  await expect(page.locator('#settings-update')).toBeVisible()
+  await expect(page.locator('.settings-nav [data-section="about"]')).toHaveClass(/active/)
+  await expect(page.locator('#settings-update').getByRole('button', { name: '检查更新', exact: true })).toBeVisible()
+  await expect(page.locator('#settings-update')).not.toContainText('回退到上一版本')
+  await page.goto('/#/settings?section=general&focus=rollback')
+  await expect(page.locator('#settings-rollback')).toBeVisible()
+  await expect(page.locator('#settings-update')).toBeHidden()
+  await expect(page.locator('#settings-maintenance').getByRole('button', { name: '回退到上一版本', exact: true })).toBeVisible()
+  await expect(page.locator('#settings-maintenance')).not.toContainText('更新完成')
+  await page.screenshot({ path: info.outputPath('maintenance-rollback.png') })
+})
+
 test('settings status summary stays structured and destructive confirmations are explicit', async ({ page }) => {
   await page.addInitScript(value => localStorage.setItem('trpg_access_token', value), token())
 

@@ -8,9 +8,9 @@
 >
 > - 仓库：`diceframe/diceframe`
 > - 分支：`main`
-> - Commit：`0ad98b3e9a30a9b89334448a1fcddeeb6cb5975e`
+> - Commit：`dbc4b80af77015032007d4e0daa961af13c484d0`
 > - Release：`3.0.0-beta.2`
-> - 上游 GameInstance persisted schema：`46`；当前实现写入 `46`（45 为本局配置拆分，46 为剧情/成长/结团读写隔离）。
+> - 上游 GameInstance persisted schema：`46`；当前本地 writer 写入 `47`（45 为本局配置拆分，46 为剧情/成长/结团读写隔离，46→47 为恢复权威的旧读者隔离栏）。上游基线与本地工作区版本必须分开描述。
 > - 本地状态归属：`game_config` 为内核配置，`room_access` 与经济账本属于必要内核；`narration_preferences` 和 `check_presentation` 经 hooks 提供可选投影和新 run 偏好继承。44→45 迁移移动旧桌面字段与 `economy.reward_policy`，不换算金额、不改写事务账本；保留不透明扩展字段，拒绝未知或混杂结构。见 [ADR-0007](adr/0007-runtime-state-ownership.md)。
 > - R9-b：`scene` 权威状态存于 `modules.narrative_notes.scene`，该槽升到 v2；39→40 迁移删除旧顶层键，值原样保留。reset 照旧清空；写 scene 的事务（开局、回合处理、swipe、规则批次与 Director 自动化、ruleset 事务回滚、reset）经 `module_hooks.preflight(..., NARRATIVE_VIEW)` 对叙事拥有模块预检。列表、详情、大厅（含密码遮挡）、SSE、recap 与 LLM 视图的 `scene` 不变。
 > - R9-a：`adventure_progress` 与 `play_mode` 权威状态存于 `modules.adventure_runtime` 的 `progress`、`play_mode`；38→39 迁移删除旧顶层键。Adventure 身份仍只在顶层 `adventure_binding`。读档时空或未知的 play_mode 仍按绑定推导；原地 reset 清空 progress、保留 play_mode；新 run（reset/restart/种子）沿用 play_mode 并重新初始化 v2 进度，写入均经模块 owner 并先做预检。
@@ -19,6 +19,8 @@
 > - R8-c2：`round_start_snapshot`、`round_entity_snapshot`、`death_save_outcomes` 存于 `modules.round_safety`；旧 GameInstance 属性入口已退役，读写使用所属模块，31→32 迁移删除旧顶层键。reset 只清两个快照，继续保留死亡豁免缓存。
 > - R8-c1：`last_check`、`last_checks`、`round_checks_prepared`、`manual_roll_requests` 存于 `modules.checks`；旧 GameInstance 属性入口已退役，读写使用所属模块，30→31 迁移删除旧顶层键。reset 继续保留手动骰请求。
 > - R8-a：统计字段 `total_llm_calls`、`total_tokens`、`started_at`、`last_activity` 存于 `modules.session_stats`；旧 GameInstance 属性入口已退役，读写使用所属模块，29→30 迁移删除旧顶层键。
+> - R10：`modules.resource_recovery`（schema 1）是当前 writer 的必需权威槽，保存一次性恢复资格、回执、消费范围、操作幂等与命令主体；角色表仍拥有 SAN/Luck 当前值，`WorldState` 拥有逻辑时钟，`StagedGameTransaction` 负责原子发布。`src/rulesets/resource_recovery.py` 只提供显式 v1 固定策略（`coc_light` / `coc7e_style` 与 Luck `check`/`off`）；缺少 policy 声明时功能关闭，已声明但结构错误、未来或不支持的 policy 则 fail closed 并报告校验错误。服务端保存 policy snapshot、run、seed 与 principal，旧正向 SAN/Luck narrator tags 在已声明策略下拒绝；0 SAN / 永久疯狂不能通过普通恢复复活。HTTP 恢复路由按成员与 GM 身份授权，P2P 只转发 `recovery.read`、`recovery.request`、`recovery.claim` 语义操作。已结算回执禁止 swipe/rewind 穿越；46→47 reader fence 校验当前与历史槽位，导入时拒绝待处理资格跨 run 转移，不创建历史资格。
+> - R11：本地世界 identity 自动升级在 `common_factory` 冷启动构建最前执行（`reuse` 路径不执行）。它支持旧资料册 SQLite v4 与 canonical v5～v12 的 world/book/binding 结构，以及本地 writer 已知范围内的存档 schema。每个旧 identity 通过稳定哈希映射为 ASCII canonical world ID，同名世界仍保持区分；`templates`、全部 `saves/state*.json` 和已知 JSON payload 中的 world/book 引用会重绑定，但展示标题、entry ID、`game_key`、`memory_namespace` 与聊天/日志文本保持不变。SQLite receipt 与持久 journal 支持进程中断后的 roll-forward；用户改动、目标冲突、非法或未来 schema 会 fail closed 且不覆盖原数据。新的 AI 世界生成同样使用 ASCII ID，并为 `world:` 主资料册前缀预留长度预算，同时给生成条目加世界前缀。
 > - 当前 Lorebook SQLite schema（`PRAGMA user_version`）：`12`
 > - 文档核验日期：2026-10-18
 >
@@ -90,6 +92,7 @@ service 之间互相 import 形成环
 | D&D Campaign / Session 0 | `src/rulesets/dnd2024/campaign/` | EventBatch / reducer | D&D Ruleset State |
 | D&D 角色 | `src/rulesets/dnd2024/character/` | ruleset character lifecycle | `ruleset_character` |
 | D&D 休息 | `src/webui/services/ruleset_rest.py` | D&D resting domain | D&D Runtime |
+| 恢复 / 休整、治疗、剧情奖励、幕间 Luck | `src/webui/services/resource_recovery.py` | `src/engine/modules/resource_recovery.py`、`src/rulesets/resource_recovery.py`、`src/webui/services/recovery_projection.py` | 角色资源、WorldState 时钟与一次性恢复 ledger |
 | D&D 升级 | `src/webui/services/ruleset_advancement.py` | progression / character reconciliation | D&D Runtime |
 | Ruleset capability | `src/rulesets/contracts.py` | `registry.py` | Runtime capability contract |
 | 通用战斗扩展 | `src/webui/services/combat_extension.py` | `src/engine/combat_*` | Generic combat primitives |
@@ -497,6 +500,8 @@ Frontend / Bot / Plugin Client
 能力模块经 `src/engine/module_hooks.py` 接入核心流程：核心只调用固定的钩子点（`round.reset`、`round.processing.begin`、`instance.reset.preflight`、`instance.reset`、`round.recovery.preflight`、`round.abort`、`round.rewind.begin`、`round.rewind.restore`、`round.commit`、`module.state.record`、`module.state.read`），不点名模块；没有模块注册的钩子点是空操作，读取返回空值。`module.state.record` / `module.state.read` 按 kind（如 `quick_actions`、`health_events`）读写模块持有的数据，由拥有该 kind 的模块应答。钩子点是封闭集合，注册未知钩子点直接报错；只有 `src/engine/modules` 下的模块可以注册（架构守卫）。目前已迁到钩子上的有 `world_reports`（越权标注、世界合法性、世界事件三类回合报告）和 `round_presentation`（快捷行动、回合回顾、token 预算提升、待结算战斗结果、GM 私密指令）、`lorebook_runtime`（世界书条目的 sticky / cooldown / delay 计时器，每轮在 `round.processing.begin` 推进）、`health`（GM 可见的降级事件与组件状态，`engine.health` 经 `health_events` / `health_status` 模块状态读写）、`check_reveals`（检定揭示记录）、`player_control_state`（离开托管策略，缺省为 `pause`）、`private_channels`（私聊记录与桌边交流）、`seat_activity`（席位“已行动”锁，经 `seat.preflight` / `seat.acted` / `seat.forgotten` / `seat.has_acted` 接入；缺失时没有席位被锁，即 #480 之前的行为）、`legacy_combat`（只读战斗回合视图，经 `module_hooks.combat_view` 读取；缺失时一律是中立视图）、`combat_extension_state`（通用战斗扩展载荷与按回合快照；快照代码由 `round_snapshots` 移入模块，经回合提交 / 中止 / 回退钩子参与，日志条目字段不变）、`media`（冒险头图引用与地图背景，经 `scene_image` / `map_background` 模块状态读写；存档包导入用的 `payload_container` 属于存储契约，保留直接调用）；删除它们后跑团照常，只是缺少对应的展示与报告，接口保持原形状（空列表或 `null`）。
 
 ---
+
+`resource_recovery` 在这里是 authority 例外：当前 writer 要求其槽和生命周期钩子始终存在，并在规则未声明恢复策略时仍保持可读、可校验、可回退。规则边界上的功能是可选的，authority 模块不是。缺少 policy 字段时功能关闭，但不能卸载模块或丢失 authority 槽；已声明但结构错误、未来或不支持的 policy 则 fail closed 并报告校验错误。Luck 恢复只有显式的 `check` / `off` 设置。
 
 建局组现已按 [ADR0007](adr/0007-runtime-state-ownership.md) 拆分：`room_access`、事务账本 `economy_state` 与 `game_config` 属于内核；`narrative_notes`、`narration_preferences`、`check_presentation` 通过读写与预检钩子接入。新 run 先预检全部源槽位，再创建候选，偏好由拥有模块深拷贝；原地 reset 保留偏好。禁用可选拥有模块时读取中立值、忽略对应写入，并保留不透明存储。
 
@@ -2449,12 +2454,35 @@ reset/restart 不覆盖冻结/结束档案。
 资料册 owner 为新局物化 canonical 选择。普通角色卡库导入仍遵循建卡字段契约，
 不能与完整快照带入视为同一种操作。
 
-实例迁移 45→46 仅设读者隔离边界，不猜历史计划或成长。未来/不支持的模块版本拒绝
+实例迁移 45→46 仅设剧情/成长/结团读者隔离；46→47 仅设恢复权威读者隔离，不猜历史计划、成长或恢复。未来/不支持的模块版本拒绝
 写入；已存储的非对象模块及损坏模块容器在默认槽初始化前被拒绝，不能被静默清空后重新获得写权限。
 准备中的存档跨 run 导入被拒绝，先取消再导入。已结团存档导入后仍只读，
 回执保留原 run 来源；自由计划和历史计划快照在导入边界重绑新 run。
 这不实现 #446 的完整 CoC Adventure runtime，也不保证任意模型正文永不编造。
 决策见 [ADR-0008](adr/0008-run-plans-and-finales.md)，操作见[剧情与结团](zh/run-story-and-finale.md)。
+
+### 15.4.2.1 资源恢复与幕间
+
+`modules.resource_recovery`（schema 1）是恢复资格、回执、消费范围和命令幂等的唯一权威；
+角色表继续拥有 SAN/Luck 当前值，`WorldState` 继续拥有逻辑时钟，服务通过
+`StagedGameTransaction` 与现有角色有界余额更新原子发布。它不创建第二套角色余额、时钟或休息系统。
+
+恢复是规则声明的固定 MVP 策略，不是通用 DSL。完整的 `resource_recovery` v1 策略才会启用功能；
+`coc_light` 允许经 GM 批准的过夜 SAN 恢复与治疗，`coc7e_style` 使用精神分析的 30 天治疗且过夜不恢复 SAN。
+两者都可明确选择 Luck `check` 或 `off`。缺少 policy 字段时功能关闭且投影不支持；已声明但不完整、结构错误、未来或不支持的 policy
+则 fail closed 并报告校验错误。服务端不猜测规则、不强行写入角色。这里是 CoC 风格的轻量服务契约，不声称实现完整官方 CoC 规则。
+
+玩家从角色栏的恢复/休整面板申请过夜休息或治疗；GM 批准后服务端按逻辑时钟推进所需时长并结算。
+服务端会比较申请以来已经经过的 elapsed time，只推进剩余差值，不会在每次批准或重试时额外推进整段时长。
+治疗使用规则声明的 `psychoanalysis`（轻量策略也可声明 `psychology`）技能。GM 可发放 SAN/Luck 剧情奖励，
+由角色玩家领取；GM 在真实已完成幕间后开放 Luck 恢复，服务端掷 d100，只有结果高于当前 Luck 才给 1d10，
+失败也消耗该幕间机会。0 SAN、永久疯狂、死亡、昏迷、离席或战斗中的角色不能用普通恢复复活或结算。
+
+叙事输出中的旧正向 SAN/Luck 标签在策略已声明时一律不是恢复授权并被拒绝；恢复只能经过这条有 policy snapshot、
+server seed、run/principal、操作幂等和一次性消费 ledger 的服务路径。Web route 按成员与 GM 权限保护；P2P
+只提供 `recovery.read`、`recovery.request`、`recovery.claim`，GM 管理动作仍走服务端授权。
+结算 receipt 会阻止 swipe/rewind 穿越已结算轮次；46→47 reader fence 校验当前与历史模块槽，导入新 run 时拒绝
+待处理资格跨 run 转移，并且不会从旧日志推断资格、资源或奖励。
 
 ---
 
@@ -5214,6 +5242,14 @@ GM style 只能影响：
 
 # 41. Frontend Capability Gating
 
+游玩页的 `AdventurePanel` 入口与检定并排放在场景标题栏；内容通过共享 `Modal` 传送到页面根部，关闭时不在对话区占位，打开时也不改变时间线和输入框尺寸。冒险投影和节点操作仍沿用原有游戏级权限与服务端接口。
+
+Adventure v2 可由 GM 提示词输出 `ADVENTURE_COMPLETE` 建议。建议只在对应回合日志提交后，校验其活动节点、理由及已存在的 GM 日志回合，并存入 Adventure runtime 进度；它不会推进节点或执行 outcome。建议和证据仅投影给 GM；GM 可在 AdventurePanel 查看、关闭提示或忽略建议，忽略会按节点抑制重复提示。节点仍须由 GM 使用既有 `adventure.node.complete` 命令确认；节点完成事务会清理对应建议，失败则随进度快照回滚。
+
+GM 工作台在桌面和手机上均由显式收起按钮或 Esc 关闭，点击外部区域及操作嵌套弹窗不会收起工作台，未完成输入保持挂载。队伍成员列表下方并排提供“邀请玩家”和 GM 专用“房间密码”入口；`RoomPasswordDialog` 独立负责设置、替换与显式移除密码，继续使用已有服务端校验和权限接口。对局设置只提交已修改的奖励与暂离策略，不再拥有密码字段或密码写入路径。
+
+设置的版本检查、更新渠道、下载与安装位于“关于”；只有已保留版本的回退入口位于“通用 → 系统维护”。搜索及更新通知深链接分别指向对应位置，回退仍调用既有确认与启动器流程。
+
 前端不应该：
 
 ```ts
@@ -6311,6 +6347,16 @@ GameInstance schema 44 保留 main 的 1→43 迁移链，新增 AI 席位与检
 未发布的本地 36～38 与 main 的相同编号含义不同。`src/migrations/local_instance_branch.py` 只识别旧 room_access v1 与已知 AI/检定槽结构的组合，再执行 main 的内容绑定与凭据迁移；未知或混杂结构拒绝转换。历史检定和待确认 Push 原样保留，不重新掷骰。
 
 Lorebook SQLite 12 在 main 的外部身份和来源跟踪结构之后增加私有恢复记录。`src/migrations/lorebook_branches.py` 显式识别本地 v10 的恢复日志结构，在正常 SQLite 事务内补齐 main v10 身份列，再运行 v11/v12。原书、条目、绑定和恢复记录保持不变；失败回滚整个迁移。
+
+本地世界 identity 自动升级是新建 `common_factory` 冷启动最前的 repair；`reuse`
+路径不执行。它接受旧资料册 SQLite v4 与 canonical v5～v12 的 world/book/binding
+结构，并只为本地 writer 已知 schema 的存档重写 `templates`、全部
+`saves/state*.json` 和已知 JSON payload 中的 world/book 引用。新 ID 由旧 identity
+稳定哈希得到 ASCII canonical 形式，同名世界仍保持区分；展示标题、entry ID、
+`game_key`、`memory_namespace` 与聊天/日志文本保持不变。SQLite receipt 与持久 journal
+支持进程中断后的 roll-forward；用户改动、目标冲突、非法或未来 schema 会 fail closed，
+不会覆盖原数据。新的 AI 世界生成同样保留 ASCII ID，为 `world:` 主资料册前缀预留长度，
+并给生成条目加世界前缀。
 
 AI 席位和检定授权的离席/重开清理由所属模块注册生命周期 hooks。冒险节点与选择命令由 `adventure_commands.py` 在权威写入、当前 run 与模块预检之后执行；保存失败的补偿调用模块 owner。游玩资料册调整同样通过 content_binding owner 回滚，预览读取回合时不物化缺失槽。故事分镜输入由 imagegen 的游戏投影模块捕获，核心回合编排不增加对叙事状态模块的耦合。
 

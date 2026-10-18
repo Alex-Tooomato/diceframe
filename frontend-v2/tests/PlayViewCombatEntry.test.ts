@@ -175,8 +175,8 @@ describe('combat actions entry near the action composer', () => {
     gameState.detail.value = combatExtensionDetail({ solo_mode: false })
     const InviteModal = defineComponent({
       name: 'InviteQrModal',
-      props: { title: { type: String, default: '' } },
-      template: '<div data-testid="invite-qr-modal">{{ title }}</div>',
+      props: { title: { type: String, default: '' }, hint: { type: String, default: '' } },
+      template: '<div data-testid="invite-qr-modal"><span data-testid="invite-title">{{ title }}</span><span data-testid="invite-hint">{{ hint }}</span></div>',
     })
     const wrapper = await mountPlayView({ game: GAME_KEY }, { InviteQrModal: InviteModal })
     const members = wrapper.get('.party-rail__members').element
@@ -187,7 +187,69 @@ describe('combat actions entry near the action composer', () => {
     expect(invite.text()).toContain('邀请玩家')
     await invite.trigger('click')
     await flushPromises()
-    expect(wrapper.get('[data-testid="invite-qr-modal"]').text()).toBe('邀请链接')
+    expect(wrapper.get('[data-testid="invite-title"]').text()).toBe('邀请链接')
+    expect(wrapper.get('[data-testid="invite-hint"]').text()).toBe(String(i18n.global.t('inviteNewCharacterQrHint')))
+    wrapper.unmount()
+  })
+
+  it('keeps the GM workbench open when interacting outside it and closes explicitly', async () => {
+    gameState.isGm.value = true
+    gameState.detail.value = combatExtensionDetail({ solo_mode: false })
+    const wrapper = await mountPlayView({ game: GAME_KEY })
+    document.body.appendChild(wrapper.element)
+    const toggle = wrapper.get('[data-testid="play-gm-toggle"]')
+    const drawer = wrapper.get('[data-testid="play-gm-drawer"]')
+    await toggle.trigger('click')
+    await wrapper.get('.play-main').trigger('pointerdown')
+    expect(drawer.attributes('aria-hidden')).toBe('false')
+    await drawer.get('.rail-toggle').trigger('click')
+    expect(drawer.attributes('aria-hidden')).toBe('true')
+    await toggle.trigger('click')
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }))
+    await nextTick()
+    expect(drawer.attributes('aria-hidden')).toBe('true')
+    wrapper.unmount()
+  })
+
+  it('opens a separate GM-only room password dialog beside the invite action', async () => {
+    gameState.isGm.value = true
+    gameState.detail.value = combatExtensionDetail({ solo_mode: false, has_room_password: true })
+    const PasswordDialog = defineComponent({
+      name: 'RoomPasswordDialog', props: ['gameKey', 'hasPassword'], emits: ['close', 'changed'],
+      template: '<div data-testid="room-password-dialog-stub" />',
+    })
+    const wrapper = await mountPlayView({ game: GAME_KEY }, { RoomPasswordDialog: PasswordDialog })
+    expect(wrapper.findComponent(PasswordDialog).exists()).toBe(false)
+    const entry = wrapper.get('.party-rail__members-actions [data-testid="play-room-password"]')
+    expect(entry.text()).toContain('房间密码')
+    await entry.trigger('click')
+    const dialog = wrapper.getComponent(PasswordDialog)
+    expect(dialog.props()).toMatchObject({ gameKey: GAME_KEY, hasPassword: true })
+    dialog.vm.$emit('close')
+    await nextTick()
+    expect(wrapper.findComponent(PasswordDialog).exists()).toBe(false)
+    gameState.isGm.value = false
+    await nextTick()
+    expect(wrapper.find('[data-testid="play-room-password"]').exists()).toBe(false)
+    wrapper.unmount()
+  })
+
+  it('keeps password management out of the general game settings form', async () => {
+    gameState.isGm.value = true
+    gameState.detail.value = combatExtensionDetail({ solo_mode: false, has_room_password: true })
+    const wrapper = await mountPlayView({ game: GAME_KEY }, { GmToolbar: false })
+    const settingsButton = wrapper.findAll('button').find(button => button.text() === '对局设置')!
+    expect(settingsButton).toBeDefined()
+    await settingsButton.trigger('click')
+    const dialog = wrapper.get('[role="dialog"]')
+    expect(dialog.find('input[type="password"]').exists()).toBe(false)
+    expect(dialog.text()).toContain('奖励')
+    expect(dialog.text()).toContain('暂离')
+    await dialog.findAll('select')[1]!.setValue('ai_takeover')
+    await dialog.findAll('button').find(button => button.text() === '保存')!.trigger('click')
+    await flushPromises()
+    expect(mockedApi.mock.calls.some(([path]) => String(path).endsWith('/settings/away-control-policy'))).toBe(true)
+    expect(mockedApi.mock.calls.some(([path]) => String(path).endsWith('/room-password'))).toBe(false)
     wrapper.unmount()
   })
 

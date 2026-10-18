@@ -50,6 +50,7 @@ KERNEL_MODULES = frozenset({
     # when their UI/projection hooks are detached.
     "run_finale",
     "skill_growth",  # settled receipts must forbid historical double claims
+    "resource_recovery",  # one-use qualifications remain authoritative without UI/hooks
     "game_config",  # difficulty, turn model and run identity configuration
 })
 

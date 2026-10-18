@@ -68,7 +68,8 @@ const index: SearchEntry[] = [
   entry('access', 'access', 'settings-access', 'Access password', '访问密码', 'Password and login history', '密码与登录记录', ['login']),
   entry('logs', 'general', 'settings-runtime-logs', 'Runtime logs', '运行日志', 'Export or clear diagnostic logs', '导出、清理诊断日志', ['log', '维护']),
   entry('test-timeout', 'general', 'settings-test-timeout', 'Connection test timeout', '连接测试超时', 'Timeout for provider connection tests', '服务商连接测试的等待时间'),
-  entry('about', 'general', 'settings-update', 'Updates and maintenance', '更新与维护', 'Version, update channel and rollback controls', '版本、更新渠道与回退操作', ['version', 'rollback', '回退']),
+  entry('about', 'about', 'settings-update', 'Updates and about', '更新与关于', 'Version, update channel and project information', '版本、更新渠道与项目信息', ['version']),
+  entry('rollback', 'general', 'settings-rollback', 'Restore previous version', '回退到上一版本', 'Restore a retained application version', '切换到已保留的上一程序版本', ['rollback', '回滚']),
 ]
 const normalize = (value: string) => value.trim().toLocaleLowerCase()
 function localize(item: SearchEntry, locale: string): SettingsSearchResult {

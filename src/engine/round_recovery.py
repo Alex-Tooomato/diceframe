@@ -29,7 +29,7 @@ from typing import TYPE_CHECKING, Any
 from src.engine import module_hooks, progression
 from src.engine.contracts import RoundLogEntry
 from src.engine.game_state import GameState
-from src.engine.modules import progression_state, skill_growth
+from src.engine.modules import progression_state, resource_recovery, skill_growth
 from src.engine.round_snapshots import restore_players, snapshot_players
 from src.engine.world_state import ensure_world_state
 
@@ -60,6 +60,7 @@ def rollback_last_round_locked(instance: GameInstance) -> int | None:
     last = instance.log[-1]
     target = int(last.get('round', progression_state.round_value(instance)) or progression_state.round_value(instance))
     skill_growth.rewind_preflight(instance, target)
+    resource_recovery.rewind_preflight(instance, target)
     instance.log.pop()
     from src.engine.economy import reconcile_rollback_snapshot, reverse_round_economy
 
@@ -150,6 +151,7 @@ def finish_judgment_locked(
     state_changes: list[str] | None = None,
     pre_combat_extension_snapshot: dict[str, Any] | None = None,
     story: dict[str, Any] | None = None,
+    adventure_completion_candidate: Any = None,
 ) -> None:
     """构造并写入本轮判定 log entry（``finish_judgment`` 的持锁部分）。
 
@@ -195,6 +197,9 @@ def finish_judgment_locked(
     # merged into state_changes) are added before the entry is committed.
     module_hooks.run(module_hooks.ROUND_COMMIT, instance, entry, pre_combat_extension_snapshot)
     instance.log.append(entry)
+    adventure_runtime_state.record_completion_suggestion(
+        instance, adventure_completion_candidate,
+    )
     session_stats.record_llm_usage(instance, 0, calls=1)
     session_stats.touch(instance)
 
@@ -205,9 +210,10 @@ def finish_judgment_with_swipe_locked(
     original_round: int,
     state_changes: list[str] | None = None,
     story: dict[str, Any] | None = None,
+    adventure_completion_candidate: Any = None,
 ) -> None:
     """为已有轮次添加 swipe 的持锁 detail（不推进回合）。"""
-    from src.engine.modules import session_stats
+    from src.engine.modules import adventure_runtime_state, session_stats
 
     session_stats.require_writable(instance)
     for entry in instance.log:
@@ -230,6 +236,12 @@ def finish_judgment_with_swipe_locked(
                 entry["story"] = copy.deepcopy(story)
             if state_changes is not None:
                 entry["state_changes"] = list(state_changes)
+            adventure_runtime_state.clear_completion_suggestions_for_round(
+                instance, original_round,
+            )
+            adventure_runtime_state.record_completion_suggestion(
+                instance, adventure_completion_candidate,
+            )
             break
     session_stats.record_llm_usage(instance, 0, calls=1)
     session_stats.touch(instance)
@@ -241,6 +253,8 @@ def switch_swipe(instance: GameInstance, round_num: int, swipe_idx: int) -> bool
     与基线一致：该方法当前**不持有** ``_lock``，本函数是纯 detail 迁移，
     不顺手改变它的并发语义。
     """
+    from src.engine.modules import adventure_runtime_state
+
     for entry in instance.log:
         if entry.get("round") == round_num:
             swipes = entry.get("swipes", [])
@@ -248,6 +262,9 @@ def switch_swipe(instance: GameInstance, round_num: int, swipe_idx: int) -> bool
                 return False
             entry["current_swipe"] = swipe_idx
             entry["gm_response"] = swipes[swipe_idx]
+            adventure_runtime_state.clear_completion_suggestions_for_round(
+                instance, round_num,
+            )
             stories = entry.get("swipe_stories")
             if isinstance(stories, list) and swipe_idx < len(stories) and isinstance(stories[swipe_idx], dict):
                 entry["story"] = copy.deepcopy(stories[swipe_idx])

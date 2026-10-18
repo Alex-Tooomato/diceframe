@@ -4,7 +4,7 @@ import { NIcon } from 'naive-ui'
 import {
   PlayForwardOutline, ArrowUndoOutline, ShareOutline, BugOutline,
   PersonOutline, BookOutline, PeopleOutline, LockOpenOutline, LockClosedOutline,
-  KeyOutline, PlaySkipForwardOutline, DownloadOutline, RefreshOutline,
+  SettingsOutline, PlaySkipForwardOutline, DownloadOutline, RefreshOutline,
   TrashOutline, SendOutline, ImageOutline, MapOutline,
   ReaderOutline,
   CashOutline,
@@ -45,7 +45,7 @@ const emit = defineEmits<{
   cards: []
   'world-switch': []
   'lorebooks': []
-  'room-password': []
+  'game-settings': []
   'scene-image': []
   'map-background': []
   payment: []
@@ -234,7 +234,7 @@ function awardXp(userId: string) {
       <template #settings>
         <GameSessionPreferences v-if="gameKey" section="actions" :game-key="gameKey" :revision="preferencesRevision" @changed="emit('refresh')" />
         <GameDefaultActions v-if="gameKey" :game-key="gameKey" @changed="preferencesRevision++; emit('refresh')" />
-        <button @click="emit('room-password')"><NIcon :component="KeyOutline" size="14" /> {{ t('gameSettings') }}</button>
+        <button @click="emit('game-settings')"><NIcon :component="SettingsOutline" size="14" /> {{ t('gameSettings') }}</button>
         <div class="gm-group gm-grow gm-command-group">
           <h4>{{ t('commandGroup') }}</h4>
           <input v-model="cmdText" :placeholder="t('gmCommandPlaceholder')" @keydown.enter="run">

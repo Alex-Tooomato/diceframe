@@ -43,4 +43,16 @@ describe('party rail', () => {
     expect(members[2]!.text()).toContain('暂离')
     wrapper.unmount()
   })
+
+  it('explains that a general invite creates a bound character while existing roles use a claim link', () => {
+    i18n.global.locale.value = 'zh-CN'
+    const wrapper = mount(PartyRail, {
+      props: { detail: {} as GameDetail, players: [] },
+      slots: { membersActions: '<button>邀请玩家</button>' },
+      global: { plugins: [i18n], stubs: { PortraitImage: true } },
+    })
+    expect(wrapper.get('.party-rail__invite-hint').text()).toContain('自动绑定')
+    expect(wrapper.get('.party-rail__invite-hint').text()).toContain('认领链接')
+    wrapper.unmount()
+  })
 })

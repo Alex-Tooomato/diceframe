@@ -444,6 +444,7 @@ async def submit_intent(
 ) -> dict[str, Any]:
     is_adventure_command = isinstance(body, dict) and body.get('type') in {
         'adventure.node.complete', 'adventure.choice.request',
+        'adventure.completion_suggestion.dismiss',
     }
     instance, rule, runtime, effective_requester, error = _context(
         dependencies, game_key, requester_id, requester_is_gm,

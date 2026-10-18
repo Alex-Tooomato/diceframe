@@ -244,6 +244,7 @@ def complete_adventure_node(
         activated = complete_node(
             progress, graph, wanted, instance=instance, rules_evaluator=evaluator, choice_id=choice_id,
         )
+        adventure_runtime_state.clear_completion_suggestion(instance, wanted)
         # ④ 进度事件（同一事务内）
         activated.extend(_apply_progress_events(
             progress, graph, intents["progress_events"],
