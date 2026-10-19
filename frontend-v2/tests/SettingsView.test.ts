@@ -1,6 +1,7 @@
 import { flushPromises, shallowMount } from '@vue/test-utils'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { ref } from 'vue'
+import { NInputNumber } from 'naive-ui'
 import SettingsView from '../src/features/admin/SettingsView.vue'
 
 const mocks = vi.hoisted(() => {
@@ -63,13 +64,26 @@ describe('SettingsView management navigation', () => {
     mocks.updateStatus = null
   })
 
-  it('lists an independent Agent token budget and includes it in the save request', async () => {
+  it('lets the owner edit and save reply and task budgets independently', async () => {
+    mocks.store.config.assistant_agent_max_tokens = 4096
+    mocks.store.config.assistant_agent_task_max_tokens = 64000
+    mocks.store.setConfigField.mockClear()
+    mocks.store.saveSection.mockClear()
     const wrapper = shallowMount(SettingsView, { global: { stubs: { Spin: { template: '<div><slot /></div>' }, Button: { template: '<button @click="$emit(\'click\')"><slot /></button>', emits: ['click'] }, RouterLink: true } } })
     await flushPromises()
-    expect(wrapper.findAll('.token-row strong').map(row => row.text())).toContain('assistantAgentTokens')
-    const saveButton = wrapper.get('#settings-agent-budget .advanced-save-row > *')
+    const budgets = wrapper.get('#settings-agent-budget')
+    expect(budgets.findAll('.token-row strong').map(row => row.text())).toEqual(['assistantAgentReplyBudget', 'assistantAgentTaskBudget'])
+    const inputs = budgets.findAllComponents(NInputNumber)
+    expect(inputs).toHaveLength(2)
+    expect(inputs[0]!.props('value')).toBe(4096)
+    expect(inputs[1]!.props('value')).toBe(64000)
+    inputs[0]!.vm.$emit('update:value', 8192)
+    inputs[1]!.vm.$emit('update:value', 128000)
+    expect(mocks.store.setConfigField).toHaveBeenCalledWith('assistant_agent_max_tokens', 8192)
+    expect(mocks.store.setConfigField).toHaveBeenCalledWith('assistant_agent_task_max_tokens', 128000)
+    const saveButton = budgets.get('.advanced-save-row > *')
     await saveButton.trigger('click')
-    expect(mocks.store.saveSection).toHaveBeenCalledWith(expect.arrayContaining(['assistant_agent_max_tokens']), [])
+    expect(mocks.store.saveSection).toHaveBeenCalledWith(expect.arrayContaining(['assistant_agent_max_tokens', 'assistant_agent_task_max_tokens']), [])
     wrapper.unmount()
   })
 
