@@ -54,8 +54,9 @@ async def _call(callback: Callable, *args: Any, **kwargs: Any) -> Any:
     return result
 
 
-def _tool(*args: Any, domain: str, effect: str, automatic: bool = False, **kwargs: Any) -> AgentTool:
-    return AgentTool(*args, domain=domain, effect=effect, automatic=automatic, version=1, **kwargs)
+def _tool(*args: Any, domain: str, effect: str, automatic: bool = False,
+          version: int = 1, **kwargs: Any) -> AgentTool:
+    return AgentTool(*args, domain=domain, effect=effect, automatic=automatic, version=version, **kwargs)
 
 
 def _payload(args: dict, reserved: set[str]) -> dict:
@@ -212,9 +213,9 @@ def gameplay_tools(deps: GameplayToolDependencies) -> tuple[AgentTool, ...]:
             return await _call(deps.submit_ruleset_intent, args["game_key"],
                                getattr(viewer, "uid", ""), bool(getattr(viewer, "is_gm", False)), intent)
         tools.append(_tool("submit_ruleset_intent",
-            "GM submit one ruleset-owned structured intent through the authoritative ruleset service",
+            "Submit one ruleset-owned structured intent after explicit confirmation; may change automation or policy",
             obj(intent_props, ("game_key", "run_id", "intent")), submit_ruleset,
-            mutation=True, guard=ruleset_guard, domain="games", effect="write"))
+            mutation=True, guard=ruleset_guard, domain="games", effect="external", version=2))
 
     recovery_props = {**run_prop, "action": string(32, choices=("request", "approve", "reject", "claim", "reward", "luck")),
                       "payload": {"type": "object", "properties": {}, "additionalProperties": True},
@@ -248,19 +249,22 @@ def gameplay_tools(deps: GameplayToolDependencies) -> tuple[AgentTool, ...]:
         tools.append(_tool("get_room_preferences", "Read the current room and game preferences",
             obj(game_prop, ("game_key",)), read_room, domain="settings", effect="read"))
     if deps.set_room_preferences is not None:
-        room_fields = {
-            "push_enabled": {"type": "boolean"},
+        display_fields = {
             "quick_actions_enabled": {"type": "boolean"},
             "dice_reveal_mode": {"type": "string", "enum": ["auto", "click"]},
-            "luck_timeout_seconds": {"type": "integer", "minimum": 0, "maximum": 3600},
             "narrative_perspective": {"type": "string", "enum": ["auto", "immersive", "third_person"]},
             "story_mode": {"type": "string", "enum": ["prose", "dialogue"]},
-            "advancement_mode": {"type": "string", "enum": ["milestone", "xp"]},
-            "advancement_authority": {"type": "string", "enum": ["ai_gm", "gm"]},
-            "gm_style_override": {"type": "object", "properties": {}, "additionalProperties": True},
         }
-        room_props = {**run_prop, "preferences": {"type": "object", "properties": room_fields,
-                                                     "additionalProperties": False}}
+        policy_fields = {
+            "advancement_authority": {"type": "string", "enum": ["ai_gm", "gm"]},
+            "advancement_mode": {"type": "string", "enum": ["milestone", "xp"]},
+            "gm_style_override": {"type": "object", "properties": {}, "additionalProperties": True},
+            "push_enabled": {"type": "boolean"},
+            "luck_timeout_seconds": {"type": "integer", "minimum": 0, "maximum": 3600},
+        }
+        def room_props(fields: dict) -> dict:
+            return {**run_prop, "preferences": {"type": "object", "properties": fields,
+                                                   "additionalProperties": False}}
         def room_guard(args: dict, owner: str) -> str:
             game, viewer = gm_instance(args, owner)
             return _digest(deps.room_preferences(args["game_key"], viewer) if deps.room_preferences else {})
@@ -269,9 +273,21 @@ def gameplay_tools(deps: GameplayToolDependencies) -> tuple[AgentTool, ...]:
             if args["run_id"] != game.run_id:
                 raise ValueError("Run changed; refresh first")
             return await _call(deps.set_room_preferences, args["game_key"], viewer, deepcopy(args["preferences"]))
+        def room_preview(args: dict, owner: str) -> dict:
+            _game, viewer = gm_instance(args, owner)
+            projection = deps.room_preferences(args["game_key"], viewer) if deps.room_preferences else {}
+            before = projection.get('preferences', {})
+            requested = args["preferences"]
+            return {"changed_keys": sorted(key for key, value in requested.items()
+                                            if before.get(key) != value),
+                    "before": {key: before.get(key) for key in requested},
+                    "after": deepcopy(requested)}
         tools.append(_tool("set_room_preferences", "Change explicitly supported reversible room preferences",
-            obj(room_props, ("game_key", "run_id", "preferences")), write_room, mutation=True,
-            guard=room_guard, domain="settings", effect="write", automatic=True))
+            obj(room_props(display_fields), ("game_key", "run_id", "preferences")), write_room, mutation=True,
+            guard=room_guard, preview=room_preview, domain="settings", effect="write", automatic=True, version=2))
+        tools.append(_tool("set_room_policy", "Change room policy requiring explicit GM confirmation",
+            obj(room_props(policy_fields), ("game_key", "run_id", "preferences")), write_room, mutation=True,
+            guard=room_guard, preview=room_preview, domain="settings", effect="external", automatic=False))
 
     if deps.rest is not None:
         rest_props = {**run_prop, "rest": string(16, choices=("short", "long")),
@@ -289,12 +305,26 @@ def gameplay_tools(deps: GameplayToolDependencies) -> tuple[AgentTool, ...]:
             game, viewer = instance(args, owner)
             if args["run_id"] != game.run_id:
                 raise ValueError("Run changed; refresh first")
+            if args.get("confirm_elapsed_time") is not True:
+                raise ValueError("confirm_elapsed_time must be explicitly true")
             body = {"run_id": args["run_id"], "rest": args["rest"], "expected_revision": args["expected_revision"],
-                    "confirm_elapsed_time": True, "operation_id": uuid.uuid4().hex,
+                    "confirm_elapsed_time": args["confirm_elapsed_time"], "operation_id": uuid.uuid4().hex,
                     "hit_dice": args.get("hit_dice") or {}}
             return await _call(deps.rest, args["game_key"], getattr(viewer, "uid", ""), body)
+        def rest_preview(args: dict, owner: str) -> dict:
+            game, viewer = instance(args, owner)
+            uid = getattr(viewer, "uid", "")
+            character = game.get_character_sheet(uid)
+            return {"rest_type": args["rest"],
+                    "target_name": game.players[uid].get('character_name', uid),
+                    "target_character": {"uid": uid, "name": game.players[uid].get("character_name", uid)},
+                    "time_confirmation": "Explicitly approve elapsed game time under the current ruleset; party rests wait for eligible participants.",
+                    "hit_dice": deepcopy(args.get("hit_dice") or {}),
+                    "confirm_elapsed_time": args.get('confirm_elapsed_time') is True,
+                    "expected_revision": args["expected_revision"],
+                    "character_revision": character.get("ruleset_revision", 0)}
         tools.append(_tool("perform_ruleset_rest", "Confirm a server-resolved professional short or long rest",
-            obj(rest_props, ("game_key", "run_id", "rest", "expected_revision")), rest_call,
-            mutation=True, guard=rest_guard, domain="ruleset", effect="write"))
+            obj(rest_props, ("game_key", "run_id", "rest", "expected_revision", "confirm_elapsed_time")), rest_call,
+            mutation=True, guard=rest_guard, preview=rest_preview, domain="ruleset", effect="external", automatic=False, version=2))
 
     return tuple(tools)

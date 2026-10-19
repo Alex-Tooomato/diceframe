@@ -32,6 +32,8 @@ Agent 初始只加载必要动作；`search_capabilities` 和 `describe_capabili
 
 连续授权的步数为 1..64；每个给定 scope 键必须在动作参数中精确匹配，domain 也必须匹配。`external`、`destructive`、未声明 effect 和不满足 guard 的动作 fail closed 或回到人工确认。设置 patch/插件启停属于 external；插件声明 read_only/mutation 仍走 external 人工确认，destructive 走 destructive 人工确认。插件 effect 声明不是沙箱。
 
+本局纯展示偏好与影响规则/GM 决策权的策略分开注册。后者、语义包含策略变更的通用规则指令和确认游戏时间的休息操作均保留逐项审批，task 授权不能代替这些确认。专业休息与 HTTP 共用单人/多人分派命令，不允许 Agent 绕过多人收集流程。
+
 ### 4. 领域 authority 不被 Agent 取代
 
 资料册 audience 变更只更新 `visible_to`，指定角色使用 live canonical UID 并由 GM/owner 边界校验；世界事实 visibility 走正式 worldops；规则、骰点、角色资源、回合和恢复复用既有 authority。Agent 不引入 generic engine 的具体规则分支，也不把完整 WebAPI 作为 service locator。
@@ -39,6 +41,8 @@ Agent 初始只加载必要动作；`search_capabilities` 和 `describe_capabili
 ### 5. 取消与不确定结果
 
 服务器保存计划和 receipt。取消撤销尚未派发步骤；已进入权威写入的确认受 shield 保护，客户端断开不等于写入取消。重复确认返回原 receipt；结果不确定时标记 `recovery_required`，禁止盲目重放。该模型不提供持久化工作流自动恢复、跨模块万能事务或通用 undo。
+
+持久化计划不代表写入已经派发：取消清理未派发计划，并在开始通知及异步权限校验后重新核对 stop/plan identity；取消之后不得启动新的领域写入。
 
 ### 6. 使用量语义
 

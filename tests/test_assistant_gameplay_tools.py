@@ -3,6 +3,8 @@ from types import SimpleNamespace
 import pytest
 
 from src.webui.services.assistant_gameplay_tools import GameplayToolDependencies, gameplay_tools
+from src.webui.services.assistant_agent import validate_arguments
+from src.webui.services.assistant_authorization import make_authorization, permits
 from src.engine.participant_view import resolve_viewer
 
 
@@ -42,6 +44,41 @@ def test_gameplay_tools_are_importable_and_expose_authoritative_operations():
             "mutate_resource_recovery"}.issubset(names)
 
 
+def test_room_preferences_and_policy_are_disjoint_and_policy_is_never_automatic():
+    game, viewers, _recovery, _tools = _fixture()
+    current = {"quick_actions_enabled": True, "advancement_authority": "gm"}
+    writes = []
+    deps = GameplayToolDependencies(
+        get_game=lambda key: game,
+        viewer_for=lambda instance, owner: viewers[owner],
+        room_preferences=lambda key, viewer: {'ok': True, 'preferences': dict(current)},
+        set_room_preferences=lambda key, viewer, values: writes.append(values) or {"ok": True},
+    )
+    tools = gameplay_tools(deps)
+    prefs = next(item for item in tools if item.name == "set_room_preferences")
+    policy = next(item for item in tools if item.name == "set_room_policy")
+    assert prefs.version == 2 and prefs.automatic and prefs.effect == "write"
+    assert not policy.automatic and policy.effect == "external"
+    assert set(prefs.schema["properties"]["preferences"]["properties"]) == {
+        "quick_actions_enabled", "dice_reveal_mode", "narrative_perspective", "story_mode"}
+    assert set(policy.schema["properties"]["preferences"]["properties"]) == {
+        "advancement_authority", "advancement_mode", "gm_style_override",
+        "push_enabled", "luck_timeout_seconds"}
+    with pytest.raises(ValueError):
+        validate_arguments({"game_key": "game", "run_id": "run-1",
+                            "preferences": {"advancement_authority": "gm"}}, prefs.schema)
+    with pytest.raises(ValueError):
+        validate_arguments({"game_key": "game", "run_id": "run-1",
+                            "preferences": {"quick_actions_enabled": True}}, policy.schema)
+    grant = make_authorization("routine", {"game_key": "game"}, ["settings"], 4, 0)
+    assert permits(grant, prefs, {"game_key": "game"})
+    assert not permits(grant, policy, {"game_key": "game"})
+    preview = policy.preview({'game_key': 'game', 'run_id': 'run-1',
+                              'preferences': {'advancement_authority': 'ai_gm'}}, 'gm')
+    assert preview['before'] == {'advancement_authority': 'gm'}
+    assert preview['after'] == {'advancement_authority': 'ai_gm'}
+
+
 def test_gm_operation_rejects_non_gm_before_handler():
     _game, _viewers, _recovery, tools = _fixture()
     tool = next(item for item in tools if item.name == "complete_adventure_node")
@@ -77,6 +114,32 @@ async def test_recovery_payload_cannot_replace_authority_fields():
         await tool.handler({"game_key": "game", "run_id": "run-1", "action": "request",
                             "expected_revision": 4,
                             "payload": {"run_id": "forged", "kind": "overnight"}}, "alice")
+
+
+@pytest.mark.asyncio
+async def test_rest_requires_explicit_confirmation_and_is_manual_external():
+    game, viewers, _recovery, _unused_tools = _fixture()
+    # Keep the callback result visible while recording the exact authority body.
+    received = []
+    deps = GameplayToolDependencies(
+        get_game=lambda key: game,
+        viewer_for=lambda instance, owner: viewers[owner],
+        rest=lambda key, uid, body: received.append(body) or {"ok": True},
+    )
+    tool = next(item for item in gameplay_tools(deps) if item.name == "perform_ruleset_rest")
+    assert tool.effect == "external" and not tool.automatic
+    args = {"game_key": "game", "run_id": "run-1", "rest": "short",
+            "expected_revision": 3, "confirm_elapsed_time": True, "hit_dice": {"d10": 1}}
+    validate_arguments(args, tool.schema)
+    preview = tool.preview(args, "alice")
+    assert preview["rest_type"] == "short"
+    assert preview["target_character"] == {"uid": "alice", "name": "Alice"}
+    assert preview['confirm_elapsed_time'] is True
+    assert preview["hit_dice"] == {"d10": 1}
+    await tool.handler(args, "alice")
+    assert received[0]["confirm_elapsed_time"] is True
+    with pytest.raises(ValueError, match="explicitly true"):
+        await tool.handler({**args, "confirm_elapsed_time": False}, "alice")
 
 
 @pytest.mark.asyncio

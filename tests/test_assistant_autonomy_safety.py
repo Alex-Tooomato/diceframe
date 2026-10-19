@@ -148,6 +148,59 @@ async def test_cancel_while_provider_awaits_aborts_model_loop(tmp_path):
 
 
 @pytest.mark.asyncio
+async def test_cancel_at_tool_start_discards_persisted_undispatched_plan(tmp_path):
+    calls, proposed = [], []
+    async def write(args, owner):
+        calls.append(args)
+        return {"ok": True}
+    agent = build(tmp_path, Planner({"tool": "edit", "arguments": {"game_key": "g", "value": "x"}}),
+                  [action(handler=write)])
+    grant = agent.authorize("owner", "", "task", {"game_key": "g"}, ["games"], 8)
+    sid = grant['session_id']
+    async def emit(name, payload):
+        if name == 'tool_start':
+            proposed.append(deepcopy(agent.snapshot('owner', sid)['pending']))
+            agent.cancel('owner', sid)
+    await agent.run('owner', [{'role': 'user', 'content': 'edit'}], 'en', {'route': 'play'}, sid, emit)
+    await agent.close()
+    assert proposed and proposed[0]['tool'] == 'edit'
+    assert calls == []
+    restored = build(tmp_path, Planner(), [action(handler=write)]).snapshot('owner', sid)
+    assert restored['pending'] is None and restored['status'] == 'cancelled'
+    assert restored['task']['completed_steps'] == 0
+    with pytest.raises(ValueError, match='stale'):
+        await agent.confirm('owner', sid, proposed[0]['approval_id'], proposed[0]['plan_digest'], True)
+
+
+@pytest.mark.asyncio
+async def test_cancel_while_dispatch_authorization_waits_never_calls_handler(tmp_path):
+    from dataclasses import replace
+    entered, release = asyncio.Event(), asyncio.Event()
+    calls, authorization_checks = [], []
+    async def write(args, owner):
+        calls.append(args)
+        return {'ok': True}
+    async def authorize(args, owner):
+        authorization_checks.append(owner)
+        if len(authorization_checks) == 2:
+            entered.set()
+            await release.wait()
+        return True
+    tool = replace(action(handler=write), authorize=authorize)
+    agent = build(tmp_path, Planner({'tool': 'edit', 'arguments': {'game_key': 'g', 'value': 'x'}}), [tool])
+    grant = agent.authorize('owner', '', 'task', {'game_key': 'g'}, ['games'], 8)
+    sid = grant['session_id']
+    running = asyncio.create_task(run(agent, sid))
+    await asyncio.wait_for(entered.wait(), timeout=5)
+    agent.cancel('owner', sid)
+    await running
+    release.set()
+    await agent.close()
+    assert calls == []
+    assert agent.snapshot('owner', sid)['pending'] is None
+
+
+@pytest.mark.asyncio
 async def test_cancel_during_authoritative_write_keeps_receipt_and_blocks_next_write(tmp_path):
     entered, release = asyncio.Event(), asyncio.Event()
     calls = []

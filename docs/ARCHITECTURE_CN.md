@@ -6336,9 +6336,11 @@ Agent 每次模型输出使用独立 `assistant_agent_max_tokens`（默认 4096�
 
 `assistant_agent_framework.py` 直接使用 Pydantic AI 的执行器、纠错重试、请求与工具预算及延迟审批，复用既有模型传输。`application_actions.py` 的 `ApplicationAction/ActionRegistry` 是显式注册的应用动作目录，包含版本、参数、领域、影响、guard 与权限回调；不是从路由或 Python 成员推导权限。Agent 按页加载相关能力，并通过 `search_capabilities/describe_capability` 发现其它动作。插件源在目录读取、规划及确认边界刷新，动作契约变化使旧计划失效。
 
-`assistant_agent.py` 持有会话、授权、计划和回执。owner 在 Agent 权限面板选择建议、自动处理日常或接管本次任务；服务器保存资源/领域范围、期限和步骤余量。日常仅自动执行明确标记的 guarded 普通修改，任务模式可执行范围内的普通修改及信息披露；设置与原生插件操作始终具体确认。聊天、文档和浏览器偏好不能自行扩权。连续修改与人工确认复用同一 durable plan/receipt 边界，取消停止后续步骤，已派发写入完成记录，结果不确定时禁止重放。逐次累计服务商报告的 token 并在返回后检查预算，不能保证硬费用上限，领域生成工具保留独立预算。
+`assistant_agent.py` 持有会话、授权、计划和回执。owner 在 Agent 权限面板选择建议、自动处理日常或接管本次任务；服务器保存资源/领域范围、期限和步骤余量。日常仅自动执行明确标记的 guarded 普通修改，任务模式可执行范围内的普通修改及信息披露；系统配置、游戏策略、通用规则指令、专业休息及原生插件操作始终具体确认。展示偏好与成长决策权等策略分开注册，专业休息不得代填时间确认。聊天、文档和浏览器偏好不能自行扩权。连续修改与人工确认复用同一 durable plan/receipt 边界，取消清理未派发计划，在开始通知和异步权限校验后再次检查；已派发写入完成记录，结果不确定时禁止重放。逐次累计服务商报告的 token 并在返回后检查预算，不能保证硬费用上限，领域生成工具保留独立预算。
 
 `assistant_authoring.py`、`assistant_gameplay_tools.py`、`assistant_world_tools.py`、`assistant_settings_tools.py` 和独立内容库/插件适配器接入所属服务。资料册可见性只提交 `visible_to` patch，指定角色使用当前对局 UID；世界事实走 World Runtime operations；休整、恢复、剧情、冒险及规则行动保留各自版本、身份与服务器骰权威。后续功能注册动作后可被发现，未注册功能仍需适配；完整契约见 [ADR-0011](adr/0011-application-actions-and-agent-delegation.md)。
+
+HTTP 与 Agent 的专业休息共同调用 `ruleset_rest.submit_live`：单人沿用单角色路径，多人等待符合条件的角色提交后协同结算，不绕过收集阶段，也不额外推进世界时钟。
 
 `assistant_agent_knowledge.py` 注册只读 `search_documentation`，只在 Agent 请求使用说明时检索。`assistant_knowledge.py` 的当前版本模式使用现有本地文档或版本匹配的预建索引，只接受本仓库版本文档来源；不查询移动远程指南，不自动注入每条聊天。能力、canonical ID 与可执行操作仍由真实工具目录和服务观察决定。
 

@@ -1013,7 +1013,7 @@ class WebAPI:
             adventure_command=lambda instance, body, uid, gm: self.ruleset_submit_intent(
                 instance.game_key, uid, gm, body),
             run_story=self.run_story, recovery=self.resource_recovery,
-            rest=self.ruleset_rest_resolve_live,
+            rest=self.ruleset_rest_submit_live,
             room_preferences=self.game_preferences, set_room_preferences=self.update_game_preferences,
             available_ruleset_actions=self.ruleset_available_actions,
             submit_ruleset_intent=self.ruleset_submit_intent,
@@ -2893,6 +2893,14 @@ class WebAPI:
         self, game_key: str, user_id: str, body: dict[str, Any],
     ) -> dict[str, Any]:
         return await ruleset_rest.resolve_live(
+            self._live_ruleset_rest_dependencies, game_key, user_id, body,
+        )
+
+    async def ruleset_rest_submit_live(
+        self, game_key: str, user_id: str, body: dict[str, Any],
+    ) -> dict[str, Any]:
+        """Shared live-rest application entry point for HTTP and Agent callers."""
+        return await ruleset_rest.submit_live(
             self._live_ruleset_rest_dependencies, game_key, user_id, body,
         )
 

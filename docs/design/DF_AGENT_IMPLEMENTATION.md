@@ -39,7 +39,11 @@ routine 授权有效 4 小时，task 授权有效 1 小时；两者都有 `remai
 
 设置动作的 `patch_settings` 和插件启停被标为 `external`，不能由 routine/task 自动放行，必须人工确认。插件 descriptor 声明 `read_only` 或 `mutation` 时，宿主调用仍按 `external` 处理并人工确认；声明 `destructive` 时按 `destructive` 处理并人工确认。缺失、未知或不完整的声明 fail closed，回到手动插件流程；声明本身不是原生插件进程沙箱，也不是行为证明。
 
+本局偏好分为 `set_room_preferences` 的四个展示字段（快捷行动、骰子揭示、叙事视角、呈现模式）和 `set_room_policy` 的游戏策略字段（成长方式/决策权、GM 风格、Push 与幸运等待时限）。前者可在 routine 范围内自动处理；后者与通用 `submit_ruleset_intent` 均要求具体确认，防止规则自动化指令绕过策略分类。`perform_ruleset_rest` 同样逐次确认，必须显式提交 `confirm_elapsed_time=True`，适配器不得代填；预览展示角色、休息类型和生命骰，时间语义仍由当前规则契约决定。
+
 取消会撤销服务器授权并阻止尚未派发的步骤。已经进入权威写入的确认使用 shield，浏览器断开或取消不会把已提交动作伪装成未执行。重复确认返回原 receipt；派发后结果不确定时标记 `recovery_required`，保留待核实计划并禁止盲目重放。取消不提供对已提交写入的万能回滚。
+
+取消会清理已经持久化但尚未派发的计划，并在工具开始通知之后、异步权限检查之后再次核对取消状态和计划 identity；只有跨过写入派发边界的动作才受 shield 保护。
 
 ## 领域 authority 与隐私
 
@@ -47,6 +51,7 @@ routine 授权有效 4 小时，task 授权有效 1 小时；两者都有 `remai
 - 资料册可见性动作只修改既有 canonical entry 的 `visible_to` audience 字段，保留名称、正文和其它扩展字段。指定角色时，服务器从 live game roster 取得 canonical UID，并由组合根进行游戏存在、owner/GM 范围校验；显示名不能代替 UID。目标不存在、UID 不属于当前 live roster 或无 GM 权限时拒绝。
 - 世界事实可见性走正式 `worldops`（`apply_world_ops`、revision guard、权威写锁和保存），不在通用资料册或世界元数据里另造一个同名布尔字段。读取使用 viewer-safe world projection。
 - 规则结算、骰点、角色资源、回合和世界事实仍由现有规则/游戏 authority 执行；角色资源恢复复用 `ResourceRecoveryService`，内容撤销复用内容恢复服务，不形成第二套 mechanics 或权限模型。
+- HTTP 与 Agent 的专业休息共用 live-rest 应用命令，单人沿用单角色结算，多人收集符合资格角色的提交后协同结算；Agent 不直接绑定单角色路径，也不新增独立的时钟推进逻辑。
 - 设置读取只暴露脱敏配置和 provider catalogue；凭据正文不进入模型、会话、receipt 或错误提示。AI 配置使用共享 `ai_providers`、独立 `ai_provider_key_<id>` 凭据和能力级 `*_provider_ref` 新格式；Agent 设置 patch 只处理允许的目录/reference 字段，旧直填地址、密钥或 API 字段被明确拒绝。
 - owner/session 隔离在路由和服务层同时执行。GM/private 数据必须在投影或服务端边界过滤，不能先发送给无权用户再靠 UI 隐藏。
 

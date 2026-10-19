@@ -167,9 +167,17 @@ class AgentRuntime:
         session.data['task'] = {**session.data.get('task', {}), 'status': 'cancelled'}
         if session.model_task and not session.model_task.done() and session.data['status'] != 'executing':
             session.model_task.cancel()
+        self._discard_unstarted_plan(session)
         session.data['updated_at'] = self.deps.clock()
         self._write(session)
         return {'ok': True, 'cancelled': True, 'status': session.data['status']}
+
+    def _discard_unstarted_plan(self, session: _Session) -> None:
+        """Cancellation may remove only a plan that has not entered dispatch."""
+        pending = session.data.get('pending')
+        if (session.data['status'] == 'approval_required' and pending
+                and not pending.get('recovery_required')):
+            session.data.update(pending=None, status='cancelled')
 
     async def close(self) -> None:
         if not self.executions:
@@ -424,8 +432,11 @@ class AgentRuntime:
                             session.data['authorization']['remaining_steps'] -= 1
                             self._write(session)
                             await emit('tool_start', {'tool': tool.name, 'label': tool.label})
+                            if session.stop.is_set():
+                                raise asyncio.CancelledError()
                             execution = asyncio.create_task(self._execute_plan(
-                                session, owner, plan['approval_id'], plan['plan_digest'], True))
+                                session, owner, plan['approval_id'], plan['plan_digest'], True,
+                                check_cancelled=True))
                             self.executions.add(execution)
                             execution.add_done_callback(self._execution_done)
                             result = await asyncio.shield(execution)
@@ -591,7 +602,10 @@ class AgentRuntime:
         async with session.lock:
             return await self._execute_plan(session, owner, approval_id, plan_digest, approved)
 
-    async def _execute_plan(self, session: _Session, owner: str, approval_id: str, plan_digest: str, approved: bool) -> dict:
+    async def _execute_plan(self, session: _Session, owner: str, approval_id: str, plan_digest: str, approved: bool,
+                            *, check_cancelled: bool = False) -> dict:
+        if check_cancelled and session.stop.is_set():
+            raise asyncio.CancelledError()
         self.registry.refresh_sources()
         for receipt in session.data["receipts"]:
             if receipt["approval_id"] == approval_id:
@@ -633,6 +647,13 @@ class AgentRuntime:
                 if not checked or checked.get("plan_digest") != plan["guard"]:
                     raise ValueError("Draft changed; review it again")
                 args = deepcopy(checked)
+            # Authorization callbacks may yield. Cancellation can discard a
+            # still-undispatched plan during that wait; only crossing this
+            # synchronous boundary grants the write protection below.
+            if (check_cancelled and session.stop.is_set()) or session.data.get('pending') is not plan:
+                if session.stop.is_set():
+                    raise asyncio.CancelledError()
+                raise ValueError('Approval plan is stale')
             session.data["status"] = "executing"
             self._write(session)  # Prove durable storage before dispatch.
             try:
