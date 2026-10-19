@@ -23,9 +23,9 @@ def tool(handler, mutation=False):
         "required": ["value"], "additionalProperties": False}, handler, mutation=mutation)
 
 
-async def execute(tmp_path, provider, tools=()):
+async def execute(tmp_path, provider, tools=(), **limits):
     agent = AgentRuntime(AgentDependencies(lambda: provider, lambda lang: None,
-        tuple(tools), tmp_path / "agent"))
+        tuple(tools), tmp_path / "agent", **limits))
     events = []
     async def emit(event, data):
         events.append((event, deepcopy(data)))
@@ -41,6 +41,82 @@ async def test_final_answer_is_a_typed_framework_output_not_an_empty_argument_wr
     schemas = provider.requests[0][2]["tools"]
     assert all(item["function"]["name"] != "agent_step" for item in schemas)
     assert provider.requests[0][2]["force_tool_choice"] is False
+
+
+@pytest.mark.asyncio
+async def test_default_task_budget_allows_repeated_tool_context_without_enlarging_replies(tmp_path):
+    calls = []
+    async def read(args, owner):
+        calls.append(args['value'])
+        return {'ok': True}
+    class ContextHeavyProvider:
+        def __init__(self):
+            self.requests = []
+        async def call_tools(self, system, user, **kwargs):
+            self.requests.append(kwargs)
+            call = ({'name': 'change', 'arguments': {'value': 'read'}} if len(self.requests) <= 10
+                    else {'name': 'final_result', 'arguments': {'answer': 'Done after ten tool reads'}})
+            return LLMToolResponse([call], 8000, 'test')
+    provider = ContextHeavyProvider()
+    agent, events = await execute(tmp_path, provider, [tool(read)])
+    assert len(calls) == 10
+    assert ('delta', {'delta': 'Done after ten tool reads'}) in events
+    assert all(request['max_tokens'] == 4096 for request in provider.requests)
+    sid = next(value['session_id'] for name, value in events if name == 'session')
+    assert agent.snapshot('owner', sid)['task']['token_budget'] == 256000
+
+
+@pytest.mark.asyncio
+async def test_configured_task_budget_is_independent_of_each_reply(tmp_path):
+    class ProviderWithUsage:
+        async def call_tools(self, *args, **kwargs):
+            assert kwargs['max_tokens'] == 512
+            return LLMToolResponse([{'name': 'final_result', 'arguments': {'answer': 'done'}}], 8000, 'test')
+    agent, events = await execute(tmp_path, ProviderWithUsage(), max_tokens=512, task_max_tokens=16000)
+    sid = next(value['session_id'] for name, value in events if name == 'session')
+    assert agent.snapshot('owner', sid)['task']['status'] == 'completed'
+    assert agent.snapshot('owner', sid)['task']['token_budget'] == 16000
+
+
+@pytest.mark.asyncio
+async def test_tool_loop_still_stops_at_request_budget_with_specific_reason(tmp_path):
+    calls = []
+    async def read(args, owner):
+        calls.append(args['value'])
+        return {'ok': True}
+    class LoopingProvider:
+        async def call_tools(self, *args, **kwargs):
+            return LLMToolResponse([{'name': 'change', 'arguments': {'value': 'read'}}], 1000, 'test')
+    agent, events = await execute(tmp_path, LoopingProvider(), [tool(read)])
+    sid = next(value['session_id'] for name, value in events if name == 'session')
+    task = agent.snapshot('owner', sid)['task']
+    assert len(calls) == 24
+    assert task['status'] == 'budget_reached' and task['budget_reason'] == 'steps'
+    assert task['used_tokens'] == 24000
+
+
+@pytest.mark.asyncio
+async def test_reported_token_budget_stops_before_dispatch_and_retains_usage(tmp_path):
+    writes = []
+
+    async def handler(args, owner):
+        writes.append(args)
+        return {"ok": True}
+
+    class ExpensiveProvider:
+        async def call_tools(self, *args, **kwargs):
+            return LLMToolResponse([{"name": "change", "arguments": {"value": "must-not-run"}}],
+                                  300000, "test")
+
+    agent, events = await execute(tmp_path, ExpensiveProvider(), [tool(handler, mutation=True)])
+    sid = next(data["session_id"] for event, data in events if event == "session")
+    snapshot = agent.snapshot("owner", sid)
+    assert writes == [] and snapshot["pending"] is None
+    assert snapshot["task"]["status"] == "budget_reached"
+    assert snapshot["task"]["used_tokens"] == 300000
+    assert snapshot["task"]["token_budget"] == 256000
+    assert snapshot['task']['budget_reason'] == 'tokens'
+    assert any(name == "task" and value.get("used_tokens") == 300000 for name, value in events)
 
 
 @pytest.mark.asyncio
@@ -116,11 +192,17 @@ async def test_provider_balance_error_is_actionable_and_excludes_raw_provider_de
     class UnavailableProvider:
         async def call_tools(self, *args, **kwargs):
             raise LLMToolCallError("private-provider-detail", frozenset({402}))
+    agent = AgentRuntime(AgentDependencies(lambda: UnavailableProvider(), lambda lang: None, (), tmp_path / "agent"))
+    events = []
+    async def emit(name, value):
+        events.append((name, deepcopy(value)))
     with pytest.raises(ValueError) as raised:
-        await execute(tmp_path, UnavailableProvider())
+        await agent.run("owner", [{"role": "user", "content": "help"}], "en", {}, "", emit)
     assert "402" in str(raised.value) and "Settings" in str(raised.value)
     assert "private-provider-detail" not in str(raised.value)
     assert raised.value.code == "MODEL_BALANCE_INSUFFICIENT"
+    sid = next(data["session_id"] for name, data in events if name == "session")
+    assert agent.snapshot("owner", sid)["task"]["status"] == "failed"
 
 
 @pytest.mark.asyncio

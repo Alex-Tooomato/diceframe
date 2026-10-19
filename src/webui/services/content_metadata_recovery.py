@@ -13,7 +13,7 @@ from src.webui.services.assistant_agent import _digest
 
 _MAX_SNAPSHOT_BYTES = 512 * 1024
 _ID_RE = re.compile(r"^[a-f0-9]{32}$")
-_WORLD_FIELDS = frozenset({"name", "description", "language"})
+_WORLD_FIELDS = frozenset({"name", "description", "language", "world_setting", "starter_scene"})
 _CARD_FIELDS = frozenset({"character_name", "background", "race", "class"})
 
 
@@ -119,7 +119,15 @@ class MetadataRecoveryService:
         if not fields or not isinstance(payload.get("target_id"), str):
             raise ValueError("恢复目标无效")
         fn = self.deps.world_snapshot if target_kind == "world" else self.deps.card_snapshot
-        return self._snapshot(fn(payload["target_id"]), fields)
+        current = self._snapshot(fn(payload["target_id"]), fields)
+        # Known pre-expansion journals captured these three metadata fields.
+        # Keep their version check and compare the same projection; undo still
+        # writes only the journal's explicit field list.
+        recorded = (payload.get('after') or {}).get('fields', {})
+        legacy_fields = {'name', 'description', 'language'}
+        if target_kind == 'world' and set(recorded) == legacy_fields:
+            current['fields'] = {key: current['fields'][key] for key in legacy_fields}
+        return current
 
     def recovery_preview(self, owner: str, operation_id: str) -> dict[str, Any]:
         _, payload = self._operation(owner, operation_id)

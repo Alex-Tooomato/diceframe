@@ -6,6 +6,8 @@ const mocks = vi.hoisted(() => ({
   confirm: vi.fn(),
   review: vi.fn(),
   session: vi.fn(),
+  authorize: vi.fn(),
+  cancel: vi.fn(),
 }))
 
 vi.mock('../src/api/assistant', () => ({
@@ -13,6 +15,8 @@ vi.mock('../src/api/assistant', () => ({
   confirmAssistantAgent: mocks.confirm,
   reviewAssistantAgent: mocks.review,
   getAssistantAgentSession: mocks.session,
+  authorizeAssistantAgent: mocks.authorize,
+  cancelAssistantAgent: mocks.cancel,
 }))
 
 import { useAssistant } from '../src/composables/useAssistant'
@@ -24,6 +28,8 @@ describe('useAssistant request history', () => {
     mocks.confirm.mockReset()
     mocks.review.mockReset()
     mocks.session.mockReset()
+    mocks.authorize.mockReset()
+    mocks.cancel.mockReset().mockResolvedValue({ ok: true, cancelled: true })
     localStorage.clear()
     useAssistant().clear()
   })
@@ -176,6 +182,72 @@ describe('useAssistant request history', () => {
     expect(mocks.agentStream.mock.calls[0][5]).toEqual({ route: 'create', game_key: 'g-1', world_id: 'w-1' })
     expect(assistant.sessionId.value).toBe('s-1')
     expect(assistant.status.value).toBe('working')
+  })
+
+  it('clears server authorization on a null SSE authorization and successful stop', async () => {
+    mocks.agentStream.mockImplementationOnce(async (_messages: unknown, _locale: unknown, handlers: { onAgentEvent?: (event: string, payload: Record<string, unknown>) => void }, signal: AbortSignal) => {
+      handlers.onAgentEvent?.('session', { session_id: 's-auth' })
+      handlers.onAgentEvent?.('authorization', { authorization: { mode: 'task', scope: {}, domains: [], expires_at: 1, max_steps: 8, remaining_steps: 8 } })
+      handlers.onAgentEvent?.('authorization', { authorization: null })
+      await new Promise<never>((_resolve, reject) => signal.addEventListener('abort', () => reject(new DOMException('Aborted', 'AbortError')), { once: true }))
+    })
+    const assistant = useAssistant()
+    const request = assistant.send('停止任务', 'zh-CN')
+    await Promise.resolve()
+    expect(assistant.authorization.value).toBeNull()
+    assistant.stop()
+    await request
+    await Promise.resolve()
+    expect(mocks.cancel).toHaveBeenCalledWith('s-auth')
+    expect(assistant.authorization.value).toBeNull()
+  })
+
+  it('releases authorization busy when a reset invalidates an authorization request', async () => {
+    let release!: (value: unknown) => void
+    mocks.authorize.mockImplementationOnce(() => new Promise(resolve => { release = resolve }))
+    const assistant = useAssistant()
+    const request = assistant.authorize('task')
+    await Promise.resolve()
+    expect(assistant.authorizationBusy.value).toBe(true)
+    assistant.clear()
+    release({ ok: true, session_id: 'late', authorization: null })
+    await request
+    expect(assistant.authorizationBusy.value).toBe(false)
+  })
+
+  it('advances approval task state after confirm success or rejection', async () => {
+    mocks.agentStream.mockImplementationOnce(async (_messages: unknown, _locale: unknown, handlers: { onAgentEvent?: (event: string, payload: Record<string, unknown>) => void }) => {
+      handlers.onAgentEvent?.('session', { session_id: 's-task' })
+      handlers.onAgentEvent?.('task', { status: 'approval_required', completed_steps: 1, total_steps: 3 })
+      handlers.onAgentEvent?.('approval', { approval_id: 'a-1', plan_digest: 'digest-1', tool: 'write_book' })
+    })
+    mocks.confirm.mockResolvedValueOnce({ ok: true, result: { changed: true } })
+    const assistant = useAssistant()
+    await assistant.send('执行一步', 'zh-CN')
+    await assistant.confirmApproval(true)
+    expect(assistant.task.value).toMatchObject({ status: 'completed', completed_steps: 2 })
+
+    mocks.agentStream.mockImplementationOnce(async (_messages: unknown, _locale: unknown, handlers: { onAgentEvent?: (event: string, payload: Record<string, unknown>) => void }) => {
+      handlers.onAgentEvent?.('task', { status: 'approval_required', completed_steps: 2, total_steps: 3 })
+      handlers.onAgentEvent?.('approval', { approval_id: 'a-2', plan_digest: 'digest-2', tool: 'write_book' })
+    })
+    mocks.confirm.mockResolvedValueOnce({ ok: true, cancelled: true })
+    await assistant.send('拒绝一步', 'zh-CN')
+    await assistant.confirmApproval(false)
+    expect(assistant.task.value).toMatchObject({ status: 'cancelled', completed_steps: 2 })
+  })
+
+  it('marks approval task failed when the server reports a failed execution', async () => {
+    mocks.agentStream.mockImplementationOnce(async (_messages: unknown, _locale: unknown, handlers: { onAgentEvent?: (event: string, payload: Record<string, unknown>) => void }) => {
+      handlers.onAgentEvent?.('session', { session_id: 's-fail' })
+      handlers.onAgentEvent?.('task', { status: 'approval_required', completed_steps: 0, total_steps: 2 })
+      handlers.onAgentEvent?.('approval', { approval_id: 'a-fail', plan_digest: 'digest-fail', tool: 'write_book' })
+    })
+    mocks.confirm.mockResolvedValueOnce({ ok: false, error: 'write failed' })
+    const assistant = useAssistant()
+    await assistant.send('失败一步', 'zh-CN')
+    await assistant.confirmApproval(true)
+    expect(assistant.task.value).toMatchObject({ status: 'failed', completed_steps: 0, error: 'write failed' })
   })
 
   it('does not send context for nested module routes', async () => {

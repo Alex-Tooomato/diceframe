@@ -14,7 +14,38 @@ export type AssistantContext = {
   book_id?: string
 }
 
-export type AgentEventName = 'session' | 'status' | 'tool_start' | 'tool_result' | 'draft' | 'approval' | 'navigate'
+export type AgentEventName = 'session' | 'status' | 'tool_start' | 'tool_result' | 'draft' | 'approval' | 'navigate' | 'authorization' | 'task'
+
+export type AgentAuthorizationMode = 'suggest' | 'routine' | 'task'
+export interface AgentAuthorization {
+  mode: AgentAuthorizationMode
+  scope: Record<string, string>
+  domains: string[]
+  expires_at: number
+  max_steps: number
+  remaining_steps: number
+}
+export interface AgentTask {
+  status: string
+  completed_steps: number
+  total_steps?: number
+  used_tokens?: number
+  token_budget?: number
+  budget_reason?: 'tokens' | 'steps'
+  error?: string
+}
+export interface AgentCapability {
+  name: string
+  label: string
+  domain: string
+  version: number
+  effect: string
+  automatic: boolean
+  description: string
+  parameters?: Record<string, unknown>
+  instructions?: string
+  requires_confirmation?: boolean
+}
 
 export interface AgentDraftReview {
   ok?: boolean
@@ -50,6 +81,8 @@ export interface AgentSession {
   drafts: Record<string, AgentDraftReview>
   receipts: Array<{ approval_id: string; plan_digest: string; result?: unknown; response?: AgentConfirmResult }>
   status?: string
+  authorization?: AgentAuthorization | null
+  task?: AgentTask | null
 }
 
 export interface AgentConfirmResult {
@@ -184,7 +217,7 @@ function dispatchEvent(block: string, handlers: AssistantStreamHandlers): boolea
   if (!data) return false
 
   const payload = parsePayload(data)
-  if (event === 'session' || event === 'status' || event === 'tool_start' || event === 'tool_result' || event === 'draft' || event === 'approval' || event === 'navigate') {
+  if (event === 'session' || event === 'status' || event === 'tool_start' || event === 'tool_result' || event === 'draft' || event === 'approval' || event === 'navigate' || event === 'authorization' || event === 'task') {
     handlers.onAgentEvent?.(event, payload)
   }
   if (event === 'error') {
@@ -291,6 +324,28 @@ export function reviewAssistantAgent(
 
 export function getAssistantAgentSession(sessionId: string): Promise<AgentSession> {
   return agentJson<AgentSession>(`/assistant/agent/session/${encodeURIComponent(sessionId)}`)
+}
+
+export function getAssistantAgentCapabilities(query: { q?: string; domain?: string } = {}): Promise<{ ok: true; revision: string; capabilities: AgentCapability[]; total?: number }> {
+  const params = new URLSearchParams()
+  if (query.q?.trim()) params.set('q', query.q.trim())
+  if (query.domain?.trim()) params.set('domain', query.domain.trim())
+  const suffix = params.toString() ? `?${params.toString()}` : ''
+  return agentJson(`/assistant/agent/capabilities${suffix}`)
+}
+
+export function authorizeAssistantAgent(input: {
+  session_id?: string
+  mode: AgentAuthorizationMode
+  scope?: Record<string, string>
+  domains?: string[]
+  max_steps?: number
+}): Promise<{ ok: true; session_id: string; authorization: AgentAuthorization | null }> {
+  return agentJson('/assistant/agent/authorization', { ...input, max_steps: Math.min(64, Math.max(1, input.max_steps ?? 32)) })
+}
+
+export function cancelAssistantAgent(sessionId: string): Promise<{ ok: true; cancelled: boolean; status?: string }> {
+  return agentJson('/assistant/agent/cancel', { session_id: sessionId })
 }
 
 function parsePayload(data: string): Record<string, unknown> {

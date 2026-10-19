@@ -336,6 +336,13 @@ export interface DetailViewer {
   uid?: string
 }
 
+export interface RestActivity {
+  id: string
+  kind: 'overnight' | 'therapy' | 'short' | 'long'
+  status: 'requested' | 'settled' | 'rejected' | 'error'
+  actors: Array<{ uid: string; name: string }>
+}
+
 export interface GameDetail {
   run_lifecycle?: { status: string; id?: string; revision?: number }
   gm_workspace_revision?: string | null
@@ -356,6 +363,7 @@ export interface GameDetail {
   story_mode?: StoryMode
   advancement?: LiveAdvancementStatus
   rest_session?: RestSessionStatus
+  rest_activity?: RestActivity[]
   player_access_open?: boolean
   /** 房间级暂离语义：pause（默认，暂离不交给 AI）/ ai_takeover。 */
   away_control_policy?: 'pause' | 'ai_takeover' | string
@@ -2204,6 +2212,7 @@ export interface AppConfig {
   analysis_max_tokens?: number
   text_gen_max_tokens?: number
   assistant_agent_max_tokens?: number
+  assistant_agent_task_max_tokens?: number
   llm_generation_options?: Partial<Record<'temperature' | 'top_p' | 'frequency_penalty' | 'presence_penalty', number>>
   context_recent_rounds?: number
   check_model_enabled?: boolean

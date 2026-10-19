@@ -1,10 +1,15 @@
 import { ref } from 'vue'
 import {
   confirmAssistantAgent,
+  authorizeAssistantAgent,
+  cancelAssistantAgent,
   getAssistantAgentSession,
   reviewAssistantAgent,
   streamAssistantAgent,
   type AgentApproval,
+  type AgentAuthorization,
+  type AgentAuthorizationMode,
+  type AgentTask,
   type AgentConfirmResult,
   type AgentDraftReview,
   type AgentSession,
@@ -40,6 +45,10 @@ const receipts = ref<AgentSession['receipts']>([])
 const navigation = ref<AssistantNavigation | null>(null)
 const actionBusy = ref(false)
 const actionError = ref('')
+const authorization = ref<AgentAuthorization | null>(null)
+const task = ref<AgentTask | null>(null)
+const authorizationBusy = ref(false)
+const authorizationError = ref('')
 const dirtyDraftIds = new Set<string>()
 let controller: AbortController | null = null
 let requestGeneration = 0
@@ -91,7 +100,10 @@ function compactValue(value: unknown, depth = 0): unknown {
   if (Array.isArray(value)) return value.slice(0, 20).map(item => compactValue(item, depth + 1))
   if (value && typeof value === 'object') {
     const output: Record<string, unknown> = {}
-    for (const [key, item] of Object.entries(value)) { if (!SECRET_KEY.test(key)) output[key] = compactValue(item, depth + 1) }
+    for (const [key, item] of Object.entries(value)) {
+      const budgetField = /^(?:max_steps|remaining_steps|max_tokens)$/.test(key)
+      if (!SECRET_KEY.test(key) || (budgetField && typeof item === 'number')) output[key] = compactValue(item, depth + 1)
+    }
     return output
   }
   return value
@@ -110,7 +122,7 @@ function appendEvent(message: AssistantMessage, event: string, payload: Record<s
   events.push({ event, payload: compactPayload(payload) }); if (events.length > 80) events.splice(0, events.length - 80)
 }
 
-function readContext(): AssistantContext | undefined {
+export function readAssistantContext(): AssistantContext | undefined {
   if (typeof location === 'undefined') return undefined
   const match = (location.hash || '').match(/^#\/?([^?/#]+)(?:\?([^#]*))?$/)
   if (!match) return undefined
@@ -186,6 +198,8 @@ function updateFromSession(snapshot: AgentSession) {
   if (snapshot.drafts && typeof snapshot.drafts === 'object') for (const [id, review] of Object.entries(snapshot.drafts)) if (review && typeof review === 'object') restored[id] = { draft_id: id, review }
   for (const id of dirtyDraftIds) if (drafts.value[id]) restored[id] = drafts.value[id]
   drafts.value = restored; status.value = typeof snapshot.status === 'string' ? snapshot.status : ''
+  authorization.value = snapshot.authorization || null
+  task.value = snapshot.task || null
 }
 async function restoreSession() {
   const current = sessionId.value || loadSessionId(); if (!current) return
@@ -248,8 +262,10 @@ async function send(text: string, locale = 'zh-CN') {
         if (event === 'approval') pendingApproval.value = markDirtyApproval(normaliseApproval(payload))
         if (event === 'draft' && typeof payload.draft_id === 'string' && payload.review && typeof payload.review === 'object') drafts.value[payload.draft_id] = { draft_id: payload.draft_id, review: payload.review as AgentDraftReview }
         if (event === 'navigate') navigation.value = safeNavigation(payload)
+        if (event === 'authorization') authorization.value = payload.authorization && typeof payload.authorization === 'object' ? payload.authorization as AgentAuthorization : null
+        if (event === 'task') task.value = payload as unknown as AgentTask
       },
-    }, requestSignal, sessionId.value || undefined, readContext())
+    }, requestSignal, sessionId.value || undefined, readAssistantContext())
     queue.closeInput()
     await displayComplete
   } catch (error: unknown) {
@@ -267,9 +283,34 @@ async function send(text: string, locale = 'zh-CN') {
 }
 function stop() {
   if (!controller) return
+  const currentSession = sessionId.value
+  const stopGeneration = requestGeneration
   if (activeAssistant) activeAssistant.stopped = true
   activeQueue?.flush()
   controller.abort()
+  // Cancellation is a server operation; aborting the model stream alone cannot
+  // stop already dispatched work. The server keeps committed writes intact.
+  if (currentSession) void cancelAssistantAgent(currentSession).then(() => {
+    if (stopGeneration === requestGeneration && sessionId.value === currentSession) {
+      authorization.value = null
+      task.value = { ...(task.value || { status: 'cancelled', completed_steps: 0 }), status: 'cancelled' }
+    }
+  }).catch(() => undefined)
+}
+
+async function authorize(mode: AgentAuthorizationMode, scope?: Record<string, string>, domains?: string[], maxSteps = 32) {
+  if (authorizationBusy.value) return
+  const generation = requestGeneration
+  const expectedSession = sessionId.value
+  authorizationBusy.value = true; authorizationError.value = ''
+  try {
+    const result = await authorizeAssistantAgent({ session_id: expectedSession || undefined, mode, scope, domains, max_steps: maxSteps })
+    if (generation !== requestGeneration || sessionId.value !== expectedSession) return
+    saveSessionId(result.session_id); authorization.value = result.authorization
+  } catch (error: unknown) {
+    if (generation !== requestGeneration || sessionId.value !== expectedSession) return
+    authorizationError.value = error instanceof Error ? error.message : 'Authorization request failed.'
+  } finally { if (generation === requestGeneration) authorizationBusy.value = false }
 }
 async function retryLast(locale = 'zh-CN') {
   if (streaming.value) return; let userIndex = -1
@@ -280,6 +321,18 @@ function addResult(result: AgentConfirmResult, tool = '') {
   const message = [...messages.value].reverse().find(item => item.role === 'assistant')
   if (message) appendEvent(message, 'tool_result', { ok: result.ok, partial: result.partial, tool, result: result.result, error: result.error })
   if (result.navigation) navigation.value = safeNavigation(result.navigation)
+}
+function updateTaskAfterApproval(result: AgentConfirmResult, approved: boolean) {
+  const current = task.value
+  if (!current || current.status !== 'approval_required') return
+  if (result.ok && approved) {
+    task.value = { ...current, status: 'completed', completed_steps: current.completed_steps + 1 }
+  } else if (result.ok && !approved) {
+    task.value = { ...current, status: 'cancelled' }
+  } else {
+    const recovery = result && typeof result === 'object' && (result as AgentConfirmResult & { recovery_required?: boolean }).recovery_required === true
+    task.value = { ...current, status: recovery ? 'recovery_required' : 'failed', ...(result.error ? { error: result.error } : {}) }
+  }
 }
 function receiptResponse(receipt: AgentSession['receipts'][number]): AgentConfirmResult {
   if (receipt.response && typeof receipt.response.ok === 'boolean') return receipt.response
@@ -295,6 +348,7 @@ async function confirmApproval(approved = true): Promise<AgentConfirmResult | un
     const recovered = receiptResponse(receipt)
     pendingApproval.value = null
     addResult(recovered, pending.tool)
+    updateTaskAfterApproval(recovered, approved)
     actionError.value = recovered.ok ? '' : recovered.error || 'Assistant action failed.'
     return recovered
   }
@@ -304,8 +358,8 @@ async function confirmApproval(approved = true): Promise<AgentConfirmResult | un
     const result = await confirmAssistantAgent(currentSession, pending.approval_id, pending.plan_digest, approved)
     if (generation !== requestGeneration) return undefined
     pendingApproval.value = null
-    if (result.ok) { if (approved) receipts.value.push({ approval_id: pending.approval_id, plan_digest: pending.plan_digest, result: result.result, response: result }); addResult(result, pending.tool) }
-    else { addResult(result, pending.tool); actionError.value = result.error || 'Assistant action failed.' }
+    if (result.ok) { if (approved) receipts.value.push({ approval_id: pending.approval_id, plan_digest: pending.plan_digest, result: result.result, response: result }); addResult(result, pending.tool); updateTaskAfterApproval(result, approved) }
+    else { addResult(result, pending.tool); updateTaskAfterApproval(result, approved); actionError.value = result.error || 'Assistant action failed.' }
     persist(); return result
   } catch (error: unknown) {
     if (generation !== requestGeneration) return undefined
@@ -318,6 +372,7 @@ async function confirmApproval(approved = true): Promise<AgentConfirmResult | un
           const recovered = receiptResponse(receipt)
           pendingApproval.value = null
           addResult(recovered, pending.tool)
+          updateTaskAfterApproval(recovered, approved)
           actionError.value = recovered.ok ? '' : recovered.error || 'Assistant action failed.'
           return recovered
         }
@@ -356,7 +411,7 @@ async function invalidateApproval(draftId?: string) {
   finally { if (generation === requestGeneration) actionBusy.value = false }
 }
 function resetRuntime() {
-  ++requestGeneration; activeQueue?.cancel(); activeQueue = null; activeDisplayResolve?.(); activeDisplayResolve = null; controller?.abort(); controller = null; activeAssistant = null; streaming.value = false; actionBusy.value = false; status.value = ''; pendingApproval.value = null; drafts.value = {}; receipts.value = []; navigation.value = null; actionError.value = ''; dirtyDraftIds.clear()
+  ++requestGeneration; activeQueue?.cancel(); activeQueue = null; activeDisplayResolve?.(); activeDisplayResolve = null; controller?.abort(); controller = null; activeAssistant = null; streaming.value = false; actionBusy.value = false; authorizationBusy.value = false; status.value = ''; pendingApproval.value = null; drafts.value = {}; receipts.value = []; navigation.value = null; actionError.value = ''; authorization.value = null; task.value = null; authorizationError.value = ''; dirtyDraftIds.clear()
 }
 function clear() {
   resetRuntime(); messages.value = []; saveSessionId(null)
@@ -367,4 +422,4 @@ async function loadConversation(nextMessages: AssistantMessage[], nextSessionId:
   resetRuntime(); messages.value = storedConversationMessages(nextMessages); saveSessionId(nextSessionId?.trim() || null); persist()
   await restoreSession()
 }
-export function useAssistant() { return { messages, streaming, status, sessionId, pendingApproval, drafts, navigation, actionBusy, actionError, send, stop, retryLast, clear, loadConversation, restoreSession, confirmApproval, cancelApproval, reviewDraft, saveDraft, invalidateApproval } }
+export function useAssistant() { return { messages, streaming, status, sessionId, pendingApproval, drafts, navigation, actionBusy, actionError, authorization, task, authorizationBusy, authorizationError, send, stop, retryLast, clear, loadConversation, restoreSession, confirmApproval, cancelApproval, reviewDraft, saveDraft, invalidateApproval, authorize } }

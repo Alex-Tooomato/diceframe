@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from src.engine.modules import game_config
-
 import logging
 
 from aiohttp import web
@@ -249,11 +247,7 @@ async def api_live_character_rest(request: web.Request) -> web.Response:
             {"ok": False, "error": "无权修改他人角色卡"}, status=403
         )
     payload = await request.json()
-    result = await (
-        api.ruleset_rest_resolve_live_party(gk, uid, payload)
-        if not game_config.solo_mode(inst)
-        else api.ruleset_rest_resolve_live(gk, uid, payload)
-    )
+    result = await api.ruleset_rest_submit_live(gk, uid, payload)
     await _broadcast_ruleset_change(request, gk, result)
     code = str(result.get("code") or "")
     status = (

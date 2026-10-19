@@ -60,6 +60,7 @@ function authorizeReward() {
   void submit('reward', { actor_uid: actorUid.value, resource_key: rewardResource.value, resource_delta: rewardValue.value, reason: rewardReason.value.trim() })
 }
 function show() { open.value = true; void refresh() }
+defineExpose({ open: show })
 
 watch([snapshot, () => props.actorId], () => {
   const actors = snapshot.value?.actors || []
@@ -153,7 +154,7 @@ watch([() => props.gameKey, viewerKey], () => { open.value = false })
 </template>
 
 <style scoped>
-.resource-recovery-entry { width: 100%; min-height: 34px; padding: 7px 10px; text-align: start; font-size: 12px; }
+.resource-recovery-entry { width: 100%; min-height: 34px; margin-block-start: 8px; padding: 7px 10px; text-align: start; font-size: 12px; }
 :global(.dialog.resource-recovery-dialog) { width: min(640px, calc(100vw - 30px)); max-height: calc(100dvh - 30px); display: flex; flex-direction: column; min-height: 0; overflow: hidden; gap: 12px; }
 :global(.dialog.resource-recovery-dialog > header), :global(.dialog.resource-recovery-dialog > .actions) { flex-shrink: 0; }
 .resource-recovery-body { display: grid; flex: 1 1 auto; gap: 12px; overflow-y: auto; min-height: 0; overscroll-behavior: contain; }

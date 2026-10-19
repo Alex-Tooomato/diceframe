@@ -82,12 +82,19 @@ async def test_real_agent_world_card_and_lorebook_edits_are_recoverable(web_api)
 
     result, session_id, _ = await approve_agent_tool(api, llm, "edit_world", {
         "world_id": world_id, "name": "Edited world", "description": "Edited description", "language": "en",
+        "world_setting": "Edited full setting", "starter_scene": "Edited opening",
     }, session_id)
     operation_id = result["result"]["operation_id"]
-    assert api.get_world_definition(world_id)["world"]["world_name"] == "Edited world"
+    edited_world = api.get_world_definition(world_id)["world"]
+    assert edited_world["world_name"] == "Edited world"
+    assert edited_world["world_setting"] == "Edited full setting"
+    assert edited_world["starter_scene"] == "Edited opening"
     await undo_operation(api, operation_id, session_id)
-    assert api.get_world_definition(world_id)["world"]["world_name"] == "Agent World"
-    assert api.get_world_definition(world_id)["world"]["description"] == "Original world"
+    restored_world = api.get_world_definition(world_id)["world"]
+    assert restored_world["world_name"] == "Agent World"
+    assert restored_world["description"] == "Original world"
+    assert restored_world["world_setting"] == "Original world"
+    assert restored_world["starter_scene"] == "Original world"[:120]
 
     result, session_id, _ = await approve_agent_tool(api, llm, "edit_character_card", {
         "card_id": card_id, "character_name": "Edited Ada", "background": "Edited background",
@@ -100,6 +107,26 @@ async def test_real_agent_world_card_and_lorebook_edits_are_recoverable(web_api)
     restored_card = next(row for row in api.list_character_cards()["cards"] if row["id"] == card_id)
     assert restored_card["character_name"] == "Ada" and restored_card["background"] == "Original background"
     assert restored_card.get("mechanics") == original_mechanics
+
+
+@pytest.mark.asyncio
+async def test_pre_expansion_world_journal_can_still_undo_without_overwriting_full_setting(web_api):
+    from src.webui.services.assistant_agent import _digest
+    api, store, _registry, llm, _worlds = web_api
+    identity = api.create_world('Legacy journal', 'Original description', 'en')['world_id']
+    result, sid, _ = await approve_agent_tool(api, llm, 'edit_world', {
+        'world_id': identity, 'name': 'Renamed', 'description': 'Edited description', 'language': 'en'})
+    operation_id = result['result']['operation_id']
+    operation = store.get_lorebook_operation(operation_id, _digest('alice'))
+    payload = deepcopy(operation['payload'])
+    for snapshot in ('before', 'after'):
+        payload[snapshot]['fields'].pop('world_setting')
+        payload[snapshot]['fields'].pop('starter_scene')
+    store.update_lorebook_operation(operation_id, _digest('alice'), {'payload': payload})
+    assert (await undo_operation(api, operation_id, sid))['ok']
+    restored = api.get_world_definition(identity)['world']
+    assert restored['world_name'] == 'Legacy journal'
+    assert restored['world_setting'] == 'Original description'
 
 
 @pytest.mark.asyncio

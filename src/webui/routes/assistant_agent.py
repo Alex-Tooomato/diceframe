@@ -136,7 +136,43 @@ async def api_agent_content_operations(request):
     return web.json_response(_get_api(request).assistant_content_operations(owner))
 
 
+async def api_agent_capabilities(request):
+    owner = _owner(request)
+    try:
+        return web.json_response(_get_api(request).assistant_agent_capabilities(
+            owner, request.query.get('q', ''), request.query.get('domain', '')))
+    except (ValueError, TypeError) as exc:
+        return web.json_response({'ok': False, 'error': str(exc)}, status=400)
+
+
+async def api_agent_authorization(request):
+    owner = _owner(request)
+    try:
+        body = _body(await request.json(), ('session_id', 'mode', 'scope', 'domains', 'max_steps'))
+        sid = _id(body.get('session_id', ''), optional=True)
+        return web.json_response(_get_api(request).assistant_agent_authorize(owner, sid,
+            body.get('mode'), body.get('scope', {}), body.get('domains', []), body.get('max_steps', 32)))
+    except PermissionError as exc:
+        return web.json_response({'ok': False, 'error': str(exc)}, status=403)
+    except (ValueError, TypeError) as exc:
+        return web.json_response({'ok': False, 'error': str(exc)}, status=400)
+
+
+async def api_agent_cancel(request):
+    owner = _owner(request)
+    try:
+        body = _body(await request.json(), ('session_id',))
+        return web.json_response(_get_api(request).assistant_agent_cancel(owner, _id(body.get('session_id'))))
+    except PermissionError as exc:
+        return web.json_response({'ok': False, 'error': str(exc)}, status=403)
+    except (ValueError, TypeError) as exc:
+        return web.json_response({'ok': False, 'error': str(exc)}, status=400)
+
+
 def register_agent(app):
+    app.router.add_get('/api/assistant/agent/capabilities', api_agent_capabilities)
+    app.router.add_post('/api/assistant/agent/authorization', api_agent_authorization)
+    app.router.add_post('/api/assistant/agent/cancel', api_agent_cancel)
     app.router.add_post('/api/assistant/agent/plan', api_agent_plan)
     app.router.add_get('/api/assistant/agent/content-operations', api_agent_content_operations)
     app.router.add_post("/api/assistant/agent/run", api_agent_run)

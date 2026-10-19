@@ -104,6 +104,7 @@ describe('peer host game bridge', () => {
     },
     players: [privatePlayer], npcs: [{ character_name: 'NPC-secret' }],
     gm_style_override: { note: 'GM-secret-note' }, economy_proposals: ['Economy-secret'],
+    rest_activity: [{ id: 'rest-secret', actors: [{ uid: 'p1-secret', name: 'Character-secret' }] }],
     plot_tracker: { note: 'Plot-secret' }, future_private: 'Future-secret',
   }
   const privateValues = [
@@ -116,7 +117,9 @@ describe('peer host game bridge', () => {
 
   it('L4 returns the bound actor detail fetched with delegated identity', async () => {
     const current = { game_key: 'web|game|host', player_access_open: true, gm_style_override: { note: 'secret' } }
-    const projected = { game_key: 'web|game|host', gm_style_override: null, scene: 'player scene' }
+    const projected = { game_key: 'web|game|host', gm_style_override: null, scene: 'player scene',
+      rest_activity: [{ id: 'rest-public', kind: 'overnight', status: 'requested', actors: [{ uid: 'player_1', name: 'Ari' }] }],
+    }
     const executor = vi.fn<PeerLocalApiExecutor>(async (path) => (
       path === '/games/web%7Cgame%7Chost' ? current : projected
     ))

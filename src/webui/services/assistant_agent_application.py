@@ -207,13 +207,13 @@ def application_tools(deps: AgentApplicationDependencies) -> tuple[AgentTool, ..
         AgentTool("create_rule", "Generate a new validated custom rule", obj({"prompt": string(8000, minimum=1),
             "source_rule_id": string(), "language": language}, ("prompt",)), create_rule, mutation=True),
         AgentTool("generate_image", "Generate a scene image", obj({"prompt": string(12000, minimum=1),
-            "style": string(500), "aspect_ratio": string(20)}, ("prompt",)), generate_image, mutation=True),
+            "style": string(500), "aspect_ratio": string(20)}, ("prompt",)), generate_image, mutation=True, effect='external'),
         AgentTool("invoke_plugin_tool", "Run an installed plugin tool through its host", obj({"plugin_id": string(minimum=1),
             "tool_name": string(minimum=1), "arguments": {"type": "object"}}, ("plugin_id", "tool_name", "arguments")), invoke_plugin, mutation=True,
-            guard=lambda args, owner: _digest(plugin_descriptor(args, owner)),
+            effect='external', guard=lambda args, owner: _digest(plugin_descriptor(args, owner)),
             preview=lambda args, owner: {'target_name': plugin_descriptor(args, owner)['title'], 'effect': 'read_only'}),
         AgentTool("set_plugin_enabled", "Enable or disable an installed plugin", obj({"plugin_id": string(minimum=1),
-            "enabled": {"type": "boolean"}}, ("plugin_id", "enabled")), update_plugin, mutation=True),
+            "enabled": {"type": "boolean"}}, ("plugin_id", "enabled")), update_plugin, mutation=True, effect='external'),
         AgentTool("diagnose_runtime", "Read recent redacted runtime logs for diagnosis", obj(), diagnose),
     ]
     if deps.content:

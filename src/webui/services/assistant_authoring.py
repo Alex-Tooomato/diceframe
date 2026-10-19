@@ -26,6 +26,7 @@ class AuthoringDependencies:
     write_card_with_recovery: Callable | None = None
     world_snapshot: Callable | None = None
     card_snapshot: Callable | None = None
+    game_players: Callable | None = None
 
 
 def authoring_tools(deps: AuthoringDependencies) -> tuple[AgentTool, ...]:
@@ -61,13 +62,20 @@ def authoring_tools(deps: AuthoringDependencies) -> tuple[AgentTool, ...]:
 
     async def edit_world(args, owner):
         current = world(args["world_id"])
-        if _has_private_markers(args["description"]):
+        if any(_has_private_markers(str(args.get(field) or ""))
+               for field in ("description", "world_setting", "starter_scene")):
             raise ValueError("World descriptions cannot contain private material")
+        patch = {field: args[field] for field in ('name', 'description', 'language', 'world_setting', 'starter_scene')
+                 if field in args}
+        if not patch:
+            raise ValueError('Select at least one world field to update')
         if deps.write_world_with_recovery is not None:
-            return deps.write_world_with_recovery(owner, args['world_id'], {
-                'name': args['name'], 'description': args['description'],
-                'language': args.get('language') or current.get('language') or 'zh-CN'})
-        return deps.update_world(args["world_id"], args["name"], args["description"], args.get("language") or current.get("language") or "zh-CN")
+            return deps.write_world_with_recovery(owner, args['world_id'], patch)
+        return deps.update_world(args["world_id"], patch.get('name', current.get('name', '')),
+                                 patch.get('description', current.get('description', '')),
+                                 patch.get('language', current.get('language') or 'zh-CN'),
+                                 **{field: value for field, value in patch.items()
+                                    if field in {"world_setting", "starter_scene"}})
 
     async def write_entries(args, owner):
         existing = {e["id"]: e for e in book_entries(args["book_id"])}
@@ -105,6 +113,70 @@ def authoring_tools(deps: AuthoringDependencies) -> tuple[AgentTool, ...]:
                         "error": "Some entries could not be saved; inspect results before planning again"}
         return {"ok": True, "results": results, "navigation": {"route": "lorebook", "query": {"book": args["book_id"]}}}
 
+    async def set_entry_visibility(args, owner):
+        """Change only audience markers on existing canonical entry rows.
+
+        The recovery writer receives audience-only patches, so its journal and
+        undo never overwrite authored text or unrelated extension fields.
+        """
+        entries = book_entries(args["book_id"])
+        existing = {str(entry.get("id")): entry for entry in entries
+                    if isinstance(entry, dict) and isinstance(entry.get("id"), str)}
+        entry_ids = args["entry_ids"]
+        if len(set(entry_ids)) != len(entry_ids):
+            raise ValueError("Duplicate entry ID")
+        missing = [identity for identity in entry_ids if identity not in existing]
+        if missing:
+            raise ValueError("Entry ID does not exist in the selected book")
+
+        audience = args["audience"]
+        character_ids = args.get("character_ids", [])
+        if audience == "characters":
+            if not character_ids:
+                raise ValueError("character_ids are required for character visibility")
+            if not args.get("game_key") or deps.game_players is None:
+                raise ValueError("game_key is required to validate live character identities")
+            if len(set(character_ids)) != len(character_ids):
+                raise ValueError("Duplicate character ID")
+            # The composition callback owns game existence and GM scope
+            # validation; do not resolve arbitrary game keys locally.
+            players_result = deps.game_players(args["game_key"], owner)
+            if isinstance(players_result, dict):
+                players = players_result.get("players", players_result)
+            else:
+                players = players_result
+            canonical_ids = (set(players) if isinstance(players, dict) else
+                             {str(player.get("user_id")) for player in players
+                              if isinstance(player, dict) and isinstance(player.get("user_id"), str)})
+            unknown = [identity for identity in character_ids if identity not in canonical_ids]
+            if unknown:
+                raise ValueError("Unknown canonical character ID")
+            visible_to = list(character_ids)
+        elif character_ids:
+            raise ValueError("character_ids are only valid for character visibility")
+        else:
+            visible_to = ["*"] if audience == "public" else []
+
+        prepared = []
+        for identity in entry_ids:
+            row = deepcopy(existing[identity])
+            if audience != "gm" and _has_private_markers(str(row.get("content") or "")):
+                raise ValueError("A non-GM entry cannot contain private markers")
+            row["visible_to"] = deepcopy(visible_to)
+            prepared.append(row)
+        if deps.write_entries_with_recovery is not None:
+            return deps.write_entries_with_recovery(owner, args["book_id"], [
+                {'id': row['id'], 'visible_to': row['visible_to']} for row in prepared])
+        results = []
+        for row in prepared:
+            result = deps.save_book_entry(args["book_id"], row)
+            results.append({"id": row["id"], **result})
+            if result.get("ok") is not True:
+                return {"ok": False, "partial": len(results) > 1, "results": results,
+                        "error": "Some entries could not be saved; inspect results before planning again"}
+        return {"ok": True, "results": results,
+                "navigation": {"route": "lorebook", "query": {"book": args["book_id"]}}}
+
     async def edit_card(args, owner):
         card(args["card_id"])
         patch = {key: value for key, value in args.items() if key != "card_id"}
@@ -120,12 +192,22 @@ def authoring_tools(deps: AuthoringDependencies) -> tuple[AgentTool, ...]:
         "type": string(30, ("npc", "location", "item", "event", "puzzle", "faction", "spell", "class", "other")),
         "keywords": {"type": "array", "items": string(100), "maxItems": 20},
         "visibility": string(20, ("public", "gm"))}, ("name", "content"))
+    visibility_schema = obj({
+        "book_id": string(minimum=1),
+        "entry_ids": {"type": "array", "minItems": 1, "maxItems": 10,
+                      "items": string(200, minimum=1)},
+        "game_key": string(200, minimum=1),
+        "audience": string(20, ("gm", "public", "characters")),
+        "character_ids": {"type": "array", "maxItems": 10,
+                          "items": string(200, minimum=1)},
+    }, ("book_id", "entry_ids", "audience"))
     return (
         AgentTool("read_content", "Read an existing world, book, character, adventure or rule", obj({
             "kind": string(30, ("world", "lorebook", "character_template", "adventure", "rule")), "id": string(minimum=1)}, ("kind", "id")), read),
         AgentTool("edit_world", "Update the name and public setting of your world", obj({"world_id": string(minimum=1),
-            "name": string(minimum=1), "description": string(16000), "language": string(16, ("zh-CN", "en", "de", "ja", "ru"))},
-            ("world_id", "name", "description")), edit_world, mutation=True,
+            "name": string(minimum=1), "description": string(16000), "language": string(16, ("zh-CN", "en", "de", "ja", "ru")),
+            "world_setting": string(16000), "starter_scene": string(8192)},
+            ("world_id",)), edit_world, mutation=True,
             guard=lambda args, owner: _digest(deps.world_snapshot(args['world_id']) if deps.world_snapshot else world(args["world_id"])),
             preview=lambda args, owner: {"target_name": world(args["world_id"])["name"], "changes": args}),
         AgentTool("write_lorebook_entries", "Add or update reviewed lorebook entries, with explicit public or GM visibility", obj({
@@ -134,6 +216,12 @@ def authoring_tools(deps: AuthoringDependencies) -> tuple[AgentTool, ...]:
             guard=lambda args, owner: _digest(book_entries(args["book_id"])),
             preview=lambda args, owner: {"target_name": str((deps.list_book_entries(args["book_id"]).get("book") or {}).get("name") or args["book_id"]),
                 "entries": args["entries"]}),
+        AgentTool("set_lorebook_entry_visibility", "Change existing lorebook entry visibility without rewriting its authored fields",
+            visibility_schema, set_entry_visibility, mutation=True, domain='lorebook', effect='disclosure',
+            guard=lambda args, owner: _digest(book_entries(args["book_id"])),
+            preview=lambda args, owner: {"target_name": str((deps.list_book_entries(args["book_id"]).get("book") or {}).get("name") or args["book_id"]),
+                "entry_ids": args["entry_ids"], "audience": args["audience"],
+                "character_ids": args.get("character_ids", [])}),
         AgentTool("edit_character_card", "Edit a reusable character's public narrative fields", obj({"card_id": string(minimum=1),
             "character_name": string(minimum=1), "background": string(16000), "race": string(),
             "class": string()}, ("card_id", "character_name")), edit_card, mutation=True,

@@ -306,6 +306,13 @@ def _application_dependencies() -> ApplicationDependencies:
 app = create_app(_application_dependencies())
 
 
+async def _register_application_actions(application: web.Application) -> None:
+    CONFIG_CONTROLLER.attach_agent_actions(application, application['api'])
+
+
+app.on_startup.append(_register_application_actions)
+
+
 async def _serve(loop: asyncio.AbstractEventLoop) -> bool:
     """按配置启动所有监听器；返回是否需要重启进程。
 

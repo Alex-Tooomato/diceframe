@@ -36,6 +36,24 @@ The GM can choose a character, select SAN or Luck, enter one of the fixed reward
 
 After the group has actually completed an intermission, the GM can open the Luck recovery action for that intermission. The server rolls `d100` and succeeds only when the result is greater than the character's current Luck. A success grants `1d10` Luck. A failed check consumes that intermission's opportunity, so it cannot be retried by refreshing the page or changing clients.
 
+## Party rest activity
+
+Open **Rest activity** in the party rail to review recent requests and settlement
+statuses available in the current save. Rest/treatment requests and outcomes,
+and cooperative short/long rest status, are shared with members. SAN/Luck
+balances, treatment reasons, check rolls and private GM rewards retain their
+existing access rules and are never included in these notices.
+
+New activity shows one non-focusing notice by default. It disappears after five
+seconds and can be dismissed immediately. Select **Mute reminders**, or disable
+**Show rest reminders (only me)** inside **Rest activity**, to silence notices.
+This device remembers the preference separately for each game and identity. It
+does not affect other members, approvals or settlement. Activity remains
+available to open manually; entering, refreshing or re-enabling reminders never
+replays existing records. Notices do not enter the story chat or resize its input.
+Cooperative rests reflect the existing rest session, rather than a separate
+permanent rest ledger.
+
 ## Rules and compatibility
 
 Recovery uses fixed v1 policy profiles rather than a general-purpose rules DSL. The server owns the logical clock, character balance, deterministic seed, receipt, and one-use ledger. Narrative or legacy positive SAN/Luck tags do not authorize a positive change when a recovery policy is active.
