@@ -92,3 +92,73 @@ test('Agent authorization stays compact on mobile and clearly reports an unavail
   expect(box!.width).toBeLessThanOrEqual((page.viewportSize()?.width || 390) + 1)
   await page.screenshot({ path: info.outputPath('agent-authorization-mobile.png'), scale: 'css' })
 })
+
+test('pending approval shows one badge, opens the local task card, and clears after confirmation', async ({ page }, info) => {
+  const approval = {
+    approval_id: 'a'.repeat(32),
+    plan_digest: `sha256:${'b'.repeat(64)}`,
+    tool: 'write_lorebook_entries', label: 'Write lorebook', arguments: {},
+    expires_at: 4102444800,
+  }
+  await page.addInitScript(({ sessionId }) => {
+    localStorage.setItem('diceframe_assistant_session_id', sessionId)
+    localStorage.setItem('diceframe_assistant_conversations', JSON.stringify({
+      activeId: 'pending-e2e', items: [{ id: 'pending-e2e', title: 'Pending', createdAt: 1, updatedAt: 1, sessionId, messages: [{ role: 'user', content: '待确认' }] }],
+    }))
+  }, { sessionId: SESSION_ID })
+  let pending = true
+  await page.route('**/api/assistant/agent/session/**', route => route.fulfill({
+    status: 200, contentType: 'application/json',
+    body: JSON.stringify({ ok: true, session_id: SESSION_ID, pending: pending ? approval : null, drafts: {}, receipts: [], status: pending ? 'approval_required' : 'idle', authorization: null, task: { status: pending ? 'approval_required' : 'completed', completed_steps: pending ? 0 : 1 } }),
+  }))
+  await page.route('**/api/assistant/agent/capabilities*', route => route.fulfill({
+    status: 200, contentType: 'application/json',
+    body: JSON.stringify({ ok: true, revision: 'r-e2e', capabilities: [] }),
+  }))
+  await page.route('**/api/assistant/agent/confirm*', async route => {
+    pending = false
+    return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ok: true, result: { ok: true } }) })
+  })
+
+  await page.goto('/#/overview?game=game-e2e')
+  await expect(page.getByTestId('assistant-shell-fab').locator('.assistant-shell-pending-badge')).toHaveText('1')
+  await page.getByTestId('assistant-shell-fab').click()
+  await expect(page.getByTestId('agent-authorization')).toBeVisible()
+  await expect(page.getByTestId('assistant-workspace-toggle')).toHaveAttribute('aria-expanded', 'true')
+  await expect(page.locator('[data-agent-approval]')).toBeVisible()
+  await page.getByTestId('assistant-workspace-toggle').click()
+  await expect(page.getByTestId('assistant-workspace-toggle')).toHaveAttribute('aria-expanded', 'false')
+  await page.getByTestId('assistant-workspace-toggle').click()
+  await expect(page.getByTestId('assistant-workspace-toggle')).toHaveAttribute('aria-expanded', 'true')
+  await page.locator('.assistant-panel-head button').last().click()
+  await expect(page.getByTestId('assistant-shell-fab').locator('.assistant-shell-pending-badge')).toHaveText('1')
+  await page.getByTestId('assistant-shell-fab').click()
+  await expect(page.getByTestId('assistant-workspace-toggle')).toHaveAttribute('aria-expanded', 'true')
+  await expect(page.locator('[data-agent-approval]')).toBeVisible()
+  await page.screenshot({ path: info.outputPath('agent-pending-open.png'), scale: 'css' })
+  await page.getByRole('button', { name: '确认执行' }).click()
+  await expect(page.locator('[data-agent-approval]')).toHaveCount(0)
+  await expect(page.getByTestId('assistant-shell-fab').locator('.assistant-shell-pending-badge')).toHaveCount(0)
+  await page.screenshot({ path: info.outputPath('agent-pending-cleared.png'), scale: 'css' })
+})
+
+test('budget reached exposes an explicit continue action instead of retrying automatically', async ({ page }) => {
+  await page.addInitScript(({ sessionId }) => {
+    localStorage.setItem('diceframe_assistant_session_id', sessionId)
+    localStorage.setItem('diceframe_assistant_conversations', JSON.stringify({ activeId: 'budget-e2e', items: [{ id: 'budget-e2e', title: 'Budget', createdAt: 1, updatedAt: 1, sessionId, messages: [{ role: 'user', content: '预算测试' }] }] }))
+  }, { sessionId: SESSION_ID })
+  await page.route('**/api/assistant/agent/session/**', route => route.fulfill({
+    status: 200, contentType: 'application/json', body: JSON.stringify({ ok: true, session_id: SESSION_ID, pending: null, drafts: {}, receipts: [], status: 'idle', authorization: null, task: { status: 'budget_reached', completed_steps: 24, used_tokens: 1000, token_budget: 1000, budget_reason: 'tokens' } }),
+  }))
+  let continued: Record<string, unknown> | undefined
+  await page.route('**/api/assistant/agent/run*', async route => {
+    continued = route.request().postDataJSON()
+    return route.fulfill({ status: 200, contentType: 'text/event-stream', body: 'event: done\ndata: {}\n\n' })
+  })
+  await openAssistant(page)
+  const panel = page.getByTestId('agent-authorization')
+  await panel.locator('button.agent-authorization-toggle').click()
+  await expect(panel).toContainText('已达到预算')
+  await panel.getByRole('button', { name: '继续任务' }).click()
+  await expect.poll(() => continued).toMatchObject({ messages: expect.arrayContaining([expect.objectContaining({ content: '继续未完成的任务' })]) })
+})

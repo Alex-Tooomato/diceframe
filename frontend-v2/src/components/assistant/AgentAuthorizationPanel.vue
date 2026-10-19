@@ -8,12 +8,15 @@ const props = withDefaults(defineProps<{
   locale: string
   authorization?: AgentAuthorization | null
   task?: AgentTask | null
+  pendingApproval?: boolean
   busy?: boolean
   error?: string
   disabled?: boolean
   context?: Record<string, string>
   onAuthorize?: (mode: AgentAuthorizationMode, scope?: Record<string, string>, domains?: string[], maxSteps?: number) => void | Promise<void>
-}>(), { authorization: null, task: null, busy: false, error: '', disabled: false, context: () => ({}) })
+  onContinue?: () => void | Promise<void>
+  onReview?: () => void
+}>(), { authorization: null, task: null, pendingApproval: false, busy: false, error: '', disabled: false, context: () => ({}) })
 const copy = computed(() => assistantAuthorizationCopy(props.locale))
 const expanded = ref(false)
 const scopeMode = ref<'current' | 'all'>('current')
@@ -26,9 +29,13 @@ const capabilitiesError = ref('')
 let capabilityRequestId = 0
 const hasContext = computed(() => Object.keys(props.context).length > 0)
 const stepOptions = [8, 16, 32, 48, 64].map(value => ({ label: String(value), value }))
-const domainOptions = [{ label: 'All', value: '' }, ...['application', 'lorebook', 'worlds', 'games', 'adventures', 'recovery', 'settings', 'plugins'].map(value => ({ label: value, value }))]
+const domainOptions = [{ label: 'All', value: '' }, ...['application', 'lorebook', 'worlds', 'games', 'adventures', 'recovery', 'ruleset', 'settings', 'plugins'].map(value => ({ label: value, value }))]
 const scope = computed(() => scopeMode.value === 'all' ? {} : props.context)
 const scopeLabel = computed(() => scopeMode.value === 'all' || !hasContext.value ? copy.value.all : copy.value.current)
+function toggleAuthorization() {
+  expanded.value = !expanded.value
+  if (props.pendingApproval) props.onReview?.()
+}
 const progress = computed(() => {
   if (!props.task) return ''
   const total = props.task.total_steps ? `/${props.task.total_steps}` : ''
@@ -57,8 +64,9 @@ watch([capabilityQuery, capabilityDomain], () => { if (expanded.value) void load
 
 <template>
   <section class="agent-authorization" data-testid="agent-authorization">
-    <button type="button" class="agent-authorization-toggle" :aria-expanded="expanded" @click="expanded = !expanded">
+    <button type="button" class="agent-authorization-toggle" :aria-expanded="expanded" :title="pendingApproval ? copy.reviewPending : undefined" @click="toggleAuthorization">
       <strong>{{ copy.title }}</strong>
+      <span v-if="pendingApproval" class="agent-authorization-badge" :aria-label="copy.reviewPending">1</span>
       <span v-if="authorization" class="agent-authorization-state">{{ copy.active }} · {{ copy.mode(authorization.mode) }}</span>
       <span v-else class="agent-authorization-state">{{ copy.suggest }}</span>
       <span v-if="task" class="agent-authorization-state">{{ copy.taskStatus(task.status) }}</span>
@@ -103,6 +111,8 @@ watch([capabilityQuery, capabilityDomain], () => { if (expanded.value) void load
           <NButton v-if="authorization && authorization.mode !== 'suggest'" size="small" quaternary :disabled="busy" @click="choose('suggest')">{{ copy.revoke }}</NButton>
         </div>
         <p v-if="task" class="agent-authorization-task" role="status">{{ copy.taskStatus(task.status) }} · {{ progress }}<span v-if="task.error"> · {{ task.error }}</span></p>
+        <p v-if="task?.status === 'budget_reached'" class="agent-authorization-effect">{{ copy.continueHint }}</p>
+        <NButton v-if="task?.status === 'budget_reached'" size="small" :disabled="busy" @click="props.onContinue?.()">{{ copy.continueTask }}</NButton>
         <p v-if="error" class="agent-authorization-error" role="alert">{{ copy.error }}: {{ error }}</p>
       </template>
     </div>
@@ -113,6 +123,7 @@ watch([capabilityQuery, capabilityDomain], () => { if (expanded.value) void load
 .agent-authorization { border-bottom: 1px solid var(--df-border-soft); background: var(--df-surface-1); }
 .agent-authorization-toggle { display: flex; align-items: center; gap: 8px; width: 100%; min-height: 38px; padding: 7px 15px; border: 0; color: var(--df-accent-strong); background: var(--df-surface-2); text-align: start; cursor: pointer; }
 .agent-authorization-toggle strong { margin-right: auto; font-size: 12px; }
+.agent-authorization-badge { display: inline-grid; place-items: center; min-width: 17px; height: 17px; padding: 0 4px; border-radius: 999px; color: var(--df-on-accent); background: var(--df-danger-strong, #c94b55); font-size: 10px; font-weight: 800; }
 .agent-authorization-state { color: var(--df-text-muted); font-size: 11px; }
 .agent-authorization-body { display: grid; gap: 8px; max-height: min(38dvh, 300px); overflow-y: auto; overscroll-behavior: contain; padding: 9px 15px 11px; color: var(--df-text-secondary); font-size: 11px; }
 .agent-authorization-body p { margin: 0; line-height: 1.45; }

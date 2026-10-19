@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from src.engine.modules import economy_state
+from src.assistant_agent_limits import DEFAULT_TASK_MAX_TOKENS
 
 import asyncio
 import json
@@ -155,7 +156,8 @@ class WebAPI:
                  content_cache_dir: Path | None = None,
                  config_state: dict | None = None,
                  save_config: Callable[[], None] | None = None,
-                 assistant_agent_max_tokens: int = 4096):
+                 assistant_agent_max_tokens: int = 4096,
+                 assistant_agent_task_max_tokens: int = DEFAULT_TASK_MAX_TOKENS):
         self._reg = registry
         self._lore = lorebook
         self._mem = memory
@@ -1046,6 +1048,7 @@ class WebAPI:
             tools=(), registry=self.application_actions, storage_dir=self._reg.save_dir.parent / "assistant_agent",
             answer=assistant.offline_answer, knowledge=assistant.agent_knowledge,
             review_content=agent_content.review, max_tokens=assistant_agent_max_tokens,
+            task_max_tokens=assistant_agent_task_max_tokens,
         ))
 
     def register_application_actions(self, actions):

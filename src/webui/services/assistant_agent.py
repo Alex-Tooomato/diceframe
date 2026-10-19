@@ -20,6 +20,7 @@ from pathlib import Path
 from typing import Any, Callable
 
 from src.application_actions import ActionRegistry, ApplicationAction as AgentTool
+from src.assistant_agent_limits import DEFAULT_RUN_STEPS, DEFAULT_TASK_MAX_TOKENS
 from src.runtime_diagnostics import redact_runtime_log_text
 from src.webui.services.assistant_authorization import current_authorization, make_authorization, permits
 
@@ -35,7 +36,7 @@ def safe_data(value: Any) -> Any:
                             'used_tokens', 'token_budget',
                             'narrative_max_tokens', 'character_gen_max_tokens', 'summary_max_tokens',
                             'brief_max_tokens', 'analysis_max_tokens', 'text_gen_max_tokens',
-                            'assistant_agent_max_tokens'}
+                            'assistant_agent_max_tokens', 'assistant_agent_task_max_tokens'}
     if isinstance(value, dict):
         return {str(k): safe_data(v) for k, v in value.items()
                 if (str(k) in public_budget_fields and type(v) in {int, float})
@@ -99,6 +100,7 @@ class AgentDependencies:
     max_tokens: int = 4096
     clock: Callable[[], float] = time.time
     registry: ActionRegistry | None = None
+    task_max_tokens: int = DEFAULT_TASK_MAX_TOKENS
 
 
 @dataclass
@@ -119,7 +121,7 @@ async def _invoke(callback, *args):
 
 
 class AgentRuntime:
-    MAX_STEPS = 8
+    MAX_STEPS = DEFAULT_RUN_STEPS
     SESSION_TTL = 86400
     APPROVAL_TTL = 900
 
@@ -502,7 +504,7 @@ class AgentRuntime:
                 try:
                     grant = current_authorization(session.data, self.deps.clock())
                     budget = min(64, max(self.MAX_STEPS, (grant or {}).get('max_steps', self.MAX_STEPS)))
-                    session.data['task'].update(used_tokens=0, token_budget=self.deps.max_tokens * budget)
+                    session.data['task'].update(used_tokens=0, token_budget=self.deps.task_max_tokens)
                     async def checked_emit(event, value):
                         if session.stop.is_set() and session.data['status'] != 'executing':
                             raise asyncio.CancelledError()
@@ -513,7 +515,8 @@ class AgentRuntime:
                             await emit(event, value)
                     session.model_task = asyncio.create_task(execute_agent(self.deps.llm_client(),
                         [adapt(tool) for tool in (*self.registry.values(), *discovery)],
-                        system, payload, checked_emit, language, self.deps.max_tokens, budget))
+                        system, payload, checked_emit, language, self.deps.max_tokens, budget,
+                        task_max_tokens=self.deps.task_max_tokens))
                     output = await session.model_task
                 except asyncio.CancelledError:
                     if not session.stop.is_set():
@@ -527,9 +530,19 @@ class AgentRuntime:
                     await emit('delta', {'delta': str(exc)})
                     return
                 except UsageLimitExceeded:
-                    session.data['task']['status'] = 'budget_reached'
+                    task = session.data['task']
+                    reason = 'tokens' if task['used_tokens'] > task['token_budget'] else 'steps'
+                    task.update(status='budget_reached', budget_reason=reason)
                     await progress()
-                    await emit("delta", {"delta": "本轮已达到步骤或 token 预算，已有结果已保留。可以继续刚才的任务。" if language.startswith("zh") else "This run reached its step or token budget. Results are retained; continue the task to proceed."})
+                    if language.startswith('zh'):
+                        message = ('本轮已达到任务 token 预算；可以在设置 → DF Agent 调整单次任务预算。'
+                                   if reason == 'tokens' else '本轮已达到工具往返上限。')
+                        message += '已有结果已保留；点击“继续任务”可继续。'
+                    else:
+                        message = ('This run reached its task token budget; adjust the task budget in Settings → DF Agent. '
+                                   if reason == 'tokens' else 'This run reached its tool iteration limit. ')
+                        message += 'Results are retained; select Continue task to proceed.'
+                    await emit('delta', {'delta': message})
                     return
                 except Exception:
                     # AnyIO can wrap cancellation during provider cleanup in

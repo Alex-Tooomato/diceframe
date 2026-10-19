@@ -57,7 +57,9 @@ routine 授权有效 4 小时，task 授权有效 1 小时；两者都有 `remai
 
 ## Token、步骤与运行状态
 
-模型每次请求使用独立 `assistant_agent_max_tokens`（默认 4096）；业务生成工具保留各自预算。provider 返回的 `total_tokens` 在每次请求完成后检查并按响应累加到任务观测中；`max_tokens * steps` 是任务的派生观测上限/执行检查参数，不是费用、余额或 provider 账单的硬上限，也不保证跨请求的实际成本。请求数、工具调用数和动作步数仍受 framework/授权限制；领域工具的子调用预算由各自 owning service 管理，不由 Agent 目录创建一个全局预算。
+模型每次请求使用独立 `assistant_agent_max_tokens`（默认 4096）；整次任务使用 `assistant_agent_task_max_tokens`（默认 256000，可设 16000..2000000），两者独立保存与热更新。任务累计 provider 报告的输入与输出总量，工具往返会重复计算上下文；不再用回复上限乘步骤推导总预算。普通任务默认最多 24 次请求/工具调用，显式授权的更大步骤额度可放宽至 64；写入授权余量独立校验。provider 返回后检查使用量，超出 token 预算时不派发该响应的工具，因此这不是费用、余额或 provider 账单硬上限。领域工具的子调用预算仍由各自 owning service 管理。
+
+预算触顶时任务以 `budget_reached` 停止，`budget_reason` 区分 `tokens` 与 `steps`，已用 token、草稿和回执保留。用户可以点击“继续任务”启动下一轮，不能自动重试或跳过审批。当前会话存在待批准计划时，悬浮入口、权限折叠条和任务区显示数字角标；点击入口展开并定位审批卡，确认、取消或切换会话后按当前状态清除。角标只统计待批准计划，不统计历史事件或草稿。
 
 任务结果通过 SSE 发送 `session`、`status`、`task`、`tool_start`、`tool_result`、`draft`、`approval`、`authorization`、`navigate`、`sources`、`delta`/`done` 或 `error` 事件。framework 的内部 `usage` 通知汇入 `task.used_tokens/token_budget`，不是独立客户端事件。`GET /session/{session_id}` 提供 owner 可恢复的草稿、待审批计划、receipt、任务和当前授权摘要。会话和执行记录写入数据目录的 `assistant_agent`，不写入凭据。
 

@@ -16,6 +16,7 @@ from typing import Any
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 from src.ai_providers import PROVIDER_REF_KEYS, UNSUPPORTED_AI_CONFIG_KEYS
+from src.assistant_agent_limits import MIN_TASK_MAX_TOKENS, MAX_TASK_MAX_TOKENS
 from src.application_actions import ApplicationAction
 from src.webui.config_update import CONFIG_KEYS, prepare_config_update
 from src.webui.services.assistant_agent import AgentTool
@@ -29,6 +30,7 @@ _SAFE_SETTINGS = frozenset({
     "fallback2_enabled", "fallback2_model", "narrative_max_tokens",
     "character_gen_max_tokens", "summary_max_tokens", "brief_max_tokens",
     "analysis_max_tokens", "text_gen_max_tokens", "assistant_agent_max_tokens",
+    "assistant_agent_task_max_tokens",
     "model_request_timeout_seconds", "ai_providers", *PROVIDER_REF_KEYS,
 })
 # The list is intersected with the owner schema rather than being an alternate
@@ -38,6 +40,7 @@ _BUDGET_FIELDS = frozenset({
     "narrative_max_tokens", "character_gen_max_tokens", "summary_max_tokens",
     "brief_max_tokens", "analysis_max_tokens", "text_gen_max_tokens",
     "assistant_agent_max_tokens",
+    "assistant_agent_task_max_tokens",
 })
 
 
@@ -135,7 +138,12 @@ def _validate_changes(changes: Any) -> dict[str, Any]:
     if unknown:
         raise ValueError("unknown settings fields: " + ", ".join(sorted(unknown)))
     for key, value in changes.items():
-        if key in _BUDGET_FIELDS and (isinstance(value, bool) or not isinstance(value, int) or value < 1):
+        if key == "assistant_agent_task_max_tokens":
+            if isinstance(value, bool) or not isinstance(value, int):
+                raise ValueError(f"{key} must be an integer")
+            if not MIN_TASK_MAX_TOKENS <= value <= MAX_TASK_MAX_TOKENS:
+                raise ValueError(f"{key} must be between {MIN_TASK_MAX_TOKENS} and {MAX_TASK_MAX_TOKENS}")
+        elif key in _BUDGET_FIELDS and (isinstance(value, bool) or not isinstance(value, int) or value < 1):
             raise ValueError(f"{key} must be an integer greater than 0")
     return dict(changes)
 

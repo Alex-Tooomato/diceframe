@@ -127,11 +127,15 @@ async def test_model_runtime_reload_reuses_live_stores_and_closes_old_client(mon
         assert old_session.closed is True
         assert await app["api"].rendezvous_config() == {"ok": True, **hub_config}
         budget = 2048 if baseline.get("assistant_agent_max_tokens") != 2048 else 4096
+        task_budget = 64000
         api_reload = await web_server.api_config_post(
-            _ConfigRequest({"assistant_agent_max_tokens": budget}, app)
+            _ConfigRequest({"assistant_agent_max_tokens": budget,
+                            "assistant_agent_task_max_tokens": task_budget}, app)
         )
         assert api_reload.status == 200
         assert app["subsystems"] is new_runtime
+        assert app["api"]._assistant_agent.deps.task_max_tokens == task_budget
+        assert app["api"]._assistant_agent.deps.max_tokens == budget
         assert await app["api"].rendezvous_config() == {"ok": True, **hub_config}
         if dedicated:
             assert check_session.closed is True

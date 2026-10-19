@@ -20,18 +20,21 @@ import { assistantConversationCopy } from '@/features/assistant/conversationCopy
 import { appendDictated } from '@/utils/asr'
 import { assistantCopy, assistantToolLabel } from '@/features/assistant/copy'
 import { assistantWorkspaceCopy } from '@/features/assistant/workspaceCopy'
+import { assistantAuthorizationCopy } from '@/features/assistant/authorizationCopy'
 import { generatedImageUrl } from '@/api/generatedImages'
 
 // `expanded`: the window is maximized; `wide`: the window is wide enough for the side-by-side layout.
-const props = withDefaults(defineProps<{ expanded?: boolean; wide?: boolean }>(), { expanded: false, wide: false })
+const props = withDefaults(defineProps<{ expanded?: boolean; wide?: boolean; reviewRequest?: number }>(), { expanded: false, wide: false, reviewRequest: 0 })
 const emit = defineEmits<{ close: []; toggleExpanded: [] }>()
 const { t, locale } = useLocale()
-const { messages, streaming, send, stop, retryLast, pendingApproval, drafts, status, navigation, actionBusy, actionError, confirmApproval, cancelApproval, reviewDraft, saveDraft, restoreSession, invalidateApproval, authorization, task, authorizationBusy, authorizationError, authorize } = useAssistant()
+const { messages, streaming, send, stop, retryLast, pendingApproval, drafts, status, navigation, actionBusy, actionError, confirmApproval, cancelApproval, reviewDraft, saveDraft, invalidateApproval, authorization, task, authorizationBusy, authorizationError, authorize } = useAssistant()
 const draftList = computed(() => Object.values(drafts.value))
 const eventList = computed(() => messages.value.flatMap(message => message.events || []))
 const agentCopy = computed(() => assistantCopy(locale.value))
 const workspaceCopy = computed(() => assistantWorkspaceCopy(locale.value))
 const { collapsed: workspaceCollapsed, toggle: toggleWorkspace } = useAssistantWorkspace()
+const workspaceForcedOpen = ref(false)
+const workspaceIsCollapsed = computed(() => workspaceForcedOpen.value ? false : workspaceCollapsed.value)
 const workspaceId = useId()
 const locationHash = ref(typeof window === 'undefined' ? '' : window.location.hash)
 const agentContext = computed(() => {
@@ -107,6 +110,7 @@ const headMood = computed<AssistantAvatarMood>(() => {
 })
 const transcriptEl = ref<HTMLElement | null>(null)
 const tasksEl = ref<HTMLElement | null>(null)
+const approvalEl = ref<HTMLElement | null>(null)
 // The workspace is for things that need the owner: drafts, confirmations,
 // errors, a page to open, or live progress. Finished actions are shown inline
 // under the reply that performed them.
@@ -118,7 +122,8 @@ const workspaceStatus = computed(() => {
   if (streaming.value || actionBusy.value) return workspaceCopy.value.working
   return draftList.value.length ? workspaceCopy.value.drafts(draftList.value.length) : agentCopy.value.statusIdle
 })
-onMounted(() => { if (!streaming.value && !actionBusy.value) void restoreSession() })
+// The global shell restores the server session while the launcher is closed,
+// so the FAB can surface pending approvals before this panel is mounted.
 
 const quickQuestions = () => [
   { id: 'create', prompt: agentCopy.value.create },
@@ -149,6 +154,14 @@ watch(messages, scrollToBottom, { deep: true })
 watch([pendingApproval, status, streaming], scrollTasksToBottom)
 watch(() => props.expanded, () => { scrollToBottom(); scrollTasksToBottom() })
 watch(workspaceCollapsed, value => { if (!value) scrollTasksToBottom() })
+function focusPendingApproval() {
+  workspaceForcedOpen.value = true
+  void nextTick(() => approvalEl.value?.scrollIntoView?.({ block: 'nearest' }))
+}
+watch(() => props.reviewRequest, value => {
+  if (!value) return
+  focusPendingApproval()
+}, { immediate: true })
 
 function renderMd(text: string): string {
   return renderSafeMarkdown(text)
@@ -302,6 +315,15 @@ function followNavigation() {
   if (!target || navigationIsCurrent.value) return
   window.location.hash = navigationHash(target)
 }
+function continueBudgetedTask() { void send(locale.value.startsWith('zh') ? '继续未完成的任务' : 'Continue the unfinished task', locale.value) }
+function toggleTaskWorkspace() {
+  if (workspaceForcedOpen.value) {
+    workspaceForcedOpen.value = false
+    // On desktop the persisted workspace is already open underneath the
+    // temporary focus override, so the first click should still collapse it.
+    if (!workspaceCollapsed.value) toggleWorkspace()
+  } else toggleWorkspace()
+}
 </script>
 
 <template>
@@ -354,10 +376,13 @@ function followNavigation() {
       :locale="locale"
       :authorization="authorization"
       :task="task"
+      :pending-approval="Boolean(pendingApproval)"
       :busy="authorizationBusy || streaming || actionBusy"
       :error="authorizationError"
       :context="agentContext"
       :on-authorize="authorize"
+      :on-continue="continueBudgetedTask"
+      :on-review="focusPendingApproval"
     />
 
     <div class="assistant-body" :class="{ 'assistant-body-history': historyOpen }">
@@ -506,13 +531,14 @@ function followNavigation() {
         </article>
       </div>
 
-      <section v-if="workspaceVisible" class="assistant-tasks" :class="{ 'assistant-workspace-collapsed': workspaceCollapsed }">
-        <button type="button" class="assistant-workspace-toggle" data-testid="assistant-workspace-toggle" :aria-expanded="!workspaceCollapsed" :aria-controls="workspaceId" :aria-label="workspaceCollapsed ? workspaceCopy.expand : workspaceCopy.collapse" @click="toggleWorkspace">
+      <section v-if="workspaceVisible" class="assistant-tasks" :class="{ 'assistant-workspace-collapsed': workspaceIsCollapsed }">
+        <button type="button" class="assistant-workspace-toggle" data-testid="assistant-workspace-toggle" :aria-expanded="!workspaceIsCollapsed" :aria-controls="workspaceId" :aria-label="workspaceIsCollapsed ? workspaceCopy.expand : workspaceCopy.collapse" @click="toggleTaskWorkspace">
           <strong>{{ agentCopy.workspaceTitle }}</strong>
           <span class="assistant-workspace-state" :class="{ pending: pendingApproval || actionError }">{{ workspaceStatus }}</span>
-          <span aria-hidden="true">{{ workspaceCollapsed ? '⌃' : '⌄' }}</span>
+          <span v-if="pendingApproval" class="assistant-workspace-badge" :title="assistantAuthorizationCopy(locale).reviewPending">1</span>
+          <span aria-hidden="true">{{ workspaceIsCollapsed ? '⌃' : '⌄' }}</span>
         </button>
-        <div :id="workspaceId" ref="tasksEl" v-show="!workspaceCollapsed" class="assistant-workspace-body">
+        <div :id="workspaceId" ref="tasksEl" v-show="!workspaceIsCollapsed" class="assistant-workspace-body">
           <p v-if="!hasTasks" class="assistant-tasks-empty">{{ agentCopy.workspaceHint }}</p>
           <div v-if="pendingApproval || (streaming && status)" class="assistant-status" role="status">{{ agentCopy.status }}: {{ pendingApproval ? agentCopy.statusApproval : statusText(status) }}</div>
 
@@ -529,7 +555,7 @@ function followNavigation() {
             @click="followNavigation"
           >{{ navigationLabel(navigation.route) }}</button>
 
-          <article v-if="pendingApproval" class="assistant-approval" data-agent-approval>
+          <article v-if="pendingApproval" ref="approvalEl" class="assistant-approval" data-agent-approval>
             <strong>{{ agentCopy.pending }}</strong>
             <span>{{ toolLabel(pendingApproval.tool) }}</span>
             <strong v-if="approvalTarget">{{ agentCopy.target }}: {{ approvalTarget }}</strong>
@@ -796,6 +822,7 @@ function followNavigation() {
 .assistant-workspace-toggle strong { margin-right: auto; font-size: 13px; }
 .assistant-workspace-state { color: var(--df-text-muted); font-size: 11px; }
 .assistant-workspace-state.pending { color: var(--df-accent-strong); }
+.assistant-workspace-badge { display: inline-grid; place-items: center; min-width: 17px; height: 17px; padding: 0 4px; border-radius: 999px; color: var(--df-on-accent); background: var(--df-danger-strong, #c94b55); font-size: 10px; font-weight: 800; }
 .assistant-workspace-body { display: flex; flex-direction: column; gap: 14px; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 12px 15px; }
 
 .assistant-tasks-empty {

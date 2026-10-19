@@ -1315,8 +1315,9 @@ function redownloadUpdatePackage() {
               </section>
               <section id="settings-agent-budget" class="advanced-section">
                 <header class="advanced-section-head"><NIcon :component="OptionsOutline" /><div><h3>{{ t('assistantAgentTokens') }}</h3><p>{{ t('assistantAgentTokensHint') }}</p></div></header>
-                <div class="advanced-row token-row"><div><strong>{{ t('assistantAgentTokens') }}</strong><small>{{ t('assistantAgentTokensHint') }}</small></div><div class="token-input-wrap"><NInputNumber class="advanced-number" :value="Number(store.config.assistant_agent_max_tokens ?? 0)" :step="256" @update:value="setNum('assistant_agent_max_tokens', $event)" /><span>Token</span></div></div>
-                <footer class="advanced-save-row"><NButton type="primary" @click="save(['assistant_agent_max_tokens'])">{{ t('saveAction') }}</NButton></footer>
+                <div class="advanced-row token-row"><div><strong>{{ t('assistantAgentReplyBudget') }}</strong><small>{{ t('assistantAgentReplyBudgetHint') }}</small></div><div class="token-input-wrap"><NInputNumber class="advanced-number" :value="Number(store.config.assistant_agent_max_tokens ?? 0)" :step="256" @update:value="setNum('assistant_agent_max_tokens', $event)" /><span>Token</span></div></div>
+                <div class="advanced-row token-row"><div><strong>{{ t('assistantAgentTaskBudget') }}</strong><small>{{ t('assistantAgentTaskBudgetHint') }}</small></div><div class="token-input-wrap"><NInputNumber class="advanced-number" :value="Number(store.config.assistant_agent_task_max_tokens ?? 256000)" :min="16000" :max="2000000" :step="4096" @update:value="setNum('assistant_agent_task_max_tokens', $event)" /><span>Token</span></div></div>
+                <footer class="advanced-save-row"><NButton type="primary" @click="save(['assistant_agent_max_tokens', 'assistant_agent_task_max_tokens'])">{{ t('saveAction') }}</NButton></footer>
               </section>
             </section>
             <section id="settings-maintenance" class="settings-general-group" :aria-label="t('settingsSectionSystem')">

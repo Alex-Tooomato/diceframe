@@ -35,4 +35,20 @@ describe('AgentAuthorizationPanel', () => {
     await wrapper.get('[data-testid="agent-authorization"] > button').trigger('click')
     expect(wrapper.text()).toContain('120/1000 tokens')
   })
+
+  it('shows one pending approval badge and lets a budget-limited task continue explicitly', async () => {
+    const onContinue = vi.fn()
+    const wrapper = mount(AgentAuthorizationPanel, {
+      props: {
+        locale: 'en', pendingApproval: true, onContinue,
+        task: { status: 'budget_reached', completed_steps: 24, used_tokens: 1000, token_budget: 1000 },
+      },
+    })
+    const toggle = wrapper.get('[data-testid="agent-authorization"] > button')
+    expect(toggle.find('.agent-authorization-badge').text()).toBe('1')
+    expect(toggle.attributes('title')).toContain('Review pending action')
+    await toggle.trigger('click')
+    await wrapper.findAll('button').find(button => button.text() === 'Continue task')!.trigger('click')
+    expect(onContinue).toHaveBeenCalledOnce()
+  })
 })

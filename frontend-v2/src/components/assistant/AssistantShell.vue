@@ -11,10 +11,12 @@ import { useAssistantVoice } from '@/composables/useAssistantVoice'
 import { onAssistantReaction, useAssistantReactions } from '@/composables/useAssistantReactions'
 import { ASSISTANT_REACTIONS } from '@/features/assistant/reactions'
 import { useLocale } from '@/composables/useLocale'
+import { assistantAuthorizationCopy } from '@/features/assistant/authorizationCopy'
 
 withDefaults(defineProps<{ isHome?: boolean }>(), { isHome: false })
 
 const { t, locale } = useLocale()
+const authorizationCopy = computed(() => assistantAuthorizationCopy(locale.value))
 const { enabled, reactionSpeech } = useAssistantPreferences()
 const {
   launcherRef,
@@ -26,7 +28,7 @@ const {
   onPointerCancel,
   consumeClick,
 } = useAssistantLauncherPosition()
-const { streaming, actionBusy, pendingApproval, actionError } = useAssistant()
+const { streaming, actionBusy, pendingApproval, actionError, restoreSession } = useAssistant()
 const { listening, speaking, speak, cancelListening } = useAssistantVoice()
 const { reaction } = useAssistantReactions()
 const reactionSpec = computed(() => reaction.value ? ASSISTANT_REACTIONS[reaction.value.kind] : null)
@@ -59,6 +61,7 @@ const RESIZE_EDGES: ResizeEdge[] = ['n', 's', 'e', 'w', 'ne', 'nw', 'se', 'sw']
 // Mount the panel on first open and keep it alive afterwards, so drafts and
 // scroll position survive closing and maximizing the window.
 const mounted = ref(false)
+const reviewRequest = ref(0)
 const panelStyle = computed<CSSProperties>(() => {
   if (windowCompact.value) return {}
   if (!expanded.value) return windowStyle.value
@@ -85,6 +88,7 @@ function openAssistant() {
   if (!enabled.value) return
   mounted.value = true
   open.value = true
+  if (pendingApproval.value) reviewRequest.value += 1
 }
 
 // The launcher toggles the window, like a support chat bubble.
@@ -104,7 +108,8 @@ function onLauncherPointerUp(event: PointerEvent) {
 
 watch(enabled, (isEnabled) => {
   if (!isEnabled) open.value = false
-})
+  else if (!streaming.value && !actionBusy.value) void restoreSession()
+}, { immediate: true })
 // The panel is intentionally kept mounted while closed so drafts and scroll
 // position survive.  Closing therefore must cancel any microphone session
 // explicitly instead of relying on AssistantPanel's unmount hook.
@@ -136,6 +141,7 @@ watch(open, (isOpen) => {
         <AssistantPanel
           :expanded="expanded"
           :wide="windowWide"
+          :review-request="reviewRequest"
           @toggle-expanded="expanded = !expanded"
           @close="open = false"
         />
@@ -173,6 +179,7 @@ watch(open, (isOpen) => {
       @click="onLauncherClick"
     >
       <AssistantAvatar :key="reaction?.id ?? 0" :mood="avatarMood" />
+      <span v-if="pendingApproval" class="assistant-shell-pending-badge" :title="authorizationCopy.reviewPending" :aria-label="authorizationCopy.pendingApproval">1</span>
       <Transition name="assistant-shell-bubble">
         <span
           v-if="reactionLabel"
@@ -300,6 +307,7 @@ watch(open, (isOpen) => {
   outline: 2px solid var(--df-interactive-strong);
   outline-offset: 4px;
 }
+.assistant-shell-pending-badge { position: absolute; top: -2px; right: -2px; display: grid; place-items: center; min-width: 19px; height: 19px; padding: 0 4px; border: 2px solid var(--df-surface-1); border-radius: 999px; color: var(--df-on-accent); background: var(--df-danger-strong, #c94b55); font-size: 10px; font-weight: 800; pointer-events: none; }
 
 /* The owner play surface has a bottom composer on narrow screens. Keep the
    global entry above that operation area while preserving a comfortable tap

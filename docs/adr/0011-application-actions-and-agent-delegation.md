@@ -46,7 +46,7 @@ Agent 初始只加载必要动作；`search_capabilities` 和 `describe_capabili
 
 ### 6. 使用量语义
 
-provider 报告的 `total_tokens` 在单次请求完成后检查并按响应累加用于任务观测；`max_tokens * steps` 是派生观测/执行检查上限，不是费用、余额或 provider 账单硬上限。领域工具保留各自子调用预算。
+provider 报告的 `total_tokens` 在单次请求完成后检查并按响应累加用于任务观测。每次回复上限 `assistant_agent_max_tokens`（默认 4096）与单次任务预算 `assistant_agent_task_max_tokens`（默认 256000，范围 16000..2000000）独立，不再以回复上限乘步骤推导任务预算。默认请求/工具调用上限为 24，较大显式授权可提高至 64；写入授权余量仍独立约束。预算触顶保留结果、标明 token 或步骤原因，由用户手动继续，不自动重试。这不是费用、余额或 provider 账单硬上限；领域工具保留各自子调用预算。
 
 ## Consequences
 

@@ -17,6 +17,7 @@ from pydantic_ai.models import Model
 from pydantic_ai.usage import RequestUsage, UsageLimits
 
 from src.llm.client import LLMToolCallError
+from src.assistant_agent_limits import DEFAULT_TASK_MAX_TOKENS
 
 
 class AgentProviderUnavailable(ValueError):
@@ -145,7 +146,8 @@ class DiceFrameModel(Model):
 
 
 async def execute_agent(client, tools, instructions: str, payload: dict, emit: Callable,
-                        language: str, max_tokens: int, max_steps: int):
+                        language: str, max_tokens: int, max_steps: int,
+                        *, task_max_tokens: int = DEFAULT_TASK_MAX_TOKENS):
     agent = Agent(DiceFrameModel(client, emit, language, max_tokens, max_steps),
         output_type=[FinalAnswer, str, DeferredToolRequests], tools=tools,
         instructions=instructions, retries=3, name="DF Agent")
@@ -159,7 +161,7 @@ async def execute_agent(client, tools, instructions: str, payload: dict, emit: C
     try:
         result = await agent.run(json.dumps(payload, ensure_ascii=False),
             usage_limits=UsageLimits(request_limit=max_steps, tool_calls_limit=max_steps,
-                                     total_tokens_limit=max_tokens * max_steps), infer_name=False)
+                                     total_tokens_limit=task_max_tokens), infer_name=False)
     except UnexpectedModelBehavior as exc:
         raise AgentModelResponseInvalid(language) from exc
     return result.output

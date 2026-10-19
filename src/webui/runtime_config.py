@@ -45,6 +45,7 @@ from src.web_transport.listeners import (
 from src.webui.access_password import mask_access_password, normalize_access_password
 from src.webui.cors import normalize_cors_origins, parse_cors_origins
 from src.webui.services import legal as legal_svc
+from src.assistant_agent_limits import DEFAULT_TASK_MAX_TOKENS
 
 
 _SECRET_KEYS = frozenset(
@@ -340,6 +341,9 @@ class ConfigStore:
             "assistant_agent_max_tokens": int(
                 env.get("TRPG_ASSISTANT_AGENT_MAX_TOKENS")
                 or saved.get("assistant_agent_max_tokens", 4096)
+            ),
+            "assistant_agent_task_max_tokens": int(
+                saved.get("assistant_agent_task_max_tokens", DEFAULT_TASK_MAX_TOKENS)
             ),
             "access_token": access_token,
             "bot_token": env.get("TRPG_BOT_TOKEN")

@@ -2212,6 +2212,7 @@ export interface AppConfig {
   analysis_max_tokens?: number
   text_gen_max_tokens?: number
   assistant_agent_max_tokens?: number
+  assistant_agent_task_max_tokens?: number
   llm_generation_options?: Partial<Record<'temperature' | 'top_p' | 'frequency_penalty' | 'presence_penalty', number>>
   context_recent_rounds?: number
   check_model_enabled?: boolean
