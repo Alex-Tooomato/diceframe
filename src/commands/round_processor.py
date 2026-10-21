@@ -239,6 +239,18 @@ class RoundProcessingFailure(RuntimeError):
         self.rolled_back = rolled_back
 
 
+class CheckModelNotConfigured(RuntimeError):
+    """独立检定模型已启用但无法构建客户端，检定规划无法进行。
+
+    这是可恢复的配置错误而不是程序缺陷：调用方必须翻译成稳定的
+    ``error_code``（``CHECK_MODEL_NOT_CONFIGURED``）与非 2xx 响应，并把对局
+    状态完整退回（见回合服务的推进回滚），绝不让它冒泡成 500 或被当成
+    成功回合。``error_code`` 是对外契约，不得随文案改动。
+    """
+
+    error_code = "CHECK_MODEL_NOT_CONFIGURED"
+
+
 class RoundProcessor:
     """处理完整的一轮判定：context 拼接 → LLM 调用 → 解析 → 更新状态 → 播报。"""
 
@@ -379,7 +391,9 @@ class RoundProcessor:
         if instance.state != GameState.ACTIVE_JUDGMENT:
             return []
         if self.check_model_enabled and self.check_llm_client is None:
-            raise RuntimeError("独立检定模型未配置，请在设置中选择有效服务商和模型，或关闭独立检定模型")
+            raise CheckModelNotConfigured(
+                "独立检定模型未配置，请在设置中选择有效服务商和模型，或关闭独立检定模型"
+            )
         actions_text = collect_actions_text(instance)
         rule_ctx = self._prompt.load_rule_context(instance, self._load_world_template)
         instance.reset_round_checks()

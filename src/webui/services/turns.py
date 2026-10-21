@@ -14,7 +14,11 @@ from contextlib import nullcontext
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Protocol, TypedDict
 
-from src.commands.round_processor import RoundNotProcessed, RoundProcessingFailure
+from src.commands.round_processor import (
+    CheckModelNotConfigured,
+    RoundNotProcessed,
+    RoundProcessingFailure,
+)
 from src.engine import check_decisions, progression
 from src.engine.modules import adventure_runtime_state, checks, economy_state, round_safety, ruleset_runtime, session_stats
 from src.engine.action_gate import (
@@ -496,6 +500,46 @@ async def _rollback_failed_round(
     return rolled_back
 
 
+def _check_model_config_result(instance: "GameInstance") -> TurnResult:
+    """独立检定模型配置无效：统一 409 + 稳定错误码，绝不让配置问题伪装成成功。
+
+    ``advanced=False`` 配合推进入口的事先回滚：行动保留在队列里，修复配置后
+    同一对局可直接重试，不需要重建存档或重新提交行动。
+    """
+    return _result({
+        "ok": False,
+        "error_code": CheckModelNotConfigured.error_code,
+        "error": _round_message(instance, {
+            "zh-CN": "独立检定模型未配置，请前往设置选择有效服务商和模型，或关闭独立检定模型",
+            "en": "The dedicated check model is not configured. Pick a valid provider and model in "
+                  "Settings, or turn off the dedicated check model.",
+            "ja": "独立判定モデルが未設定です。設定で有効なプロバイダーとモデルを選択するか、"
+                  "独立判定モデルをオフにしてください。",
+            "de": "Das separate Prüfungsmodell ist nicht konfiguriert. Wähle in den Einstellungen einen "
+                  "gültigen Anbieter und ein Modell oder deaktiviere das separate Prüfungsmodell.",
+        }),
+        "advanced": False,
+        "phase": "error",
+    }, 409)
+
+
+async def _rollback_unprocessed_advance(
+    dependencies: TurnDependencies,
+    instance: "GameInstance",
+    game_key: str,
+) -> None:
+    """回合刚推进但检定规划失败：退回行动阶段并落盘，行动队列原样保留。
+
+    与 ``_rollback_failed_round`` 同一约定（``abort_round_processing``），
+    只是叙事尚未开始、无需广播重置。清理自身的异常只记日志，不吞掉原始错误。
+    """
+    try:
+        await instance.abort_round_processing()
+        await dependencies.save_instance(instance)
+    except Exception:
+        logger.exception("检定配置失败后的回合回滚异常: game=%s", game_key)
+
+
 async def _auto_settle_rewards(
     dependencies: TurnDependencies,
     instance: "GameInstance",
@@ -610,7 +654,13 @@ async def _advance_progression(
             # 否则会出现"控制权已保存、AI 行动却只在内存里"的状态。
             await dependencies.save_instance(instance)
         return None
-    await _prepare_checks(dependencies, instance)
+    try:
+        await _prepare_checks(dependencies, instance)
+    except CheckModelNotConfigured:
+        # 本轮刚推进、检定规划不可用：完整退回行动阶段再报错，让行动留在
+        # 队列里等待配置修复后重试，不留半完成状态。
+        await _rollback_unprocessed_advance(dependencies, instance, game_key)
+        return _check_model_config_result(instance)
     if run_changed is not None and run_changed():
         return _gate_rejection(instance, viewer_uid, RUN_CHANGED)
     if check_decisions.pending_any(instance):
@@ -1024,7 +1074,12 @@ async def advance_round(
         return _result(economy_decision_pending_payload(instance, actor_uid), 409)
 
     if instance.state == GameState.ACTIVE_JUDGMENT and instance.action_queue:
-        await _prepare_checks(dependencies, instance)
+        try:
+            await _prepare_checks(dependencies, instance)
+        except CheckModelNotConfigured:
+            # 卡死恢复路径：回合早已推进，这里不回滚既有状态；配置修复后
+            # 再次推进会在同一分支恢复，行动与检定不会重复。
+            return _check_model_config_result(instance)
         pending_luck = check_decisions.pending_any(instance)
         if pending_luck and not force:
             return _result(_pending_luck_payload(instance), 409)
@@ -1077,7 +1132,13 @@ async def advance_round(
 
     advanced = await instance.advance_round() if force else await instance.try_advance()
     if advanced:
-        await _prepare_checks(dependencies, instance)
+        try:
+            await _prepare_checks(dependencies, instance)
+        except CheckModelNotConfigured:
+            # 与 _advance_progression 同一约定：先完整退回行动阶段再报错，
+            # 强制推进失败也不留半完成状态，修复配置后可原样重试。
+            await _rollback_unprocessed_advance(dependencies, instance, game_key)
+            return _check_model_config_result(instance)
         pending_luck = check_decisions.pending_any(instance)
         if pending_luck and not force:
             await dependencies.save_instance(instance)
