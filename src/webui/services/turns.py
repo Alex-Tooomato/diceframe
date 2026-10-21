@@ -371,6 +371,29 @@ async def _process_round(
             _round_failure_result(instance, rolled_back=exc.rolled_back),
             rolled_back=exc.rolled_back,
         ) from exc
+    except CheckModelNotConfigured as exc:
+        # ``RoundProcessor.process_round`` owns recovery for direct callers;
+        # older/injected processors may still raise before doing so.  Preserve
+        # the typed configuration response and never report a retryable 409 if
+        # recovery was not confirmed.
+        if getattr(exc, "rollback_failed", False):
+            raise RoundProcessingError(
+                _round_rollback_failed_result(instance), rolled_back=False,
+            ) from exc
+        if getattr(exc, "rolled_back", None) is True:
+            raise RoundProcessingError(
+                _check_model_config_result(instance), rolled_back=True,
+            ) from exc
+        rolled_back = await _rollback_failed_round(
+            dependencies, instance, game_key, on_reset=on_reset,
+        )
+        if not rolled_back:
+            raise RoundProcessingError(
+                _round_rollback_failed_result(instance), rolled_back=False,
+            ) from exc
+        raise RoundProcessingError(
+            _check_model_config_result(instance), rolled_back=True,
+        ) from exc
     except Exception as exc:
         if run_changed is not None and run_changed():
             raise RoundProcessingError(_gate_rejection(instance, "", RUN_CHANGED)) from exc
@@ -426,6 +449,29 @@ def _round_failure_result(instance: "GameInstance", *, rolled_back: bool) -> Tur
         "phase": "error",
         "rolled_back": rolled_back,
     }, 502)
+
+
+def _round_rollback_failed_result(instance: "GameInstance") -> TurnResult:
+    """Return an explicit failure when recovery itself could not be persisted.
+
+    A failed abort/save leaves the phase uncertain.  Reporting the original
+    check-model configuration error would suggest that the user can safely
+    retry, even though the action may still be in ``ACTIVE_JUDGMENT``.  Keep
+    this response non-retryable until the server state has been inspected.
+    """
+    return _result({
+        "ok": False,
+        "error_code": "ROUND_ROLLBACK_FAILED",
+        "error": _round_message(instance, {
+            "zh-CN": "回合恢复失败，请刷新后检查对局状态",
+            "en": "The round could not be safely rolled back. Refresh and check the game state.",
+            "ja": "ターンの安全なロールバックに失敗しました。再読み込みして状態を確認してください。",
+            "de": "Die Runde konnte nicht sicher zurückgesetzt werden. Aktualisiere die Seite und prüfe den Spielstatus.",
+        }),
+        "advanced": False,
+        "rolled_back": False,
+        "phase": "error",
+    }, 500)
 
 
 def _not_processed_result(instance: "GameInstance", reason: str) -> TurnResult:
@@ -527,17 +573,29 @@ async def _rollback_unprocessed_advance(
     dependencies: TurnDependencies,
     instance: "GameInstance",
     game_key: str,
-) -> None:
-    """回合刚推进但检定规划失败：退回行动阶段并落盘，行动队列原样保留。
+) -> bool:
+    """Undo a just-started judgment and persist the action phase.
 
-    与 ``_rollback_failed_round`` 同一约定（``abort_round_processing``），
-    只是叙事尚未开始、无需广播重置。清理自身的异常只记日志，不吞掉原始错误。
+    ``abort_round_processing`` returning ``False`` is a recovery failure here,
+    not a successful no-op: this helper is called immediately after a fresh
+    progression, while the instance must still be in ``ACTIVE_JUDGMENT``.
+    Save failures are likewise reported to the caller so it cannot return a
+    retryable configuration error with an uncertain persisted phase.
     """
     try:
-        await instance.abort_round_processing()
+        rolled_back = bool(await instance.abort_round_processing())
+        if not rolled_back:
+            logger.error(
+                "检定配置失败后的回合回滚未生效: game=%s state=%s",
+                game_key,
+                getattr(instance, "state", None),
+            )
+            return False
         await dependencies.save_instance(instance)
+        return True
     except Exception:
         logger.exception("检定配置失败后的回合回滚异常: game=%s", game_key)
+        return False
 
 
 async def _auto_settle_rewards(
@@ -657,9 +715,10 @@ async def _advance_progression(
     try:
         await _prepare_checks(dependencies, instance)
     except CheckModelNotConfigured:
-        # 本轮刚推进、检定规划不可用：完整退回行动阶段再报错，让行动留在
-        # 队列里等待配置修复后重试，不留半完成状态。
-        await _rollback_unprocessed_advance(dependencies, instance, game_key)
+        # The instance just entered judgment.  Roll it back before reporting a
+        # retryable configuration error so the same action queue can be reused.
+        if not await _rollback_unprocessed_advance(dependencies, instance, game_key):
+            return _round_rollback_failed_result(instance)
         return _check_model_config_result(instance)
     if run_changed is not None and run_changed():
         return _gate_rejection(instance, viewer_uid, RUN_CHANGED)
@@ -1077,8 +1136,13 @@ async def advance_round(
         try:
             await _prepare_checks(dependencies, instance)
         except CheckModelNotConfigured:
-            # 卡死恢复路径：回合早已推进，这里不回滚既有状态；配置修复后
-            # 再次推进会在同一分支恢复，行动与检定不会重复。
+            # A legacy RuntimeError could leave the instance in judgment before
+            # check preparation completed.  That state is safe to abort and
+            # must not remain a permanent "stuck" round.  Once checks were
+            # prepared, the normal path above would have returned early.
+            if not checks.round_checks_prepared(instance):
+                if not await _rollback_unprocessed_advance(dependencies, instance, game_key):
+                    return _round_rollback_failed_result(instance)
             return _check_model_config_result(instance)
         pending_luck = check_decisions.pending_any(instance)
         if pending_luck and not force:
@@ -1135,9 +1199,8 @@ async def advance_round(
         try:
             await _prepare_checks(dependencies, instance)
         except CheckModelNotConfigured:
-            # 与 _advance_progression 同一约定：先完整退回行动阶段再报错，
-            # 强制推进失败也不留半完成状态，修复配置后可原样重试。
-            await _rollback_unprocessed_advance(dependencies, instance, game_key)
+            if not await _rollback_unprocessed_advance(dependencies, instance, game_key):
+                return _round_rollback_failed_result(instance)
             return _check_model_config_result(instance)
         pending_luck = check_decisions.pending_any(instance)
         if pending_luck and not force:

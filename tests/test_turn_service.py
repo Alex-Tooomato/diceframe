@@ -714,12 +714,8 @@ async def test_force_advance_with_unconfigured_check_model_returns_409_and_rolls
 
 
 @pytest.mark.asyncio
-async def test_advance_stuck_recovery_with_unconfigured_check_model_keeps_state() -> None:
-    """卡死恢复分支遇到检定模型未配置：返回 409 但不回滚既有推进状态。
-
-    该分支的推进早已发生（可能已完成检定准备）；此时报配置错误即可，
-    配置修复后再次推进在同一分支恢复，行动与检定不会重复。
-    """
+async def test_advance_stuck_recovery_with_unprepared_check_model_rolls_back() -> None:
+    """卡死恢复分支若尚未完成检定准备：返回 409 并清掉半完成的推进状态。"""
     instance = FakeInstance()
     instance.state = GameState.ACTIVE_JUDGMENT
     instance.action_queue = [{"user_id": "gm", "text": "行动"}]
@@ -730,6 +726,6 @@ async def test_advance_stuck_recovery_with_unconfigured_check_model_keeps_state(
 
     assert result["status"] == 409
     assert result["payload"]["error_code"] == "CHECK_MODEL_NOT_CONFIGURED"
-    assert instance.state == GameState.ACTIVE_JUDGMENT
-    assert instance.aborts == 0
+    assert instance.state == GameState.ACTIVE_ACTION
+    assert instance.aborts == 1
     assert instance.action_queue == [{"user_id": "gm", "text": "行动"}]
