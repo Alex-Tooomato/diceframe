@@ -1118,13 +1118,18 @@ class Dnd2024CombatEngine(
         ]
         for target_id in all_actor_ids:
             target_conditions = self._conditions(snapshot, combat, target_id)
-            for condition_id in [
-                key for key, value in target_conditions.items()
-                if isinstance(value, dict)
-                and value.get("duration") == "caster_turn_end"
-                and value.get("source_actor_id") == previous_actor_id
-            ]:
-                target_conditions.pop(condition_id, None)
+            for condition_id, value in list(target_conditions.items()):
+                if not isinstance(value, dict) or value.get("source_actor_id") != previous_actor_id:
+                    continue
+                duration = value.get("duration")
+                if duration == "caster_turn_end":
+                    target_conditions.pop(condition_id, None)
+                elif duration == "caster_next_turn_end":
+                    remaining = int(value.get("turns_remaining", 2) or 2)
+                    if remaining <= 1:
+                        target_conditions.pop(condition_id, None)
+                    else:
+                        value["turns_remaining"] = remaining - 1
 
     @staticmethod
     def _last_hostile_defeated(

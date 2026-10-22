@@ -67,9 +67,9 @@ class CombatReactionSpellsMixin:
     def _hit_reaction_offer(
         self, instance: Any, combat: dict[str, Any], attacker: dict[str, Any],
         defender: dict[str, Any], check: dict[str, Any], damage_event: dict[str, Any],
-        intent: dict[str, Any],
+        intent: dict[str, Any], next_decision: dict[str, Any] | None = None,
     ) -> dict[str, Any] | None:
-        if check["critical"] or attacker.get("side") == defender.get("side"):
+        if attacker.get("side") == defender.get("side"):
             return None
         choices = self._reaction_spell_choices(combat, defender)
         if not choices:
@@ -86,8 +86,12 @@ class CombatReactionSpellsMixin:
             "options": ["cast", "decline"],
             "attack_total": int(check["total"]),
             "armor_class": int(check["target"]),
+            "critical": bool(check["critical"]),
             "damage_event": deepcopy(damage_event),
             "spells": choices,
+            # A hit-triggered spell (for example Divine Smite) is offered only
+            # after the defender has had the Shield reaction opportunity.
+            "next_decision": deepcopy(next_decision) if next_decision else None,
         }
 
     def _validate_hit_reaction(
@@ -146,15 +150,20 @@ class CombatReactionSpellsMixin:
                 "source_actor_id": defender_id, "armor_class_bonus": bonus,
             })
             armor_class += bonus
-            hit = int(decision["attack_total"]) >= armor_class
+            hit = bool(decision.get("critical")) or int(decision["attack_total"]) >= armor_class
             events.append({
                 "type": "check.resolved", "kind": "reaction_defense",
                 "actor_id": str(decision["attacker_id"]), "target_id": defender_id,
                 "spell_ref": spell_ref, "total": int(decision["attack_total"]),
-                "target": armor_class, "success": hit, "critical": False,
+                "target": armor_class, "success": hit,
+                "critical": bool(decision.get("critical")),
             })
             if not hit:
                 return events
+        next_decision = decision.get("next_decision")
+        if isinstance(next_decision, dict):
+            events.append({"type": "dnd2024.decision.pending", **deepcopy(next_decision)})
+            return events
         damage_event = deepcopy(decision["damage_event"])
         events.append(damage_event)
         defender = self._actor_view(instance, combat, defender_id)
@@ -177,7 +186,8 @@ class CombatReactionSpellsMixin:
         # 只有加 AC 能让这次攻击落空时才代为施放，避免白白消耗法术位。
         useful = [
             row for row in decision.get("spells") or []
-            if int(decision["attack_total"]) < int(decision["armor_class"]) + int(row["armor_class_bonus"])
+            if not decision.get("critical")
+            and int(decision["attack_total"]) < int(decision["armor_class"]) + int(row["armor_class_bonus"])
         ]
         if not useful:
             return {**base, "option": "decline"}

@@ -119,7 +119,7 @@ def test_magic_initiate_spells_reach_combat_with_feat_ability() -> None:
     assert damage["damage_type"] == "fire" and damage["amount"] == 7
 
 
-def test_chill_touch_blocks_healing_until_caster_turn_ends() -> None:
+def test_chill_touch_blocks_healing_until_end_of_casters_next_turn() -> None:
     _runtime, engine, instance = setup()
     events = apply(engine, instance, intent(
         instance, "cast_spell", spell_ref="spell:chill_touch",
@@ -132,6 +132,10 @@ def test_chill_touch_blocks_healing_until_caster_turn_ends() -> None:
     combat = ruleset_runtime.state(instance)["combat"]
     assert "cannot_regain_hp" in combat["enemies"]["goblin-1"]["conditions"]
     enemy_turn(engine, instance)
+    combat = ruleset_runtime.state(instance)["combat"]
+    assert "cannot_regain_hp" in combat["enemies"]["goblin-1"]["conditions"]
+    apply(engine, instance, intent(instance, "end_turn", actor_id="enemy:goblin-1"), [])
+    apply(engine, instance, intent(instance, "end_turn", actor_id="player:gm"), [])
     combat = ruleset_runtime.state(instance)["combat"]
     assert "cannot_regain_hp" not in combat["enemies"]["goblin-1"]["conditions"]
 
@@ -209,11 +213,46 @@ def test_declining_shield_applies_the_held_damage() -> None:
     assert "free_cast_used" not in player(instance)["spellcasting"]["magic_initiate"][0]
 
 
-def test_critical_hit_offers_no_shield() -> None:
+def test_shield_reaction_yields_hit_spell_decision_before_damage() -> None:
     _runtime, engine, instance = setup()
     enemy_turn(engine, instance)
+    events = goblin_attack(engine, instance, 18)
+    pending = next(row for row in events if row["type"] == "dnd2024.decision.pending")
+    state_pending = ruleset_runtime.state(instance)["combat"]["pending_decisions"][0]
+    state_pending["next_decision"] = {
+        "decision_id": "melee-hit:smite",
+        "kind": "melee_hit_spell",
+        "actor_id": "player:gm",
+        "target_id": "enemy:goblin-1",
+        "assigned_to": "gm",
+        "options": ["decline"],
+        "damage_event": deepcopy(state_pending["damage_event"]),
+        "critical": False,
+    }
+    follow_up = apply(engine, instance, {
+        **intent(instance, "decision.resolve"),
+        "decision_id": state_pending["decision_id"], "option": "decline",
+    }, [])
+    assert not any(row["type"] == "resource.changed" for row in follow_up)
+    chained = next(row for row in follow_up if row["type"] == "dnd2024.decision.pending")
+    assert chained["kind"] == "melee_hit_spell"
+    assert ruleset_runtime.state(instance)["combat"]["pending_decisions"][0]["kind"] == "melee_hit_spell"
+
+
+def test_critical_hit_still_offers_shield_but_cannot_become_a_miss() -> None:
+    _runtime, engine, instance = setup()
+    enemy_turn(engine, instance)
+    hp_before = player(instance)["resources"]["hp"]
     events = goblin_attack(engine, instance, 20)
-    assert not any(row["type"] == "dnd2024.decision.pending" for row in events)
+    pending = next(row for row in events if row["type"] == "dnd2024.decision.pending")
+    assert pending["kind"] == "hit_reaction_spell"
+    follow_up = apply(engine, instance, {
+        **intent(instance, "decision.resolve"),
+        "decision_id": pending["decision_id"], "option": "cast",
+        "spell_ref": "spell:shield", "slot_level": 0,
+    }, [])
+    assert any(row["type"] == "resource.changed" for row in follow_up)
+    assert player(instance)["resources"]["hp"] < hp_before
 
 
 def test_ai_hosted_defender_casts_shield_only_when_it_turns_the_hit() -> None:

@@ -201,11 +201,12 @@ class CombatResolutionMixin:
                 "critical": critical, "rolls": rolls,
             }
             offer = self._hit_spell_offer(instance, combat, actor, weapon, target_id, damage_event, intent)
-            reaction = None if offer else self._hit_reaction_offer(
+            reaction = self._hit_reaction_offer(
                 instance, combat, actor, target, check_event, damage_event, intent,
+                next_decision=offer,
             )
-            if offer or reaction:
-                events.append({"type": "dnd2024.decision.pending", **(offer or reaction)})
+            if reaction or offer:
+                events.append({"type": "dnd2024.decision.pending", **(reaction or offer)})
             else:
                 events.append(damage_event)
                 events.extend(self._concentration_events(target, damage, rng))
