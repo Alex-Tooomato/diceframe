@@ -139,6 +139,12 @@ export const useSettingsStore = defineStore('settings', () => {
     await load()
   }
 
+  /** 建房口令（builder 角色）：能建房当 GM、进不了管理面的第二套口令。 */
+  async function saveBuilderPassword(password: string) {
+    await api('/config', { method: 'POST', body: JSON.stringify({ builder_token: password }) })
+    await load()
+  }
+
   async function clearProxy() {
     await api('/config', { method: 'POST', body: JSON.stringify({ proxy_enabled: false, proxy_url: '' }) })
     await load()
@@ -207,6 +213,6 @@ export const useSettingsStore = defineStore('settings', () => {
 
   return {
     config, secrets, loading, error, load, saveSection, saveProviders,
-    saveAccessPassword, clearProxy, botToken, test, testProvider, fetchProviderModels, setConfigField,
+    saveAccessPassword, saveBuilderPassword, clearProxy, botToken, test, testProvider, fetchProviderModels, setConfigField,
   }
 })

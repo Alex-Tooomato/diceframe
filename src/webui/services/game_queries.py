@@ -63,9 +63,19 @@ def projected_rule_id(
     return rule_id or "freeform_fantasy"
 
 
-def list_games(dependencies: GameQueryDependencies) -> dict[str, Any]:
+def list_games(
+    dependencies: GameQueryDependencies,
+    gm_uid_filter: str = "",
+) -> dict[str, Any]:
+    """List saved games; ``gm_uid_filter`` scopes the archive to one GM.
+
+    Used by the builder role (建房口令): a builder sees only tables whose
+    GM identity is their own session, never other people's saves.
+    """
     active = []
     for instance in dependencies.list_instances():
+        if gm_uid_filter and str(getattr(instance, "gm_uid", "") or "") != gm_uid_filter:
+            continue
         multiplayer = instance.multiplayer_status()
         active.append({
             "game_key": _GAME_KEY_SEP.join(instance.game_key),

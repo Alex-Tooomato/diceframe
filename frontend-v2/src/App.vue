@@ -24,6 +24,7 @@ import UpdateReadinessBanner from '@/features/admin/UpdateReadinessBanner.vue'
 import SectionWorkspaceShell from '@/components/navigation/SectionWorkspaceShell.vue'
 import { gameFromQuery, readCurrentGame } from '@/stores/gameContext'
 import { isPublicRoute } from '@/router'
+import { authRole, loadAuthRole } from '@/composables/useAuthRole'
 import {
   appNavGroups,
   isNavItemActive,
@@ -53,6 +54,14 @@ const naiveDateLocale = computed(() => {
 })
 
 const primaryItems = primaryNavItemIds.map(navItem)
+// builder（建房角色）不展示管理区入口；后端按路径拒绝，这里只是不让
+// 用户看到进不去的页面。
+const visibleNavGroups = computed(() =>
+  authRole.value === 'builder'
+    ? appNavGroups.filter(group => group.id !== 'management')
+    : appNavGroups,
+)
+const isBuilder = computed(() => authRole.value === 'builder')
 const selectedGameKey = computed(() => gameFromQuery(route.query) || readCurrentGame())
 function menuTo(id: string) {
   if (id !== 'play') return { name: id }
@@ -125,7 +134,9 @@ function onStartupPrivacySettled() {
 onMounted(() => {
   void initializeBackgroundImages()
   if (publicRoute.value) suspendPluginTheme()
-  void loadOwnerPluginThemes()
+  // 启动即探一次角色：builder 要立刻隐藏管理入口，不能等路由守卫触发。
+  void loadAuthRole()
+  if (authRole.value !== 'builder') void loadOwnerPluginThemes()
   void load(locale.value).then(() => {
     tryOpenStartupAnnouncement()
   })
@@ -194,7 +205,7 @@ watch(publicRoute, (isPublic) => {
                       <span>{{ t(item.labelKey) }}</span>
                     </RouterLink>
                     <RouterLink
-                      v-for="group in appNavGroups"
+                      v-for="group in visibleNavGroups"
                       :key="group.id"
                       :to="groupTo(group.id)"
                       class="desktop-nav-link"
@@ -214,8 +225,9 @@ watch(publicRoute, (isPublic) => {
                     <AnnouncementButton @open="announcementOpen = true" />
                     <AnnouncementPanel v-model:show="announcementOpen" />
                     <!-- owner-only：publicRoute（join / 公开访问 / play?user=）没有顶栏，
-                         这里再显式挡一次，避免任何公共入口拿到配对能力。 -->
-                    <DevicePairingButton v-if="!publicRoute" @open="pairingOpen = true" />
+                         这里再显式挡一次，避免任何公共入口拿到配对能力；
+                         builder（建房角色）也没有设备配对权限。 -->
+                    <DevicePairingButton v-if="!publicRoute && !isBuilder" @open="pairingOpen = true" />
                     <ThemeToggle />
                     <label class="locale-select header-locale">
                       <span>{{ t('language') }}</span>
@@ -259,7 +271,7 @@ watch(publicRoute, (isPublic) => {
                   <small>{{ t(item.labelKey) }}</small>
                 </RouterLink>
                 <RouterLink
-                  v-for="group in appNavGroups"
+                  v-for="group in visibleNavGroups"
                   :key="group.id"
                   :to="groupTo(group.id)"
                   :class="{ active: groupIsActive(group.id) }"
@@ -276,7 +288,7 @@ watch(publicRoute, (isPublic) => {
                 </RouterLink>
               </nav>
 
-              <AssistantShell :is-home="activeKey === 'overview'" />
+              <AssistantShell v-if="!isBuilder" :is-home="activeKey === 'overview'" />
             </div>
           </NaiveBridge>
         </NDialogProvider>

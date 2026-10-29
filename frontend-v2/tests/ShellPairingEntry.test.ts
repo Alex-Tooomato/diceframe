@@ -36,7 +36,8 @@ describe('owner-only pairing entry in the app shell', () => {
   })
 
   it('renders the pairing button only outside public routes', () => {
-    expect(headerActions).toContain('<DevicePairingButton v-if="!publicRoute"')
+    // 非 publicRoute 且非 builder（建房角色）：配对能力仍是 owner-only。
+    expect(headerActions).toContain('<DevicePairingButton v-if="!publicRoute && !isBuilder"')
     // 弹窗挂在 header 之外、同样受 owner-only 约束，且只在点击后才挂载。
     expect(appSource).toContain('<DevicePairingModal v-if="pairingOpen && !publicRoute"')
     // fullscreen（publicRoute）分支只有主题按钮，没有任何配对入口。

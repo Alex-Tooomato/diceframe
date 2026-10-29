@@ -7,6 +7,7 @@ import {
   type RouteRecordRaw,
 } from 'vue-router'
 import { checkOwnerAccess, type OwnerAccessStatus } from '@/api/client'
+import { loadAuthRole } from '@/composables/useAuthRole'
 
 const routes: RouteRecordRaw[] = [
   { path: '/', redirect: { name: 'overview' } },
@@ -59,12 +60,19 @@ export function isPublicRoute(route: PublicRoute): boolean {
   return route.name === 'play' && Boolean(route.query.user || route.query.share)
 }
 
+/** 管理面路由：builder（建房角色）进不去，后端同样按路径拒绝。 */
+const OWNER_ONLY_ROUTE_NAMES = new Set(['memory', 'logs', 'plugins', 'settings'])
+
 export async function requireOwnerAccess(
   to: RouteLocationNormalized,
   probe: () => Promise<OwnerAccessStatus> = checkOwnerAccess,
 ) {
   if (isPublicRoute(to)) return true
   const status = await probe()
+  if (status !== 'login-required' && OWNER_ONLY_ROUTE_NAMES.has(String(to.name || ''))) {
+    const role = await loadAuthRole()
+    if (role === 'builder') return { name: 'overview' }
+  }
   if (status !== 'login-required') return true
   return {
     name: 'login',

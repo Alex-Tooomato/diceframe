@@ -14,10 +14,20 @@ ACCESS_PASSWORD_CONFIGURED_KEY = web.RequestKey("access_password_configured", bo
 
 
 async def api_login(request: web.Request) -> web.Response:
+    builder_authenticated = bool(request.get("builder_authenticated", False))
+    owner_authenticated = bool(request.get("owner_authenticated", False))
     success = (
         not request.get(ACCESS_PASSWORD_CONFIGURED_KEY, False)
-        or bool(request.get("owner_authenticated", False))
+        or owner_authenticated
+        or builder_authenticated
     )
+    # 无密码服务器人人等同 owner；有密码时报告实际命中的角色，前端据此
+    # 隐藏管理入口（后端仍按路径拒绝，前端只是不再展示进不去的页面）。
+    role = (
+        "owner"
+        if owner_authenticated or not request.get(ACCESS_PASSWORD_CONFIGURED_KEY, False)
+        else "builder"
+    ) if success else ""
     audit = request.app.get(LOGIN_AUDIT_KEY)
     if audit:
         try:
@@ -31,7 +41,10 @@ async def api_login(request: web.Request) -> web.Response:
             status=401,
             headers={"Cache-Control": "no-store"},
         )
-    return web.json_response({"ok": True}, headers={"Cache-Control": "no-store"})
+    return web.json_response(
+        {"ok": True, "role": role},
+        headers={"Cache-Control": "no-store"},
+    )
 
 
 async def api_login_history(request: web.Request) -> web.Response:
@@ -49,7 +62,16 @@ async def api_me(request: web.Request) -> web.Response:
     mgr = request.app.get("session_manager")
     token = request.get("session_token")
     name = mgr.get_name(token) if mgr and token else ""
-    return web.json_response({"user_id": request.get("user_id", ""), "name": name})
+    role = ""
+    if request.get("owner_authenticated", False) or not request.get(
+        ACCESS_PASSWORD_CONFIGURED_KEY, False
+    ):
+        role = "owner"
+    elif request.get("builder_authenticated", False):
+        role = "builder"
+    return web.json_response(
+        {"user_id": request.get("user_id", ""), "name": name, "role": role}
+    )
 
 
 def register_auth(app: web.Application) -> None:

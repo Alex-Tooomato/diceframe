@@ -22,7 +22,18 @@ logger = logging.getLogger("trpg")
 
 
 async def api_claim_gm_session(request: web.Request) -> web.Response:
-    """Restore the saved GM identity after the owner signs in on another device."""
+    """Restore the saved GM identity after the owner signs in on another device.
+
+    Owner-only: the route rebinds the calling session to the table's GM uid
+    with no further proof, so it must stay behind the owner credential. A
+    builder (建房角色) never passes here — otherwise they could take over
+    any table's GM seat, including tables they did not create.
+    """
+    if not request.get("owner_authenticated", False):
+        return web.json_response(
+            {"ok": False, "error_code": "OWNER_REQUIRED", "error": "只有主口令登录的房主可以恢复 GM 身份"},
+            status=403,
+        )
     api = _get_api(request)
     inst = api.get_game_instance(request.match_info["game_key"])
     if not inst or not inst.gm_uid:

@@ -114,6 +114,34 @@ class HostCredentials:
                     "data/reset_access_password.txt 重置。"
                 )
 
+    def initialize_builder_password(self) -> None:
+        """Normalize the stored builder credential (建房口令) at startup.
+
+        Mirrors the access-password migration: a stored plaintext value is
+        re-stored as a hash (verification accepts both). Unlike the access
+        password there is no first-run generation and no reset file — the
+        role is opt-in: unset means the credential simply does not exist.
+        An env override (TRPG_BUILDER_TOKEN) always wins and is compared
+        as-is, exactly like TRPG_ACCESS_TOKEN/TRPG_BOT_TOKEN.
+        """
+        if self.environ.get("TRPG_BUILDER_TOKEN"):
+            self.state["builder_token"] = normalize_access_password(
+                self.environ.get("TRPG_BUILDER_TOKEN")
+            )
+            self.logger.info("已启用环境变量 TRPG_BUILDER_TOKEN 配置的建房口令。")
+            return
+        stored = normalize_access_password(self.state.get("builder_token"))
+        if not stored:
+            self.state["builder_token"] = ""
+            return
+        if not is_hashed_access_password(stored) and is_valid_access_password(stored):
+            self.state["builder_token"] = hash_access_password(stored)
+            self.save_config()
+            self.logger.info("已将旧版明文建房口令迁移为安全凭证。")
+        elif not is_valid_access_password(stored):
+            self.state["builder_token"] = ""
+            self.logger.warning("保存的建房口令凭证无效，已停用该角色。")
+
     def write_access_token_file(self, password: str) -> None:
         temporary = self.access_token_file.with_suffix(
             self.access_token_file.suffix + ".tmp"

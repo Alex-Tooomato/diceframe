@@ -505,6 +505,20 @@ const testKind = ref<'model' | 'embedding' | 'proxy' | ''>('')
 
 const password = ref('')
 const passwordConfirm = ref('')
+const builderPassword = ref('')
+const builderPasswordConfirm = ref('')
+
+async function saveBuilderPassword() {
+  if (builderPassword.value.length < 6) { toast.error(t('passwordTooShort')); return }
+  if (builderPassword.value !== builderPasswordConfirm.value) { toast.error(t('passwordMismatch')); return }
+  try {
+    await store.saveBuilderPassword(builderPassword.value)
+    toast.success(t('builderPasswordUpdated'))
+    builderPassword.value = builderPasswordConfirm.value = ''
+  } catch (e: unknown) {
+    toast.error(errorMessage(e))
+  }
+}
 const loginHistory = ref<LoginAuditEntry[]>([])
 const loginHistoryLoading = ref(false)
 const loginHistoryError = ref('')
@@ -2039,6 +2053,22 @@ function redownloadUpdatePackage() {
               <NButton type="primary" @click="savePassword">{{ t('savePassword') }}</NButton>
             </div>
             <p v-if="store.config.access_password?.configured" class="muted">{{ t('currentPasswordSet', { masked: store.config.access_password.masked }) }}</p>
+
+            <div class="advanced-section">
+              <h4>{{ t('builderPasswordTitle') }}</h4>
+              <p class="muted">{{ t('builderPasswordHelp') }}</p>
+              <div class="form-row"><label>{{ t('newPassword') }}</label><NInput v-model:value="builderPassword" type="password" show-password-on="click" :placeholder="t('passwordMinPlaceholder')" /></div>
+              <div class="form-row"><label>{{ t('repeatPassword') }}</label><NInput v-model:value="builderPasswordConfirm" type="password" show-password-on="click" /></div>
+              <div class="actions-row">
+                <NButton type="primary" @click="saveBuilderPassword">{{ t('savePassword') }}</NButton>
+              </div>
+              <p class="muted">
+                {{ store.config.builder_password?.configured
+                  ? t('builderPasswordSet')
+                  : t('builderPasswordUnset') }}
+              </p>
+            </div>
+
             <div class="login-history-head">
               <div>
                 <h4>{{ t('recentLogins') }}</h4>

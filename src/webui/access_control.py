@@ -60,6 +60,47 @@ _BOT_READ_ONLY_POST_TAILS = frozenset({
     "kp-question",
 })
 
+# ---------------------------------------------------------------------------
+# 建房角色（builder）：第二套登录口令 builder_token。
+#
+# 持有者可以创建对局并担任自己对局的 GM（gm_uid == 自己的 session），
+# 但不能进入管理面：这里按路径前缀整体拒绝，宁可误伤也不能漏。
+# GET 放行的只读端点（浏览内容包/公告）单独列出，方便对齐 UI。
+# ---------------------------------------------------------------------------
+# 全方法拒绝（管理面核心）。
+_BUILDER_DENIED_PREFIXES = (
+    "/api/system/",            # 重启/更新/传输安全/运行日志
+    "/api/plugins",            # 插件管理（含 /api/plugins 与子路径）
+    "/api/hub/",               # Hub 偏好与插件商店管理
+    "/api/devices",            # 配对设备管理（含 /api/devices）
+    "/api/assistant/",         # DF Agent（房主专用）
+    "/api/content/",           # 内容同步（owner-only）
+    "/api/content-review/",
+    "/api/tts/profiles",       # 语音档案管理
+)
+_BUILDER_DENIED_EXACT = frozenset({
+    "/api/config/bot-token",
+    "/api/config/providers/models",
+    "/api/test-connection",
+    "/api/test-embedding",
+    "/api/test-proxy",
+    "/api/tts/test",
+    "/api/asr/test",
+    "/api/login-history",
+    "/api/pairing",            # 配对码管理（/api/pairing/claim 保持公开）
+    "/api/games/import",       # 导入存档保留原 GM 绑定，builder 无法接管
+})
+# 这些端点 GET 是公开/脱敏读取（前端启动需要），只拒写操作。
+_BUILDER_WRITE_ONLY_EXACT = frozenset({
+    "/api/config",             # POST 写配置
+    "/api/announcements",      # 写公告（GET 公开）
+})
+# 对 builder 只放行 GET 的前缀（浏览即可，安装/导入仍是管理动作）。
+_BUILDER_GET_ONLY_PREFIXES = (
+    "/api/modules",
+    "/api/modules/",
+)
+
 
 class WebAccessControl:
     def __init__(self, state: dict) -> None:
@@ -100,6 +141,7 @@ class WebAccessControl:
             access_password_configured and verify_access_password(bearer, token)
         )
         paired_device_id = ""
+        builder_authenticated = False
         if not owner_authenticated and bearer:
             # 设备令牌与访问密码平级：扫码配对过的设备不需要知道主密码，
             # 丢失时也能单独吊销而不牵连其它设备（见 device_tokens.py）。
@@ -108,21 +150,50 @@ class WebAccessControl:
             owner_authenticated = device is not None
             if device is not None:
                 paired_device_id = str(device.get("id") or "")
+            else:
+                # 非设备令牌、非访问口令：尝试第二套「建房口令」。持有者
+                # 可创建对局并管理自己当 GM 的局，但进不了管理面。
+                builder_token = normalize_access_password(
+                    self.state.get("builder_token")
+                )
+                builder_authenticated = bool(
+                    builder_token
+                    and is_valid_access_password(builder_token)
+                    and verify_access_password(bearer, builder_token)
+                )
         request["owner_authenticated"] = owner_authenticated
+        request["builder_authenticated"] = builder_authenticated
+        if builder_authenticated and self.builder_admin_denied(request):
+            return web.json_response(
+                {
+                    "ok": False,
+                    "error_code": "BUILDER_FORBIDDEN",
+                    "error": "建房角色无权访问管理接口",
+                },
+                status=403,
+            )
         # Which paired device made the request, for audit/provenance only. It is
         # never an authorization input: the device is already an owner here.
         request[PAIRED_DEVICE_ID_KEY] = paired_device_id
         request[ACCESS_PASSWORD_CONFIGURED_KEY] = access_password_configured
         share_uid, denied = self.resolve_share_identity(
             request, owner_authenticated, access_password_configured,
+            builder_authenticated=builder_authenticated,
         )
         if denied is not None:
             return denied
 
+        # builder 只在自己担任 GM（gm_uid == 自己 session）的局里享受
+        # owner 级的对局操作；在其他局里与普通访客同权。
+        builder_gm = bool(
+            builder_authenticated
+            and self.builder_is_game_gm(request)
+        )
+
         share_active = bool(share_uid or request.get("share_anonymous"))
         if self.requires_room_token(
             share_active,
-            owner_authenticated,
+            owner_authenticated or builder_gm,
             request.path,
         ):
             instance = self.request_game_instance(request)
@@ -146,12 +217,12 @@ class WebAccessControl:
             return await handler(request)
 
         if share_uid and (request.query.get("user") or request.get("seat_token_uid")):
-            if not owner_authenticated and self.player_access_is_closed(request):
+            if not owner_authenticated and not builder_gm and self.player_access_is_closed(request):
                 return web.json_response(
                     PLAYER_ACCESS_CLOSED_BODY,
                     status=403,
                 )
-            if not owner_authenticated and self.share_uid_is_gm_seat(request, share_uid):
+            if not owner_authenticated and not builder_gm and self.share_uid_is_gm_seat(request, share_uid):
                 return web.json_response(
                     {"ok": False, "error_code": "GM_SEAT_REQUIRES_OWNER", "error": "GM 席位需要房主登录"},
                     status=403,
@@ -160,7 +231,7 @@ class WebAccessControl:
             request["viewer_user_id"] = viewer_uid
             request["user_id"] = share_uid
             request["player_preview"] = bool(
-                owner_authenticated and viewer_uid != share_uid
+                (owner_authenticated or builder_gm) and viewer_uid != share_uid
             )
             request["player_delegate"] = request.query.get("delegate", "") in {
                 "1",
@@ -186,14 +257,14 @@ class WebAccessControl:
         if request.method == "POST" and request.path == "/api/pairing/claim":
             return await handler(request)
         if access_password_configured and request.path.startswith("/api/"):
-            if not owner_authenticated:
+            if not owner_authenticated and not builder_authenticated:
                 if share_active:
-                    if self.player_access_is_closed(request):
+                    if not builder_gm and self.player_access_is_closed(request):
                         return web.json_response(
                             PLAYER_ACCESS_CLOSED_BODY,
                             status=403,
                         )
-                    if self.share_uid_is_gm_seat(request, share_uid):
+                    if not builder_gm and self.share_uid_is_gm_seat(request, share_uid):
                         return web.json_response(
                             {"ok": False, "error_code": "GM_SEAT_REQUIRES_OWNER", "error": "GM 席位需要房主登录"},
                             status=403,
@@ -316,11 +387,53 @@ class WebAccessControl:
         """The stored access password hash ('' when none is configured)."""
         return normalize_access_password(self.state.get("access_token"))
 
+    def builder_password_marker(self) -> str:
+        """The stored builder password hash ('' when the role is disabled)."""
+        return normalize_access_password(self.state.get("builder_token"))
+
+    @staticmethod
+    def builder_admin_denied(request: web.Request) -> bool:
+        """Whether a builder-role request hits an owner-only admin surface."""
+
+        path = request.path
+        if path in _BUILDER_DENIED_EXACT:
+            return True
+        if path.startswith(_BUILDER_DENIED_PREFIXES):
+            return True
+        if request.method == "GET":
+            if path in _BUILDER_WRITE_ONLY_EXACT:
+                return False
+        elif path in _BUILDER_WRITE_ONLY_EXACT or path.startswith(_BUILDER_GET_ONLY_PREFIXES):
+            return True
+        return False
+
+    def builder_is_game_gm(
+        self,
+        request: web.Request,
+        session_uid: str = "",
+    ) -> bool:
+        """Whether this request's session uid is the GM of the targeted game.
+
+        The builder role grants owner-style *game* powers only through the
+        normal GM identity (``gm_uid``), never as an owner bypass: a builder
+        cannot manage tables they did not create.
+        """
+        uid = session_uid or str(request.get("session_user_id") or request.get("user_id", "") or "")
+        if not uid:
+            return False
+        instance = self.request_game_instance(request)
+        if instance is None:
+            return False
+        gm_uid = str(getattr(instance, "gm_uid", "") or "")
+        return bool(gm_uid and uid == gm_uid)
+
     def owner_grant(self, request: web.Request) -> OwnerGrant:
         """Snapshot the owner credential ``request`` was authenticated with."""
         return OwnerGrant(
             paired_device_id=str(request.get(PAIRED_DEVICE_ID_KEY, "") or ""),
             access_password_hash=self.access_password_marker(),
+            builder=bool(request.get("builder_authenticated", False)),
+            builder_password_hash=self.builder_password_marker(),
         )
 
     def owner_revocation(self, app: web.Application, grant: OwnerGrant) -> dict | None:
@@ -330,11 +443,17 @@ class WebAccessControl:
         access password change keeps pairings, except the first one, which
         revokes them all). A stream opened with the access password, or on a
         server without one, loses access when the stored password changes.
+        A builder stream is bound to the builder password instead: rotating
+        either password never logs the other role out.
         """
         if grant.paired_device_id:
             devices = app.get(DEVICE_TOKENS_KEY)
             if devices is None or not devices.has(grant.paired_device_id):
                 return {"error_code": "PAIRED_DEVICE_REVOKED", "error": "此设备的配对已被吊销，请重新登录"}
+            return None
+        if grant.builder:
+            if self.builder_password_marker() != grant.builder_password_hash:
+                return {"error_code": "ACCESS_PASSWORD_CHANGED", "error": "访问密码已更改，请重新登录"}
             return None
         if self.access_password_marker() != grant.access_password_hash:
             return {"error_code": "ACCESS_PASSWORD_CHANGED", "error": "访问密码已更改，请重新登录"}
@@ -409,6 +528,7 @@ class WebAccessControl:
         request: web.Request,
         owner_authenticated: bool,
         access_password_configured: bool,
+        builder_authenticated: bool = False,
     ) -> tuple[str, web.Response | None]:
         """Resolve which seat a player-share request acts as.
 
@@ -417,6 +537,9 @@ class WebAccessControl:
         ``?user=`` is never proof of identity.  Lobby endpoints of the join
         flow still work for a visitor without a seat, as the session's own
         uid.  The owner (P2P host delegation, preview) keeps ``?user=``.
+        A builder keeps the owner-style ``?user=`` only in games where the
+        builder's own session is the GM; elsewhere a builder is just a
+        visitor/seat like any invited player.
         Without an access password there is no authentication boundary, so
         the legacy ``?user=`` identity remains as a fallback there.
         """
@@ -444,6 +567,12 @@ class WebAccessControl:
         )
         if not kind or not share_mode:
             return "", None
+        # 提前算好 builder 是否本局 GM：决定它能否像 owner 一样容忍
+        # 过期的席位凭证、保留 ?user= 身份。
+        builder_gm = bool(
+            builder_authenticated
+            and self.builder_is_game_gm(request, session_uid=session_uid)
+        )
         token_uid = ""
         if seat_token:
             instance = self.request_game_instance(request)
@@ -451,7 +580,12 @@ class WebAccessControl:
                 room_access.verify_seat_token(instance, seat_token) or ""
                 if instance is not None else ""
             )
-            if not token_uid and not owner_authenticated and access_password_configured:
+            if (
+                not token_uid
+                and not owner_authenticated
+                and not builder_gm
+                and access_password_configured
+            ):
                 return "", web.json_response(
                     {"ok": False, "error_code": "SEAT_TOKEN_INVALID", "error": "席位凭证无效或已失效，请向 GM 重新获取链接"},
                     status=401,
@@ -459,7 +593,7 @@ class WebAccessControl:
         query_uid = str(request.query.get("user") or "").strip()
         if token_uid:
             request["seat_token_uid"] = token_uid
-        if owner_authenticated:
+        if owner_authenticated or builder_gm:
             return query_uid or token_uid or session_uid, None
         if not access_password_configured:
             return token_uid or query_uid or session_uid, None

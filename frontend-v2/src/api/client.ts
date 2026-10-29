@@ -252,7 +252,7 @@ export async function apiBlob(path: string, init: RequestInit = {}): Promise<Res
   return response
 }
 
-export async function validateAccessToken(value: string): Promise<void> {
+export async function validateAccessToken(value: string): Promise<'owner' | 'builder'> {
   const headers = new Headers()
   if (value) headers.set('Authorization', `Bearer ${value}`)
   const response = await fetchWithConnectionRecovery(apiUrl('/login'), { method: 'POST', headers, credentials: 'include' })
@@ -261,6 +261,9 @@ export async function validateAccessToken(value: string): Promise<void> {
     throw new ApiError(rateLimitMessage(data), 429)
   }
   if (!response.ok) throw new ApiError(i18n.global.t('incorrectPassword'), response.status)
+  // 后端报告命中的角色：owner（主口令/无密码）或 builder（建房口令）。
+  const data = await response.json().catch(() => ({}))
+  return data?.role === 'builder' ? 'builder' : 'owner'
 }
 
 export function setAccessToken(value: string) {

@@ -1195,6 +1195,11 @@ export const en = {
   passwordTooShort: 'Access password must be at least 6 characters',
   passwordMismatch: 'Passwords do not match',
   accessPasswordUpdated: 'Access password updated',
+  builderPasswordTitle: 'Builder password (guest hosts)',
+  builderPasswordHelp: 'A second login password: holders can create their own tables and act as GM, but cannot see or change admin settings such as model providers. Leaving it unset keeps the role disabled.',
+  builderPasswordSet: 'Builder password enabled: guests may host their own tables.',
+  builderPasswordUnset: 'Builder password unset: only the owner password can create tables.',
+  builderPasswordUpdated: 'Builder password updated',
   clearProxyTitle: 'Disable and Clear Proxy',
   clearProxyContent: 'This will disable the proxy and clear the configured proxy URL. Continue?',
   clearProxyAction: 'Disable and Clear',
@@ -2751,6 +2756,7 @@ export const en = {
 
   apiErrors: {
     ADOPT_REQUIRES_GM: 'Once this character has acted, only the GM can apply a card to it.',
+    BUILDER_FORBIDDEN: 'The builder role cannot access admin endpoints. Ask the owner (main password) to do this.',
     DELETE_REQUIRES_GM: 'Once this character has acted, only the GM can delete it.',
     FIELD_REQUIRES_GM: 'Only the GM can change these character fields (HP, level, gold, attributes, items…).',
     SEAT_TOKEN_REQUIRED: 'A seat credential is required. Rejoin with the link from your GM.',

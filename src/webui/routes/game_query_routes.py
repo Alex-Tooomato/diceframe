@@ -20,7 +20,13 @@ from src.engine.modules import room_access
 
 
 async def api_games(request: web.Request) -> web.Response:
-    return web.json_response(_get_api(request).list_games())
+    # 建房角色只看到自己是 GM 的对局，不暴露其他人的存档列表。
+    gm_uid_filter = (
+        str(request.get("user_id", "") or "")
+        if request.get("builder_authenticated", False)
+        else ""
+    )
+    return web.json_response(_get_api(request).list_games(gm_uid_filter=gm_uid_filter))
 
 
 async def api_detail(request: web.Request) -> web.Response:

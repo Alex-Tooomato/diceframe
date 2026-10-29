@@ -1794,8 +1794,10 @@ class WebAPI:
 
     # ---- 游戏总览 ----
 
-    def list_games(self) -> dict[str, Any]:
-        return game_queries.list_games(self._game_query_dependencies)
+    def list_games(self, gm_uid_filter: str = "") -> dict[str, Any]:
+        return game_queries.list_games(
+            self._game_query_dependencies, gm_uid_filter=gm_uid_filter
+        )
 
     def game_detail(
         self,

@@ -2226,6 +2226,7 @@ export interface AppConfig {
   web_cors_origins?: string
   web_cors_origins_source?: 'env' | 'config' | string
   access_password?: SecretField
+  builder_password?: SecretField
   bot_token?: SecretField
   bot_token_source?: 'env' | 'generated'
   update_channel?: 'stable' | 'preview'

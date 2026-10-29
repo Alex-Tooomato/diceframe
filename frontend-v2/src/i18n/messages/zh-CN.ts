@@ -1195,6 +1195,11 @@ export const zhCN = {
   passwordTooShort: '访问密码至少 6 位',
   passwordMismatch: '两次输入不一致',
   accessPasswordUpdated: '访问密码已更新',
+  builderPasswordTitle: '建房口令（访客房主）',
+  builderPasswordHelp: '第二套登录口令：持有者可以自己创建对局并担任 GM，但看不到也无法修改模型接口等管理设置。留空不保存表示未启用。',
+  builderPasswordSet: '建房口令已启用：访客用房主身份可自行开团。',
+  builderPasswordUnset: '建房口令未设置：只有主口令登录的房主可以创建对局。',
+  builderPasswordUpdated: '建房口令已更新',
   clearProxyTitle: '关闭并清空代理',
   clearProxyContent: '将关闭代理并清空已配置的代理地址，确认继续？',
   clearProxyAction: '关闭并清空',
@@ -2751,6 +2756,7 @@ export const zhCN = {
 
   apiErrors: {
     ADOPT_REQUIRES_GM: '角色行动后只能由 GM 为其套用卡片',
+    BUILDER_FORBIDDEN: '建房角色无权访问管理接口，请联系主口令登录的房主操作',
     DELETE_REQUIRES_GM: '角色行动后只能由 GM 删除',
     FIELD_REQUIRES_GM: '这些角色卡字段（HP、等级、金币、属性、物品等）只能由 GM 修改。',
     SEAT_TOKEN_REQUIRED: '需要席位凭证，请使用 GM 发出的链接重新加入',

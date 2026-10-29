@@ -105,6 +105,7 @@ class WebUIBootstrap:
             dependencies.save_config()
             self.logger.warning("已迁移 generation 默认值到新版本配置")
         dependencies.credentials().initialize_access_password()
+        dependencies.credentials().initialize_builder_password()
         dependencies.credentials().ensure_bot_token()
         subsystems = dependencies.build_subsystems()
         app["subsystems"] = subsystems

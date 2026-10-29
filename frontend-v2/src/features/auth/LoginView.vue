@@ -2,6 +2,7 @@
 import { computed, onMounted, ref } from 'vue'
 import { useRoute } from 'vue-router'
 import { api, errorMessage, setAccessToken, validateAccessToken } from '@/api/client'
+import { writeStoredAuthRole } from '@/composables/useAuthRole'
 import { currentBackendUrl, isStandaloneFrontend, normalizeBackendUrl, setBackendUrl } from '@/api/connection'
 import type { AppConfig } from '@/api/types'
 import { useLocale, type Locale } from '@/composables/useLocale'
@@ -68,8 +69,9 @@ async function submit() {
   busy.value = true
   error.value = ''
   try {
-    await validateAccessToken(value)
+    const role = await validateAccessToken(value)
     setAccessToken(value)
+    writeStoredAuthRole(role)
     location.href = redirect.value || '/'
   } catch (e: unknown) {
     error.value = errorMessage(e) || t('validationFailed')

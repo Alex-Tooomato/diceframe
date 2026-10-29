@@ -32,10 +32,15 @@ class OwnerGrant:
     ``access_password_hash`` is the stored access password hash at that time
     ('' when none was configured). A device-token owner is bound to its
     pairing only: changing the access password keeps pairings.
+    ``builder`` marks the second-role credential (建房口令): the stream is
+    then bound to ``builder_password_hash`` instead, so rotating either
+    password never ends the other role's streams.
     """
 
     paired_device_id: str = ""
     access_password_hash: str = ""
+    builder: bool = False
+    builder_password_hash: str = ""
 
 
 def token_digest(token: str) -> str:

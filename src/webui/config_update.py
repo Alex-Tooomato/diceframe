@@ -35,7 +35,7 @@ from src.llm.generation_options import validate_generation_options, validate_rec
 from src.assistant_agent_limits import MIN_TASK_MAX_TOKENS, MAX_TASK_MAX_TOKENS
 
 SECRET_CONFIG_KEYS = frozenset({
-    "access_token", "bot_token", "napcat_token",
+    "access_token", "builder_token", "bot_token", "napcat_token",
 })
 STRING_CONFIG_KEYS = frozenset({
     "model", "embedding_model", "web_cors_origins",
@@ -55,7 +55,7 @@ CONFIG_KEYS = (
     "fallback1_enabled", "fallback1_model",
     "fallback2_enabled", "fallback2_model",
     "narrative_max_tokens", "character_gen_max_tokens", "summary_max_tokens", "brief_max_tokens",
-    "analysis_max_tokens", "text_gen_max_tokens", "assistant_agent_max_tokens", "assistant_agent_task_max_tokens", "proxy_enabled", "proxy_url", "public_base_url", "access_token",
+    "analysis_max_tokens", "text_gen_max_tokens", "assistant_agent_max_tokens", "assistant_agent_task_max_tokens", "proxy_enabled", "proxy_url", "public_base_url", "access_token", "builder_token",
     "qq_bot_enabled", "napcat_host", "napcat_port", "napcat_token", "napcat_heartbeat_sec",
     "napcat_reconnect_delay_sec", "napcat_action_timeout_sec", "napcat_reply_delay_min_sec",
     "napcat_reply_delay_max_sec", "napcat_command_dedup_window_sec", "napcat_connection_id",
@@ -211,7 +211,16 @@ def prepare_config_update(current: dict[str, Any], body: dict[str, Any]) -> Prep
             if key in SECRET_CONFIG_KEYS:
                 value = clean_text_value(raw)
                 if value:
-                    candidate[key] = hash_access_password(value) if key == "access_token" else value
+                    if key == "builder_token":
+                        # 建房口令与访问口令同级凭证，同样要求最少 6 位并散列存储。
+                        if len(value) < 6:
+                            return PreparedConfigUpdate(
+                                candidate, changed_keys, access_password_changed,
+                                "建房口令至少需要 6 位",
+                            )
+                        candidate[key] = hash_access_password(value)
+                    else:
+                        candidate[key] = hash_access_password(value) if key == "access_token" else value
                 continue
             if key == "web_cors_origins":
                 invalid = invalid_cors_origins(raw)

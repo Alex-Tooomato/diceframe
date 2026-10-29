@@ -21,9 +21,13 @@ def _get_api(request: web.Request) -> WebAPI:
 
 
 def require_content_owner(request: web.Request) -> web.Response | None:
-    """Owner-only private content, with the existing open local-server mode."""
+    """Owner-only private content, with the existing open local-server mode.
+
+    The builder role (建房口令) also passes: creating worlds, rules,
+    adventures and lorebooks is exactly what that role is for.
+    """
     from src.webui.routes.auth import ACCESS_PASSWORD_CONFIGURED_KEY
-    if request.get("owner_authenticated"):
+    if request.get("owner_authenticated") or request.get("builder_authenticated"):
         return None
     if request.get(ACCESS_PASSWORD_CONFIGURED_KEY) or request.query.get("user") or request.headers.get("X-Bot-Token"):
         return web.json_response({"ok": False, "error_code": "OWNER_REQUIRED"}, status=403)

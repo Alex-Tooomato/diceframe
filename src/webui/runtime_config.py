@@ -52,6 +52,7 @@ from src.assistant_agent_limits import DEFAULT_TASK_MAX_TOKENS
 _SECRET_KEYS = frozenset(
     {
         "access_token",
+        "builder_token",
         "bot_token",
         "napcat_token",
         "proxy_url",
@@ -347,6 +348,13 @@ class ConfigStore:
                 saved.get("assistant_agent_task_max_tokens", DEFAULT_TASK_MAX_TOKENS)
             ),
             "access_token": access_token,
+            # 建房口令（builder）：第二套登录口令，能建房当 GM 但进不了管理面。
+            # 环境变量 TRPG_BUILDER_TOKEN 与保存值同优先级规则同 bot_token。
+            "builder_token": normalize_access_password(
+                env.get("TRPG_BUILDER_TOKEN")
+                or secret_values.get("builder_token")
+                or saved.get("builder_token", "")
+            ),
             "bot_token": env.get("TRPG_BOT_TOKEN")
             or secret_values.get("bot_token")
             or saved.get("bot_token", ""),
@@ -467,6 +475,7 @@ class ConfigStore:
         ):
             public[key] = self.mask_secret(str(state.get(key, "")))
         public["access_password"] = mask_access_password(state.get("access_token", ""))
+        public["builder_password"] = mask_access_password(state.get("builder_token", ""))
         public["bot_token_source"] = (
             "env" if self.environ.get("TRPG_BOT_TOKEN") else "generated"
         )
@@ -508,6 +517,8 @@ class ConfigStore:
         }
         if self.environ.get("TRPG_ACCESS_TOKEN"):
             sensitive.pop("access_token", None)
+        if self.environ.get("TRPG_BUILDER_TOKEN"):
+            sensitive.pop("builder_token", None)
         if any(sensitive.values()) or self.paths.secrets_file.exists():
             self.atomic_write_json(self.paths.secrets_file, sensitive)
 
