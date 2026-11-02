@@ -58,6 +58,7 @@ import MapBackgroundSettingsModal from '@/components/play/MapBackgroundSettingsM
 import GameLorebookSelectionDialog from '@/components/play/GameLorebookSelectionDialog.vue'
 import PartyActions from '@/features/play/party/PartyActions.vue'
 import AISeatsPanel from '@/features/play/ai-seats/AISeatsPanel.vue'
+import GmRoutingPanel from '@/features/play/gm-routing/GmRoutingPanel.vue'
 import { pendingPostChecks, postCheckWaiting } from '@/features/play/check-decisions/projection'
 import { useCheckReveal } from '@/features/play/check-decisions/useCheckReveal'
 import CheckModePanel from '@/features/play/check-modes/CheckModePanel.vue'
@@ -1833,6 +1834,11 @@ function onPlayKeydown(event: KeyboardEvent) {
               @attention="aiAttentionCount = $event"
               :players="game.players.value" :is-gm="game.isGm.value" :preview="preview"
               @changed="game.refresh(true)" @set-control="setControl"
+            />
+
+            <GmRoutingPanel
+              :game-key="game.currentGame.value" :is-gm="game.isGm.value" :preview="preview"
+              @changed="game.refresh(true)"
             />
           </template>
           <template #rules>

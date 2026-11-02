@@ -32,6 +32,10 @@ import { ruleSceneUrl } from '@/composables/useBackgroundImages'
 import { pickSceneImageReference, resolveSceneImageUrl, revokeSceneImageUrl, sceneImageCandidates, sceneImageStyle, uploadSceneImage } from '@/api/sceneImages'
 import { mapBackgroundSelection, uploadMapBackground } from '@/api/mapBackgrounds'
 import { isLlmConfigReady } from '@/utils/modelConfiguration'
+import GmRoutingEditor from '@/features/gm-routing/GmRoutingEditor.vue'
+import {
+  settingsPayload, type GmProviderOption, type GmRoutingSettings,
+} from '@/features/gm-routing/types'
 import { roomPasswordProblem, roomPasswordProblemMessage } from '@/utils/roomPassword'
 import { moduleApi, type ModuleSummary } from '@/api/modules'
 import { adventureKey, useAdventureSelection } from '@/features/create/adventureSelection'
@@ -293,7 +297,25 @@ const loreManageHref = computed(() => {
   return source ? router.resolve({ name: 'lorebook', query: { world: source } }).href : ''
 })
 const apiReady = computed(() => isLlmConfigReady(settings.config))
-const showApiSetupHint = computed(() => settingsChecked.value && !settings.error && !apiReady.value)
+// 本局 GM 来源（服务端 / user GM）。user GM 选定可解析的主模型时，对局已有
+// GM 可用，可放宽"服务端主模型未配置"的创建门槛（后端同样放宽）。
+const gmRouting = ref<GmRoutingSettings>({ mode: 'server', user: null })
+const gmProviders = computed<GmProviderOption[]>(() => (settings.config.ai_providers || [])
+  .map(provider => ({
+    id: provider.id,
+    name: provider.name || provider.id,
+    models: (provider.models || []).filter(
+      model => (provider.model_capabilities?.[model] || 'chat') === 'chat'),
+  }))
+  .filter(provider => provider.models.length > 0))
+const gmUserMainResolvable = computed(() => {
+  if (gmRouting.value.mode !== 'user') return false
+  const main = gmRouting.value.user?.main
+  if (!main) return false
+  return gmProviders.value.some(provider => provider.id === main.provider_ref
+    && provider.models.includes(main.model))
+})
+const showApiSetupHint = computed(() => settingsChecked.value && !settings.error && !apiReady.value && !gmUserMainResolvable.value)
 
 function worldIdOf(w: WorldTemplateSummary | WorldSummary): string { return String(w.world_id || w.id || '') }
 function worldNameOf(w: WorldTemplateSummary | WorldSummary): string { return String(w.world_name || w.name || w.id || '') }
@@ -795,6 +817,9 @@ async function create() {
       : mapBackgroundSelection(mapBackgroundChoice.value)
     if (playMode.value === 'adventure' && !adventureSelection.ready.value) throw new Error(t(adventureIssue.value || 'adventureLaunchIncompatible'))
     const payload: Record<string, unknown> = applyStoryMode({ solo: solo.value, difficulty: difficulty.value, rule_id: activeRule.value, play_mode: playMode.value, ...adventureSelection.bindingPayload.value, description: description.value, room_password: openRoom.value ? '' : (roomPassword.value.trim() || null), players, language: gameLanguage.value, scene_image: selectedSceneImage, map_background: selectedMapBackground, narrative_perspective: narrativePerspective.value, gm_style_override: gmStyleFollowWorld.value ? null : { ...gmStyle.value }, advancement_mode: supportsAdvancementPolicy.value ? advancementMode.value : 'milestone', advancement_authority: supportsAdvancementPolicy.value ? advancementAuthority.value : 'ai_gm' }, storyMode.value)
+    // user GM 模式随创建载荷提交（后端校验可解析后写入本局路由槽位并放宽
+    // 服务端 LLM gate）；服务端模式不携带该字段，行为与旧版本完全一致。
+    if (gmUserMainResolvable.value) payload.gm_routing = settingsPayload(gmRouting.value)
     let worldId = ''
     if (mode.value === 'template') {
       worldId = world.value; payload.world_id = worldId
@@ -1033,6 +1058,12 @@ async function create() {
                 </label>
               </div>
             </fieldset>
+            <fieldset class="wide narrative-perspective-field create-gm-routing-field">
+              <legend>{{ gameDefault('GM 来源', 'GM source', 'GM-Quelle', 'GM の来源', 'Источник GM') }}</legend>
+              <GmRoutingEditor v-model="gmRouting" :providers="gmProviders"
+                               :server-provider-name="settings.config.ai_providers?.find(p => p.id === settings.config.llm_provider_ref)?.name || settings.config.llm_provider_ref || ''"
+                               :server-model="settings.config.model || ''" />
+            </fieldset>
             <template v-if="!seed.trim()">
               <div v-if="supportsAdvancementPolicy" class="wide advancement-policy-field">
                 <div class="advancement-policy-grid">
@@ -1116,6 +1147,9 @@ async function create() {
               <article v-if="supportsAdvancementPolicy && !seed.trim()"><span>{{ t('advancementMode') }}</span><strong>{{ advancementMode === 'milestone' ? t('advancementMilestone') : t('advancementXp') }} · {{ advancementAuthority === 'ai_gm' ? t('advancementAiGm') : t('advancementHumanGm') }}</strong></article>
               <article><span>{{ t('difficulty') }}</span><strong>{{ difficulty === DIFFICULTY_EASY ? t('easy') : difficulty === DIFFICULTY_HARDCORE ? t('hardcore') : t('normal') }}</strong></article>
               <article><span>{{ t('roomOpen') }}</span><strong>{{ openRoom ? gameDefault('公开房间', 'Open room', 'Offener Raum') : gameDefault('需要邀请或密码', 'Invite or password', 'Einladung oder Passwort') }}</strong></article>
+              <article><span>{{ gameDefault('GM 来源', 'GM source', 'GM-Quelle', 'GM の来源', 'Источник GM') }}</span><strong>{{ gmRouting.mode === 'user' && gmUserMainResolvable
+                ? gameDefault('user GM（你的模型）', 'User GM (your model)', 'User-GM (dein Modell)', 'user GM（あなたのモデル）', 'user GM (ваша модель)')
+                : gameDefault('服务端 GM', 'Server GM', 'Server-GM', 'サーバー GM', 'GM сервера') }}</strong><small v-if="gmRouting.mode === 'user' && gmUserMainResolvable">{{ gmRouting.user?.main?.model }}</small></article>
             </div>
           </div>
           <div class="create-confirm-party">
