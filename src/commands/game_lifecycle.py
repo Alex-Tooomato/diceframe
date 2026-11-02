@@ -69,6 +69,9 @@ class RunInitializationError(RuntimeError):
 class GameLifecycle:
     """负责游戏生命周期操作，避免 GameHandler 承担所有流程细节。"""
 
+    # 类级默认：object.__new__ 构造（部分事务前置测试）也能安全判空。
+    _gm_routing: Any = None
+
     def __init__(
         self,
         registry: GameRegistry,
@@ -275,7 +278,11 @@ class GameLifecycle:
             async with instance.authoritative_write() as entered:
                 if not entered:
                     raise ValueError('this run is read-only')
-                return await self._start_game(instance, publish=publish, persist=persist, llm_client=_routing_client(generation, self.llm_client))
+                # getattr：object.__new__ 构造的事务前置测试没有 llm_client；
+                # 真实调用链在 preflight 之后才解析 LLM 客户端。
+                return await self._start_game(
+                    instance, publish=publish, persist=persist,
+                    llm_client=_routing_client(generation, getattr(self, "llm_client", None)))
         finally:
             if generation is not None:
                 await generation.close()
@@ -436,7 +443,7 @@ class GameLifecycle:
         if scene_context:
             welcome_context = scene_context + "\n\n---\n\n" + welcome_context
 
-        llm = llm_client or self.llm_client
+        llm = llm_client or getattr(self, "llm_client", None)
         response = None
         opening_story = None
         try:
@@ -561,14 +568,14 @@ class GameLifecycle:
             async with instance.authoritative_write() as entered:
                 if not entered:
                     raise ValueError('this run is read-only')
-                return await self._resume_game(instance, llm_client=_routing_client(generation, self.llm_client))
+                return await self._resume_game(instance, llm_client=_routing_client(generation, getattr(self, "llm_client", None)))
         finally:
             if generation is not None:
                 await generation.close()
 
     async def _resume_game(self, instance: GameInstance, *, llm_client: Any = None) -> str:
         """从 PAUSED 状态恢复游戏，生成「上回说到」续接叙事。"""
-        llm = llm_client or self.llm_client
+        llm = llm_client or getattr(self, "llm_client", None)
         progression.require_writable(instance)
         if instance.state != GameState.PAUSED:
             await instance.activate()

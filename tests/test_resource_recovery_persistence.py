@@ -21,8 +21,12 @@ def test_schema_47_fences_old_readers_without_materializing_historical_recovery(
     old["modules"].pop("resource_recovery", None)
     before = deepcopy(old)
     upgraded = migrate_game_state_payload(old)
-    assert upgraded["instance_schema_version"] == CURRENT_INSTANCE_SCHEMA_VERSION == 47
+    # 46→47 reader fence 之后链接后续迁移（47→48 物化 gm_routing 空槽）到
+    # 当前版本；fence 本身仍不物化历史恢复资格。
+    assert upgraded["instance_schema_version"] == CURRENT_INSTANCE_SCHEMA_VERSION == 48
     assert "resource_recovery" not in upgraded["modules"]
+    assert upgraded["modules"]["gm_routing"] == {
+        "schema_version": 1, "revision": 0, "mode": "server", "user": None}
     assert upgraded["players"] == old["players"] and old == before
     assert migrate_game_state_payload(upgraded) == upgraded
     with patch("src.migrations.instance.CURRENT_INSTANCE_SCHEMA_VERSION", 46):

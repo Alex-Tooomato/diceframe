@@ -293,6 +293,9 @@ class GmModelNotConfigured(RuntimeError):
 class RoundProcessor:
     """处理完整的一轮判定：context 拼接 → LLM 调用 → 解析 → 更新状态 → 播报。"""
 
+    # 类级默认：object.__new__ 构造（部分事务前置测试）也能安全判空。
+    _gm_routing: Any = None
+
     def __init__(
         self,
         registry: Any,

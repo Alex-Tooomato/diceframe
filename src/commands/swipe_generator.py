@@ -39,6 +39,9 @@ logger = logging.getLogger("trpg")
 class SwipeGenerator:
     """为指定历史轮次重新生成一个候选叙事。"""
 
+    # 类级默认：object.__new__ 构造（部分事务前置测试）也能安全判空。
+    _gm_routing: Any = None
+
     def __init__(
         self,
         llm_client: Any,
@@ -85,9 +88,12 @@ class SwipeGenerator:
         generation = None
         if getattr(self, "_gm_routing", None) is not None:
             generation = self._gm_routing.begin(instance)
-        client = self.llm_client
+        # getattr：object.__new__ 构造的事务前置测试没有 llm_client；
+        # preflight 之后才真正解析客户端（见 _generate_locked）。
+        server_client = getattr(self, "llm_client", None)
+        client = server_client
         if generation is not None and generation.source == "user":
-            client = generation.llm_client or self.llm_client
+            client = generation.llm_client or server_client
         try:
             return await self._generate(instance, round_num, client)
         finally:
@@ -139,7 +145,7 @@ class SwipeGenerator:
         self, instance: GameInstance, round_num: int, llm: Any = None,
     ) -> tuple[str | None, dict[str, Any] | None]:
         """为指定轮生成一个新 swipe（最多 5 个）。"""
-        llm = llm or self.llm_client
+        llm = llm or getattr(self, "llm_client", None)
         target_entry = None
         target_idx = -1
         for i, entry in enumerate(instance.log):

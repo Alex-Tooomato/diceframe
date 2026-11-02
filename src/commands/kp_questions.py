@@ -122,6 +122,9 @@ def build_kp_question_prompt(
 
 
 class KPQuestionResponder:
+    # 类级默认：object.__new__ 构造（部分事务前置测试）也能安全判空。
+    _gm_routing: Any = None
+
     """Build context and answer without invoking any turn/state mutation path."""
 
     def __init__(

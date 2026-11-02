@@ -21,6 +21,9 @@ logger = logging.getLogger("trpg")
 
 
 class StoryRecapGenerator:
+    # 类级默认：object.__new__ 构造（部分事务前置测试）也能安全判空。
+    _gm_routing: Any = None
+
     def __init__(self, llm_client: Any, max_tokens: int = 1024, registry: Any = None) -> None:
         self.llm_client = llm_client
         self.max_tokens = max(256, min(int(max_tokens or 1024), 1024))
