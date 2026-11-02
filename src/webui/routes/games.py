@@ -123,6 +123,8 @@ def register_games(app: web.Application) -> None:
     register_run_story(app)
     from src.webui.routes.ai_seats import register as register_ai_seats
     register_ai_seats(app)
+    from src.webui.routes.gm_routing import register as register_gm_routing
+    register_gm_routing(app)
     from src.webui.routes.check_modes import register as register_check_modes
     register_check_modes(app)
     from src.webui.routes.check_decisions import register as register_check_decisions

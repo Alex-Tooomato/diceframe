@@ -330,6 +330,12 @@ class ConfigController:
         elif new_api is not None and (model_runtime_changed or api_runtime_changed):
             self.attach_agent_actions(app, new_api)
 
+        if new_api is not None and app.get("api") is new_api and app.get("connection_pool") is not None:
+            # user GM presence 探针随热重载重绑到新的 WebAPI（bootstrap 首绑）。
+            binder = getattr(new_api, "set_gm_presence_probe", None)
+            if binder is not None:
+                binder(app["connection_pool"].is_online)
+
         if (
             model_runtime_changed
             and old_subsystems is not None

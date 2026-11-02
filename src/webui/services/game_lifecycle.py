@@ -97,6 +97,25 @@ def delete_game(
     }
 
 
+def _validate_creation_gm_routing(
+    dependencies: GameLifecycleDependencies, raw: Any
+) -> dict[str, Any] | None:
+    """创建期 GM 路由载荷校验；返回 None 表示通过。
+
+    这里只做不依赖能力模块的字面校验（mode 白名单）；完整解析
+    （user 主模型在共享服务商目录中可解析）由注入的 ``validate_gm_routing``
+    运行时钩子完成，避免核心创建流程直接 import 能力模块。
+    """
+    if raw is None:
+        return None
+    if not isinstance(raw, dict) or raw.get("mode") not in ("server", "user"):
+        return {"ok": False, "error_code": "INVALID_GM_ROUTING", "error": "GM 路由配置无效"}
+    validator = getattr(dependencies, "validate_gm_routing", None)
+    if validator is not None:
+        return validator(raw) or None
+    return None
+
+
 async def create_game(
     dependencies: GameLifecycleDependencies,
     world_id: str,
@@ -129,6 +148,7 @@ async def create_game(
     unclaimed_control_default: str = "",
     world_ref: dict[str, Any] | None = None,
     book_bindings: list[dict[str, Any]] | None = None,
+    gm_routing: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     if not dependencies.handler or not dependencies.registry:
         return {"ok": False, "error": "系统未就绪"}
@@ -146,8 +166,17 @@ async def create_game(
             "error_code": "INVALID_STORY_MODE",
             "error": "故事模式无效，仅支持 prose 或 dialogue",
         }
+    # GM 路由（user GM / 服务端）：user 模式主模型可解析即可放宽服务端 LLM gate
+    # ——对局只要"确保有一个 GM 存在"就能开局，服务端模型可作为掉线兜底而非前置。
+    user_gm_mode = False
+    if gm_routing:
+        routing_error = _validate_creation_gm_routing(dependencies, gm_routing)
+        if routing_error is not None:
+            return routing_error
+        user_gm_mode = str(gm_routing.get("mode") or "") == "user"
     if config_error := dependencies.llm_configuration_error(language):
-        return config_error
+        if not user_gm_mode:
+            return config_error
     parsed_world_ref: ContentRef | None = None
     if world_ref is not None:
         try:
@@ -407,6 +436,21 @@ async def create_game(
         narrative_perspective=normalized_narrative_perspective,
     )
     instance.set_gm_style_override(normalized_gm_style)
+    if gm_routing:
+        # user GM 模式在创建事务内即写入本局路由槽位：后续开场生成
+        # （_start_created_game）按 user 路由解析客户端。写入由注入的
+        # apply_gm_routing 钩子完成（核心流程不 import 能力模块）。
+        applier = getattr(dependencies, "apply_gm_routing", None)
+        if applier is not None:
+            try:
+                applier(instance, gm_routing)
+            except ValueError:
+                transaction.rollback()
+                return {
+                    "ok": False,
+                    "error_code": "INVALID_GM_ROUTING",
+                    "error": "GM 路由配置无效，未留下半成品存档。",
+                }
     game_preferences.apply(instance, {key: defaults[key] for key in ('push_enabled', 'quick_actions_enabled', 'dice_reveal_mode', 'luck_timeout_seconds')})
     if isinstance(runtime, LiveAdvancementPolicyRuntime):
         try:
@@ -508,7 +552,9 @@ async def create_game(
     transaction.advance(CreationPhase.PLAYERS_CREATED)
 
     try:
-        narration = await _start_created_game(dependencies, instance, runtime)
+        narration = await _start_created_game(
+            dependencies, instance, runtime, gm_assume_online=user_gm_mode
+        )
     except Exception:
         transaction.rollback()
         logger.exception("生成游戏开场失败，已回滚: %s", game_key)

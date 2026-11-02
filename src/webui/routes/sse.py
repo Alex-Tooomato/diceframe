@@ -203,6 +203,9 @@ async def sse_play(request: web.Request) -> web.StreamResponse:
                  "Connection": "keep-alive"})
     await resp.prepare(request)
     pool.add(game_key, user_id, resp)
+    # user GM 上线：GM 席位建立 SSE 即视为 presence 在线，唤醒各端刷新 GM 来源。
+    if user_id == getattr(inst, "gm_uid", ""):
+        await pool.broadcast(game_key, {"type": "gm_source_changed"})
 
     raw_cursor = (
         request.headers.get("Last-Event-ID", "")
@@ -223,6 +226,10 @@ async def sse_play(request: web.Request) -> web.StreamResponse:
         assert cursor is not None
         last_round, last_private_count, last_action_digest, last_public_digest = cursor
     last_player_count = len(inst.players)
+    # SSE keepalive：无状态变化时流上没有任何写操作，死连接要等下一次广播才会
+    # 被 ConnectionResetError 发现。定期写注释帧（EventSource 忽略）把掉线检测
+    # 延迟压到 ~10s，user GM 掉线自动回退服务端 GM 才能及时触发。
+    keepalive_ticks = 0
     try:
         if fresh_connection:
             lifecycle = module_hooks.read_value(inst, module_hooks.RUN_LIFECYCLE_VIEW) or {}
@@ -301,11 +308,18 @@ async def sse_play(request: web.Request) -> web.StreamResponse:
                     last_private_count += 1
                     await _write_play_event(resp, last_round, last_private_count, action_signature, public_signature, {'type':'private','text':p.get('text','')})
                 last_private_count = len(priv)
+            keepalive_ticks += 1
+            if keepalive_ticks >= 20:
+                keepalive_ticks = 0
+                await resp.write(b":ka\n\n")
             await asyncio.sleep(0.5)
     except ConnectionResetError:
         pass
     finally:
         pool.remove(game_key, user_id, resp)
+        # user GM 掉线：presence 消失即触发自动回退服务端 GM，广播唤醒各端。
+        if user_id == getattr(inst, "gm_uid", "") and not pool.is_online(game_key, user_id):
+            await pool.broadcast(game_key, {"type": "gm_source_changed"})
     return resp
 
 

@@ -30,6 +30,10 @@ class ConnectionPool:
         if not game:
             self._conns.pop(game_key, None)
 
+    def is_online(self, game_key: str, user_id: str) -> bool:
+        """该用户在此对局是否仍有活跃 SSE 连接（presence 判定，只读）。"""
+        return bool(self._conns.get(game_key, {}).get(user_id))
+
     async def broadcast(self, game_key: str, data: dict,
                         exclude_uid: str = "", private_uid: str = "") -> None:
         """广播消息。private_uid 非空则只推给该用户。"""

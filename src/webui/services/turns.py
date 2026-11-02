@@ -16,6 +16,7 @@ from typing import TYPE_CHECKING, Any, Protocol, TypedDict
 
 from src.commands.round_processor import (
     CheckModelNotConfigured,
+    GmModelNotConfigured,
     RoundNotProcessed,
     RoundProcessingFailure,
 )
@@ -394,6 +395,26 @@ async def _process_round(
         raise RoundProcessingError(
             _check_model_config_result(instance), rolled_back=True,
         ) from exc
+    except GmModelNotConfigured as exc:
+        # 与检定模型同级的可恢复配置错误：user GM 未在线且服务端主模型未配置。
+        if getattr(exc, "rollback_failed", False):
+            raise RoundProcessingError(
+                _round_rollback_failed_result(instance), rolled_back=False,
+            ) from exc
+        if getattr(exc, "rolled_back", None) is True:
+            raise RoundProcessingError(
+                _gm_model_config_result(instance), rolled_back=True,
+            ) from exc
+        rolled_back = await _rollback_failed_round(
+            dependencies, instance, game_key, on_reset=on_reset,
+        )
+        if not rolled_back:
+            raise RoundProcessingError(
+                _round_rollback_failed_result(instance), rolled_back=False,
+            ) from exc
+        raise RoundProcessingError(
+            _gm_model_config_result(instance), rolled_back=True,
+        ) from exc
     except Exception as exc:
         if run_changed is not None and run_changed():
             raise RoundProcessingError(_gate_rejection(instance, "", RUN_CHANGED)) from exc
@@ -569,6 +590,29 @@ def _check_model_config_result(instance: "GameInstance") -> TurnResult:
     }, 409)
 
 
+def _gm_model_config_result(instance: "GameInstance") -> TurnResult:
+    """本局 user GM 与服务端都没有可用主模型：409 + 稳定错误码，可恢复重试。
+
+    与独立检定模型同语义：``advanced=False`` 配合推进入口的事先回滚，行动保留
+    在队列，user GM 上线（或服务端配置修复）后同一对局直接重试。
+    """
+    return _result({
+        "ok": False,
+        "error_code": GmModelNotConfigured.error_code,
+        "error": _round_message(instance, {
+            "zh-CN": "本局 GM 模型不可用：user GM 未在线且服务端主模型未配置。user GM 重新连接或配置修复后可直接重试",
+            "en": "No GM model is available: the user GM is offline and no server main model is "
+                  "configured. Retry after the user GM reconnects or the configuration is fixed.",
+            "ja": "GM モデルが利用できません：user GM がオフラインで、サーバーのメインモデルも未設定です。"
+                  "user GM の再接続後に再試行してください。",
+            "de": "Kein GM-Modell verfügbar: Der user GM ist offline und kein Server-Hauptmodell ist "
+                  "konfiguriert. Versuche es erneut, nachdem der user GM verbunden ist.",
+        }),
+        "advanced": False,
+        "phase": "error",
+    }, 409)
+
+
 async def _rollback_unprocessed_advance(
     dependencies: TurnDependencies,
     instance: "GameInstance",
@@ -720,6 +764,11 @@ async def _advance_progression(
         if not await _rollback_unprocessed_advance(dependencies, instance, game_key):
             return _round_rollback_failed_result(instance)
         return _check_model_config_result(instance)
+    except GmModelNotConfigured:
+        # 本局 user GM 与服务端都没有可用主模型：同检定模型的回滚 + 稳定错误码。
+        if not await _rollback_unprocessed_advance(dependencies, instance, game_key):
+            return _round_rollback_failed_result(instance)
+        return _gm_model_config_result(instance)
     if run_changed is not None and run_changed():
         return _gate_rejection(instance, viewer_uid, RUN_CHANGED)
     if check_decisions.pending_any(instance):
@@ -1144,6 +1193,11 @@ async def advance_round(
                 if not await _rollback_unprocessed_advance(dependencies, instance, game_key):
                     return _round_rollback_failed_result(instance)
             return _check_model_config_result(instance)
+        except GmModelNotConfigured:
+            if not checks.round_checks_prepared(instance):
+                if not await _rollback_unprocessed_advance(dependencies, instance, game_key):
+                    return _round_rollback_failed_result(instance)
+            return _gm_model_config_result(instance)
         pending_luck = check_decisions.pending_any(instance)
         if pending_luck and not force:
             return _result(_pending_luck_payload(instance), 409)
@@ -1202,6 +1256,10 @@ async def advance_round(
             if not await _rollback_unprocessed_advance(dependencies, instance, game_key):
                 return _round_rollback_failed_result(instance)
             return _check_model_config_result(instance)
+        except GmModelNotConfigured:
+            if not await _rollback_unprocessed_advance(dependencies, instance, game_key):
+                return _round_rollback_failed_result(instance)
+            return _gm_model_config_result(instance)
         pending_luck = check_decisions.pending_any(instance)
         if pending_luck and not force:
             await dependencies.save_instance(instance)

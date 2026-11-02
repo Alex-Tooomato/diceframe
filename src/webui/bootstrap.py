@@ -193,6 +193,11 @@ class WebUIBootstrap:
         # FIX-07 §10：启动即刷新一次内容来源。否则"重启后直接开局"会在任何人
         # 读过冒险/模组页面之前解析不到已启用模组的冒险包。
         app["api"].refresh_content_sources()
+        # user GM presence：把 SSE 连接池的在线查询接到 GM 路由运行时
+        # （配置热重载换 WebAPI 时由 config_controller 重绑）。
+        pool = app.get("connection_pool")
+        if pool is not None:
+            app["api"].set_gm_presence_probe(pool.is_online)
         dependencies.activate_api_runtime(subsystems, app["api"])
         app["updater"] = updater_svc.UpdaterService(
             updater_svc.UpdaterDependencies(

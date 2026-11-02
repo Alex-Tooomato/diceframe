@@ -62,6 +62,9 @@ async def api_create_game(request: web.Request) -> web.Response:
         unclaimed_control_default=str(body.get("unclaimed_control_default", "") or ""),
         world_ref=body.get("world_ref"),
         book_bindings=body.get("book_bindings"),
+        # 本局 GM 来源（user GM / 服务端）：user 模式下 main/fallback/check 引用
+        # 服务端共享服务商目录；通过校验即可放宽服务端 LLM gate。
+        gm_routing=body.get("gm_routing"),
     )
     return web.json_response(result)
 
@@ -72,6 +75,7 @@ _LIFECYCLE_ERROR_STATUS = {
     "INVALID_WORLD_ID": 400,
     "INVALID_WORLD_REF": 422,
     "INVALID_STORY_MODE": 400,
+    "INVALID_GM_ROUTING": 400,
     "UNSUPPORTED_STORYTELLING_SCHEMA": 422,
     "ADVENTURE_WORLD_LOCKED": 409,
     "ADVENTURE_RUNTIME_INIT_FAILED": 422,

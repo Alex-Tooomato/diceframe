@@ -75,6 +75,12 @@ class GameLifecycleDependencies:
     # ruleset's varied default covers for future saves.
     list_default_scene_images: Callable[[str, str], list[dict[str, str]]] | None = None
     get_game_defaults: Callable[[], dict[str, Any]] = lambda: {}
+    # GM 路由创建期钩子（依赖注入：核心创建流程不直接 import 能力模块，
+    # 见 tests/architecture/test_module_pluggability.py 的 shrink-only 基线）。
+    # validate：完整解析校验（user 主模型必须在共享服务商目录中可解析），
+    # 返回错误 dict 或 None；apply：实例创建后在创建事务内写入路由槽位。
+    validate_gm_routing: Callable[[Any], dict[str, Any] | None] | None = None
+    apply_gm_routing: Callable[[Any, dict[str, Any]], None] | None = None
 
 
 class CreationPhase(str, Enum):
@@ -161,12 +167,22 @@ class CreationTransaction:
 
 
 async def _start_created_game(
-    dependencies: GameLifecycleDependencies, instance: Any, runtime: Any | None
+    dependencies: GameLifecycleDependencies,
+    instance: Any,
+    runtime: Any | None,
+    *,
+    gm_assume_online: bool = False,
 ) -> str:
-    """Start every save through DiceFrame's single narrative game loop."""
+    """Start every save through DiceFrame's single narrative game loop.
+
+    ``gm_assume_online``：user GM 模式新建局——创建请求正由 user GM 本人发起，
+    开场生成按 user 路由解析（GM 席位与 SSE 连接此时尚未建立）。
+    """
 
     del runtime
-    return await dependencies.handler.start_game(instance)
+    return await dependencies.handler.start_game(
+        instance, gm_assume_online=gm_assume_online
+    )
 
 
 async def resume_created_ai_table(

@@ -43,6 +43,7 @@ from src.webui.services import combat_extension as combat_extension_service
 from src.webui.services import adventure_runtime
 from src.game_profiles.service import ProfileService, ProfileDependencies
 from src.webui.services.ai_seats import AISeatDependencies, AISeatRuntime, AISeatService
+from src.webui.services.gm_routing import GmRoutingDependencies, GmRoutingRuntime, GmRoutingService
 from src.webui.services.check_decisions import CheckDecisionDependencies, CheckDecisionService
 from src.webui.services.game_preferences import GamePreferenceDependencies, GamePreferenceService
 from src.webui.services.run_story import RunStoryDependencies, RunStoryService
@@ -175,6 +176,22 @@ class WebAPI:
         ), self._ai_seat_runtime)
         if handler is not None and config_state is not None:
             handler.ai_seat_runtime = self._ai_seat_runtime
+        # 本局 GM 模型路由（user GM / 服务端）：解析 live 配置 + SSE presence，
+        # 服务端默认客户端透传引用（composition 管理其生命周期）。presence 探针
+        # 由应用层（bootstrap / 配置热重载）注入 connection_pool.is_online。
+        self._gm_routing_runtime = GmRoutingRuntime(
+            config_state=lambda: self._config_state,
+            server_clients=lambda: (
+                self._handler.llm_client,
+                self._handler.check_llm_client,
+                self._handler.check_model_enabled,
+            ),
+        )
+        self._gm_routing = GmRoutingService(GmRoutingDependencies(
+            get_instance=self.get_game_instance, save_instance=self._reg.save,
+        ), self._gm_routing_runtime)
+        if handler is not None:
+            handler.set_gm_routing_runtime(self._gm_routing_runtime)
         self._save_config = save_config or (lambda: None)
         handler_rulesets = getattr(handler, "ruleset_registry", None)
         self._ruleset_registry: RulesetRuntimeRegistry = (
@@ -934,6 +951,11 @@ class WebAPI:
                     self._turn_dependencies,
                     "|".join(instance.game_key),
                 ),
+                # GM 路由创建期钩子：user 主模型在共享服务商目录中可解析即可
+                # 放宽服务端 LLM gate（对局只需确保有一个 GM 存在）；开局选择
+                # 在创建事务内写入本局路由槽位。
+                validate_gm_routing=self._validate_creation_gm_routing,
+                apply_gm_routing=self._gm_routing_runtime.apply_creation_settings,
             )
         )
         if self._plugins and self._handler and hasattr(self._handler, "set_plugin_host"):
@@ -1114,6 +1136,34 @@ class WebAPI:
             "error": message,
             "missing": status["missing"],
         }
+
+    # GM 路由创建期校验：runtime 的 reason 码 → 用户可读提示（中文主语言）。
+    _GM_ROUTING_REASONS = {
+        "invalid_mode": "GM 来源仅支持 server / user",
+        "main_required": "user GM 模式必须选择主模型",
+        "provider_missing": "所选 AI 服务商不存在",
+        "provider_unconfigured": "所选 AI 服务商缺少连接配置",
+        "model_required": "缺少模型名称",
+        "model_missing": "所选模型不在服务商目录中",
+        "model_not_chat": "所选模型不支持对话生成",
+    }
+
+    def _validate_creation_gm_routing(self, raw: Any) -> dict[str, Any] | None:
+        """创建载荷中的 GM 路由配置校验；None 表示通过（或未携带该字段）。"""
+        if raw is None:
+            return None
+        try:
+            self._gm_routing_runtime.validate_settings(raw)
+        except ValueError as exc:
+            reason = str(exc)
+            return {
+                "ok": False,
+                "error_code": "INVALID_GM_ROUTING",
+                "error": self._GM_ROUTING_REASONS.get(
+                    reason, f"GM 路由配置无效（{reason}）"
+                ),
+            }
+        return None
 
     # ---- 规则辅助 ----
 
@@ -1937,6 +1987,16 @@ class WebAPI:
 
     def ai_seat_settings(self, game_key: str) -> dict[str, Any]:
         return self._ai_seats.read(game_key)
+
+    def gm_routing_settings(self, game_key: str) -> dict[str, Any]:
+        return self._gm_routing.read(game_key)
+
+    async def update_gm_routing_settings(self, game_key: str, body: Any) -> dict[str, Any]:
+        return await self._gm_routing.update(game_key, body)
+
+    def set_gm_presence_probe(self, probe) -> None:
+        """应用层注入 presence 探针（connection_pool.is_online）；热重载后重绑。"""
+        self._gm_routing_runtime.set_presence_probe(probe)
 
     def check_mode_settings(self, game_key: str, viewer: Any) -> dict[str, Any]:
         return self._check_modes.read(game_key, viewer)
@@ -3196,7 +3256,8 @@ class WebAPI:
                            advancement_authority: Any = UNSET,
                            unclaimed_control_default: str = "",
                            world_ref: dict[str, Any] | None = None,
-                           book_bindings: list[dict[str, Any]] | None = None) -> dict[str, Any]:
+                           book_bindings: list[dict[str, Any]] | None = None,
+                           gm_routing: dict[str, Any] | None = None) -> dict[str, Any]:
         return await self._game_lifecycle.create_game(
             world_id=world_id, game_name=game_name, group_name=group_name,
             rule_id=rule_id, solo=solo, lorebook_world_id=lorebook_world_id,
@@ -3218,6 +3279,7 @@ class WebAPI:
             unclaimed_control_default=unclaimed_control_default,
             world_ref=world_ref,
             book_bindings=book_bindings,
+            gm_routing=gm_routing,
         )
 
     # ---- 重开引用码 ----
