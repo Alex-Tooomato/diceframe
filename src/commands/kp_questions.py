@@ -177,12 +177,38 @@ class KPQuestionResponder:
         allowed = {str(entry.get("id") or "") for entry in projected} - {""}
         return [entry for entry in matches if str(entry.get("id") or "") in allowed]
 
+    def set_gm_routing_runtime(self, runtime) -> None:
+        """本局 GM 模型路由（user GM / 服务端）；None 表示沿用服务端客户端。"""
+        self._gm_routing = runtime
+
     async def answer(
         self,
         instance: GameInstance,
         actor_uid: str,
         question: str,
         visibility: Literal["private", "party"] = "private",
+    ) -> dict[str, Any]:
+        # 桌外问答同样按本局 GM 路由解析客户端（玩家发起时 user GM 可能不在线，
+        # 运行时会自动回退服务端模型）；临时客户端用完即关。
+        generation = None
+        if getattr(self, "_gm_routing", None) is not None:
+            generation = self._gm_routing.begin(instance)
+        client = self.llm_client
+        if generation is not None and generation.source == "user":
+            client = generation.llm_client or self.llm_client
+        try:
+            return await self._answer(instance, actor_uid, question, visibility, client)
+        finally:
+            if generation is not None:
+                await generation.close()
+
+    async def _answer(
+        self,
+        instance: GameInstance,
+        actor_uid: str,
+        question: str,
+        visibility: Literal["private", "party"],
+        llm: Any,
     ) -> dict[str, Any]:
         actor = instance.players.get(actor_uid) or {}
         actor_name = str(actor.get("character_name") or actor_uid)
@@ -219,7 +245,7 @@ class KPQuestionResponder:
                 "ja": "\n公開範囲：パーティー全員",
                 "de": "\nSichtbarkeit: für die gesamte Gruppe öffentlich",
             })
-        provider_name = self.llm_client.default if self.llm_client else ""
+        provider_name = llm.default if llm else ""
         context = await self.prompt_composer.build_player_safe_context(
             instance,
             system_prompt,
@@ -230,7 +256,7 @@ class KPQuestionResponder:
             world_data=rule_ctx.world_data,
             visibility=visibility,
         )
-        response = await self.llm_client.call(
+        response = await llm.call(
             system_prompt,
             context,
             temperature=0.2,

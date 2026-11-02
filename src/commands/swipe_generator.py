@@ -68,6 +68,10 @@ class SwipeGenerator:
     def set_scene_image_hook(self, hook) -> None:
         self._scene_image_hook = hook
 
+    def set_gm_routing_runtime(self, runtime) -> None:
+        """本局 GM 模型路由（user GM / 服务端）；None 表示沿用服务端客户端。"""
+        self._gm_routing = runtime
+
     async def generate(self, instance: GameInstance, round_num: int) -> str | None:
         """Run the complete historical rewrite under the shared process barrier."""
 
@@ -77,6 +81,20 @@ class SwipeGenerator:
                 instance.game_key,
             )
             return None
+        # swipe 属于 GM 主动操作：按本局 GM 路由解析有效客户端，用完即关。
+        generation = None
+        if getattr(self, "_gm_routing", None) is not None:
+            generation = self._gm_routing.begin(instance)
+        client = self.llm_client
+        if generation is not None and generation.source == "user":
+            client = generation.llm_client or self.llm_client
+        try:
+            return await self._generate(instance, round_num, client)
+        finally:
+            if generation is not None:
+                await generation.close()
+
+    async def _generate(self, instance: GameInstance, round_num: int, llm: Any) -> str | None:
         async with instance.historical_rewrite() as rewrite_entered:
             if not rewrite_entered:
                 return None
@@ -89,7 +107,7 @@ class SwipeGenerator:
                 before.log = deepcopy(instance.log)
                 staged = type(instance).from_dict(deepcopy(instance.to_dict()))
                 staged.log = deepcopy(instance.log)
-                narration, scene_payload = await self._generate_locked(staged, round_num)
+                narration, scene_payload = await self._generate_locked(staged, round_num, llm)
                 if narration is None:
                     return None
                 if self.get_instance:
@@ -118,9 +136,10 @@ class SwipeGenerator:
                 return narration
 
     async def _generate_locked(
-        self, instance: GameInstance, round_num: int,
+        self, instance: GameInstance, round_num: int, llm: Any = None,
     ) -> tuple[str | None, dict[str, Any] | None]:
         """为指定轮生成一个新 swipe（最多 5 个）。"""
+        llm = llm or self.llm_client
         target_entry = None
         target_idx = -1
         for i, entry in enumerate(instance.log):
@@ -195,7 +214,7 @@ class SwipeGenerator:
         lorebook_matches = await self.lore_retriever.retrieve(
             instance, actions_text, action_actor_uids=action_actor_uids,
             overall_budget=lore_char_budget(
-                self.llm_client.default if getattr(self, "llm_client", None) else ""
+                llm.default if llm else ""
             ),
         )
 
@@ -211,7 +230,7 @@ class SwipeGenerator:
         pending_combat_events_text = combat_narrative.format_pending_events(instance)
 
         # 构建上下文（仅使用目标轮之前的日志），不临时改写共享 instance.log。
-        provider_name = self.llm_client.default if self.llm_client else ""
+        provider_name = llm.default if llm else ""
         context = await self.prompt.build_user_context(
             instance,
             gm_prompt,
@@ -223,14 +242,14 @@ class SwipeGenerator:
             authoritative_events_text=pending_combat_events_text,
         )
 
-        response = await self.llm_client.call(
+        response = await llm.call(
             system_prompt=gm_prompt,
             user_message=context,
             temperature=0.9,
             max_tokens=self.narrative_max_tokens,
         )
         response = await repair_malformed_protocol_response(
-            self.llm_client,
+            llm,
             response,
             system_prompt=gm_prompt,
             user_message=context,
@@ -240,7 +259,7 @@ class SwipeGenerator:
         )
         response.content = normalize_tag_protocol(response.content)
         response = await ensure_story_response(
-            instance, response, self.llm_client, system_prompt=gm_prompt,
+            instance, response, llm, system_prompt=gm_prompt,
             user_message=context, max_tokens=self.narrative_max_tokens,
             round_number=round_num, revision=len(swipes),
         )

@@ -11,6 +11,7 @@ import random
 import time
 import uuid
 from collections.abc import Callable
+from contextlib import asynccontextmanager
 from copy import deepcopy
 from types import SimpleNamespace
 from typing import Any
@@ -265,6 +266,30 @@ class CheckModelNotConfigured(RuntimeError):
         self.rolled_back = rolled_back
         self.rollback_failed = rollback_failed
 
+
+class GmModelNotConfigured(RuntimeError):
+    """本局与 Service 端都没有可用的 GM 主模型，叙事无法进行。
+
+    与 ``CheckModelNotConfigured`` 同级的可恢复配置错误：user GM 未在线（或其
+    模型配置失效）且服务端主模型未配置时，回合处理边界回滚到行动阶段并以稳定
+    ``error_code``（``GM_MODEL_NOT_CONFIGURED``）上报；行动保留在队列里，user GM
+    上线或配置修复后可直接重试。``error_code`` 是对外契约，不得随文案改动。
+    """
+
+    error_code = "GM_MODEL_NOT_CONFIGURED"
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        rolled_back: bool | None = None,
+        rollback_failed: bool = False,
+    ) -> None:
+        super().__init__(message)
+        self.rolled_back = rolled_back
+        self.rollback_failed = rollback_failed
+
+
 class RoundProcessor:
     """处理完整的一轮判定：context 拼接 → LLM 调用 → 解析 → 更新状态 → 播报。"""
 
@@ -291,11 +316,15 @@ class RoundProcessor:
         advance_adventure_world: Callable[[GameInstance], dict[str, Any]] | None = None,
         check_model_enabled: bool = False,
         check_llm_client: Any | None = None,
+        gm_routing_runtime: Any | None = None,
     ):
         self.registry = registry
         self.llm_client = llm_client
         self.check_model_enabled = check_model_enabled
         self.check_llm_client = check_llm_client
+        # 本局 GM 模型路由（user GM / 服务端）：None = 无路由能力（沿用服务端
+        # 全局客户端），由 composition 在运行时注入。
+        self._gm_routing = gm_routing_runtime
         self.matcher = matcher
         self.lore_retriever = lore_retriever or LoreRetriever(matcher)
         self.lorebook_store = lorebook_store
@@ -329,6 +358,49 @@ class RoundProcessor:
 
     def set_image_generation_service(self, service) -> None:
         self._image_generation = service
+
+    def set_gm_routing_runtime(self, runtime) -> None:
+        """注入本局 GM 模型路由运行时；None 表示回退服务端全局客户端。"""
+        self._gm_routing = runtime
+
+    async def _begin_gm_generation(self, instance: GameInstance):
+        """解析本局这一刻的 GM 客户端；无 GM 可用时抛 GmModelNotConfigured。"""
+        if self._gm_routing is None:
+            return None
+        generation = self._gm_routing.begin(instance)
+        if generation.reason == "model_unavailable":
+            await generation.close()
+            raise GmModelNotConfigured(
+                "本局 user GM 与服务端都没有可用的 GM 主模型；user GM 上线或配置修复后可直接重试")
+        return generation
+
+    @asynccontextmanager
+    async def _background_gm_client(self, instance: GameInstance):
+        """后台可选能力（摘要/分镜补全）的 GM 客户端；无可用模型时 yield None。
+
+        后台任务独立解析并自管临时客户端生命周期（GM 可能已掉线 → 服务端模型）；
+        与回合主流程的 generation 互不共享，绝不把配置问题当错误上抛。
+        """
+        generation = None
+        if self._gm_routing is not None and instance is not None:
+            try:
+                generation = self._gm_routing.begin(instance)
+            except Exception:
+                logger.exception("后台任务 GM 路由解析失败，改用服务端模型: %s",
+                                 getattr(instance, "game_key", "?"))
+        client = self.llm_client
+        if generation is not None:
+            if generation.reason == "model_unavailable":
+                client = None
+            elif generation.source == "user":
+                # server 来源沿用调用方自己的服务端客户端（同一 composition），
+                # 仅 user 来源使用这里自管生命周期的临时客户端。
+                client = generation.llm_client or self.llm_client
+        try:
+            yield client
+        finally:
+            if generation is not None:
+                await generation.close()
 
     def set_defer_hosted_players(self, enabled: bool) -> None:
         self._defer_hosted_players = enabled
@@ -396,7 +468,21 @@ class RoundProcessor:
         return list(checks.last_checks(instance))
 
     async def prepare_round_checks_ai(self, instance: GameInstance) -> list[dict]:
-        """阶段 1：由 GM 模型统一规划检定，再由服务端一次性掷骰结算。"""
+        """阶段 1：由 GM 模型统一规划检定，再由服务端一次性掷骰结算。
+
+        检定模型按本局 GM 路由解析（user GM 在线时用其配置，掉线自动回退
+        服务端）；临时客户端在本方法内用完即关。
+        """
+        generation = await self._begin_gm_generation(instance)
+        try:
+            return await self._prepare_round_checks_ai_routed(instance, generation)
+        finally:
+            if generation is not None:
+                await generation.close()
+
+    async def _prepare_round_checks_ai_routed(
+        self, instance: GameInstance, generation=None,
+    ) -> list[dict]:
         progression.require_writable(instance)
         session_stats.require_writable(instance)
         checks.require_writable(instance)
@@ -404,7 +490,17 @@ class RoundProcessor:
             return list(checks.last_checks(instance))
         if instance.state != GameState.ACTIVE_JUDGMENT:
             return []
-        if self.check_model_enabled and self.check_llm_client is None:
+        # 本局生效的检定路由：generation 为 None 时沿用服务端全局配置。
+        check_enabled = self.check_model_enabled
+        check_client = self.check_llm_client
+        main_client = self.llm_client
+        if generation is not None:
+            check_enabled = generation.check_model_enabled
+            check_client = generation.check_llm_client
+            if generation.source == "user":
+                # server 来源沿用本组件自己的服务端客户端；user 来源才用临时客户端。
+                main_client = generation.llm_client or self.llm_client
+        if check_enabled and check_client is None:
             raise CheckModelNotConfigured(
                 "独立检定模型未配置，请在设置中选择有效服务商和模型，或关闭独立检定模型"
             )
@@ -430,7 +526,7 @@ class RoundProcessor:
             plan_started = time.perf_counter()
             planned, metadata = await plan_round_checks(
                 instance, rule_ctx.rule,
-                self.check_llm_client if self.check_model_enabled else self.llm_client,
+                check_client if check_enabled else main_client,
             )
             if not planning_target_is_current():
                 logger.info(
@@ -554,7 +650,7 @@ class RoundProcessor:
                 skip_action_indexes=deferred_indexes,
             )
         except LLMToolCallError as exc:
-            if self.check_model_enabled:
+            if check_enabled:
                 # A configured dedicated model is an explicit user choice.  If
                 # every provider/tool call fails, falling back to the shared
                 # offline planner would make that choice appear to work while
@@ -622,6 +718,15 @@ class RoundProcessor:
                     str(exc), rolled_back=False, rollback_failed=True,
                 ) from exc
             raise CheckModelNotConfigured(str(exc), rolled_back=True) from exc
+        except GmModelNotConfigured as exc:
+            # 本局与服务端都没有可用 GM 主模型：与检定模型同级的可恢复配置
+            # 错误，直接调用方也必须拿到回滚后的稳定错误码。
+            rolled_back = await self._recover_failed_round(instance, on_reset=on_reset)
+            if not rolled_back:
+                raise GmModelNotConfigured(
+                    str(exc), rolled_back=False, rollback_failed=True,
+                ) from exc
+            raise GmModelNotConfigured(str(exc), rolled_back=True) from exc
         from src.engine import check_decisions
 
         if check_decisions.pending_any(instance):
@@ -647,6 +752,15 @@ class RoundProcessor:
             raise
         except RoundNotProcessed:
             raise
+        except GmModelNotConfigured as exc:
+            # impl 内部解析路由时才发现无可用 GM：与前置检定准备同级的可恢复
+            # 配置错误，同样必须回滚并保留稳定 error_code。
+            rolled_back = await self._recover_failed_round(instance, on_reset=on_reset)
+            if not rolled_back:
+                raise GmModelNotConfigured(
+                    str(exc), rolled_back=False, rollback_failed=True,
+                ) from exc
+            raise GmModelNotConfigured(str(exc), rolled_back=True) from exc
         except Exception as exc:
             # 判定/叙事失败不允许把对局留在 ACTIVE_JUDGMENT：那会让玩家永远
             # 看到"正在生成剧情"（生产事故 2026-09-10）。回滚到行动阶段后
@@ -747,7 +861,11 @@ class RoundProcessor:
         关机 save_all_active 会落盘。round_number 在调度时快照，避免日志读到被推进的值。
         """
         try:
-            await summarize(instance, self.llm_client, gm_prompt, self.summary_max_tokens)
+            async with self._background_gm_client(instance) as client:
+                if client is None:
+                    logger.info("无可用 GM 模型，跳过后台摘要压缩 (round=%d)", round_number)
+                    return
+                await summarize(instance, client, gm_prompt, self.summary_max_tokens)
         except Exception:
             logger.exception("摘要压缩失败，已跳过 (round=%d)", round_number)
 
@@ -878,20 +996,29 @@ class RoundProcessor:
         players: Any,
     ) -> None:
         """Infer and persist one version-bound public storyboard draft."""
+        # 后台分镜补全独立解析本局 GM 路由（user GM 可能已掉线 → 服务端模型）。
+        routing_instance = self.registry.get(game_key)
         try:
-            panels, _compressed = await infer_scene_panels(
-                self.llm_client,
-                narration=narration,
-                actions=actions,
-                current_scene=current_scene,
-                players=players,
-                global_prompt="",
-                declared_panels=[],
-                # This is an optional UI prefill.  Unlike automatic image
-                # generation it may safely fall back to a public single-panel
-                # draft when the model is unavailable.
-                strict=False,
-            )
+            async with self._background_gm_client(routing_instance) as client:
+                if client is None:
+                    logger.info(
+                        "无可用 GM 模型，跳过后台分镜草稿 (game=%s round=%d)",
+                        game_key, round_number,
+                    )
+                    return
+                panels, _compressed = await infer_scene_panels(
+                    client,
+                    narration=narration,
+                    actions=actions,
+                    current_scene=current_scene,
+                    players=players,
+                    global_prompt="",
+                    declared_panels=[],
+                    # This is an optional UI prefill.  Unlike automatic image
+                    # generation it may safely fall back to a public single-panel
+                    # draft when the model is unavailable.
+                    strict=False,
+                )
             panels, _ = normalize_scene_panels(
                 panels, merge_same_location=False,
             )
@@ -1118,17 +1245,21 @@ class RoundProcessor:
             # injected test/extension services that predate this attribute.
             elif bool(getattr(self._image_generation, "auto_storyboard", True)):
                 try:
-                    inferred_panels, inferred_compressed = await infer_scene_panels(
-                        self.llm_client,
-                        narration=str(entry.get("gm_response") or ""),
-                        actions=entry.get("actions") or [],
-                        current_scene=current_scene or str(module_hooks.narrative_view(current)["scene"] or ""),
-                        players=getattr(current, "players", {}),
-                        global_prompt=prompt,
-                        declared_panels=panels,
-                        strict=(hasattr(self._image_generation, "auto_storyboard")
-                                and bool(getattr(self._image_generation, "auto_storyboard", False))),
-                    )
+                    async with self._background_gm_client(current) as client:
+                        if client is None:
+                            inferred_panels, inferred_compressed = [], 0
+                        else:
+                            inferred_panels, inferred_compressed = await infer_scene_panels(
+                                client,
+                                narration=str(entry.get("gm_response") or ""),
+                                actions=entry.get("actions") or [],
+                                current_scene=current_scene or str(module_hooks.narrative_view(current)["scene"] or ""),
+                                players=getattr(current, "players", {}),
+                                global_prompt=prompt,
+                                declared_panels=panels,
+                                strict=(hasattr(self._image_generation, "auto_storyboard")
+                                        and bool(getattr(self._image_generation, "auto_storyboard", False))),
+                            )
                     # A backend-generated draft must be available to the
                     # manual image dialog even when the image request later
                     # fails.  Only real image services opt into this
@@ -1306,7 +1437,22 @@ class RoundProcessor:
             logger.exception("场景图后台任务异常 (round=%d)", round_number)
 
     async def process_round_impl(self, instance: GameInstance, *, on_delta=None, on_reset=None) -> tuple[str, dict | None]:
-        """实际的判定处理逻辑。"""
+        """实际的判定处理逻辑（兼容旧内部调用 seam；运行时入口走 ``process_round``）。
+
+        GM 叙事模型按本局路由解析（user GM 在线时用其配置，掉线自动回退服务端）；
+        临时客户端在本方法内用完即关，后台任务（摘要/分镜）各自独立解析。
+        """
+        generation = await self._begin_gm_generation(instance)
+        try:
+            return await self._process_round_impl_routed(
+                instance, generation, on_delta=on_delta, on_reset=on_reset)
+        finally:
+            if generation is not None:
+                await generation.close()
+
+    async def _process_round_impl_routed(
+        self, instance: GameInstance, generation=None, *, on_delta=None, on_reset=None,
+    ) -> tuple[str, dict | None]:
         progression.require_writable(instance)
         session_stats.require_writable(instance)
         checks.require_writable(instance)
@@ -1315,6 +1461,10 @@ class RoundProcessor:
         ruleset_runtime.require_writable(instance)
         module_hooks.preflight(instance, module_hooks.NARRATIVE_VIEW)
         expected_run_id = instance.run_id
+        # 本局生效的 GM 主客户端：无路由/服务端透传时即服务端全局客户端。
+        llm = self.llm_client
+        if generation is not None and generation.source == "user":
+            llm = generation.llm_client or self.llm_client
         if not checks.round_checks_prepared(instance):
             await self.prepare_round_checks_ai(instance)
         # The planning phase may create an explicitly-authorized table offer.
@@ -1341,7 +1491,7 @@ class RoundProcessor:
         })
         # 整体 lore 预算由既有 context 预算派生（唯一的 context-window authority），
         # 在检索阶段就收口，避免把远超预算的条目一路带到 composer 再裁。
-        provider_name = self.llm_client.default if self.llm_client else ""
+        provider_name = llm.default if llm else ""
         lorebook_matches = await self.lore_retriever.retrieve(
             instance, actions_text, action_actor_uids=action_actor_uids,
             overall_budget=lore_char_budget(provider_name),
@@ -1409,9 +1559,9 @@ class RoundProcessor:
             authoritative_events_text=pending_combat_events_text)
 
         context = await append_multistep_analysis(
-            self.llm_client, instance, gm_prompt, context, actions_text, self.analysis_max_tokens)
+            llm, instance, gm_prompt, context, actions_text, self.analysis_max_tokens)
         response, data = await call_llm_with_tag_retry(
-            self.llm_client, instance, gm_prompt, context, combat_model,
+            llm, instance, gm_prompt, context, combat_model,
             dice_block, self.narrative_max_tokens, actions_text,
             on_delta=on_delta, on_reset=on_reset,
             public_narration_context=_build_recent_public_narration_context(instance))
@@ -1450,7 +1600,7 @@ class RoundProcessor:
                 director_proposal_data = candidate
         if isinstance(runtime, NarrativeDirectorPlanningRuntime):
             try:
-                semantic_proposal = await runtime.plan_director_turn(instance, self.llm_client)
+                semantic_proposal = await runtime.plan_director_turn(instance, llm)
             except Exception:
                 logger.exception("D&D semantic Director planning failed; keeping deterministic proposal")
                 semantic_proposal = None

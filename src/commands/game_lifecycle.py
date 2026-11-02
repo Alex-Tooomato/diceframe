@@ -42,6 +42,18 @@ from src.rulesets.contracts import RunLifecycleRuntime
 logger = logging.getLogger("trpg")
 
 
+def _routing_client(generation: Any, server_client: Any) -> Any:
+    """路由 generation 的有效主客户端；无 generation 时回退服务端默认。
+
+    server 来源透传的是运行时快照引用，这里优先用调用方自己的服务端客户端
+    （同一 composition 注入、热重载后同批更换），user 来源才用临时客户端。
+    """
+    if generation is None or generation.source != "user":
+        return server_client
+    return generation.llm_client or server_client
+
+
+
 class RunInitializationError(RuntimeError):
     """Initializing the new-run candidate failed (adventure or ruleset step).
 
@@ -232,22 +244,47 @@ class GameLifecycle:
                     preserve_characters=preserve_characters,
                 )
 
+    def set_gm_routing_runtime(self, runtime) -> None:
+        """本局 GM 模型路由（user GM / 服务端）；None 表示沿用服务端客户端。"""
+        self._gm_routing = runtime
+
+    def _begin_gm_generation(self, instance: GameInstance, *, assume_user_online: bool = False):
+        """解析本局 GM 客户端；无路由能力时返回 None。
+
+        ``assume_user_online``：创建事务内由 user GM 本人发起的开场生成，
+        此时 GM 席位 / SSE 连接都尚未建立，跳过 presence 判定。
+        """
+        if getattr(self, "_gm_routing", None) is None:
+            return None
+        return self._gm_routing.begin(instance, assume_user_online=assume_user_online)
+
     async def start_game(
         self,
         instance: GameInstance,
         *,
         publish: bool = True,
         persist: bool = True,
+        gm_assume_online: bool = False,
     ) -> str:
-        async with instance.authoritative_write() as entered:
-            if not entered:
-                raise ValueError('this run is read-only')
-            return await self._start_game(instance, publish=publish, persist=persist)
+        # 开场叙事按本局 GM 路由解析客户端；user GM 新建局在创建请求内视为在线
+        # （gm_assume_online），临时客户端用完即关。
+        generation = self._begin_gm_generation(
+            instance, assume_user_online=gm_assume_online
+        )
+        try:
+            async with instance.authoritative_write() as entered:
+                if not entered:
+                    raise ValueError('this run is read-only')
+                return await self._start_game(instance, publish=publish, persist=persist, llm_client=_routing_client(generation, self.llm_client))
+        finally:
+            if generation is not None:
+                await generation.close()
 
     async def _start_game(
         self,
         instance: GameInstance,
         *,
+        llm_client: Any = None,
         publish: bool = True,
         persist: bool = True,
     ) -> str:
@@ -399,17 +436,18 @@ class GameLifecycle:
         if scene_context:
             welcome_context = scene_context + "\n\n---\n\n" + welcome_context
 
+        llm = llm_client or self.llm_client
         response = None
         opening_story = None
         try:
-            response = await self.llm_client.call(
+            response = await llm.call(
                 system_prompt=gm_prompt,
                 user_message=welcome_context,
                 temperature=0.8,
                 max_tokens=self.narrative_max_tokens,
             )
             response = await repair_malformed_protocol_response(
-                self.llm_client,
+                llm,
                 response,
                 system_prompt=gm_prompt,
                 user_message=welcome_context,
@@ -420,7 +458,7 @@ class GameLifecycle:
             response.content = normalize_tag_protocol(response.content)
             from src.commands.story_output import ensure_story_response, bound_story_response
             response = await ensure_story_response(
-                instance, response, self.llm_client, system_prompt=gm_prompt,
+                instance, response, llm, system_prompt=gm_prompt,
                 user_message=welcome_context, max_tokens=self.narrative_max_tokens, round_number=0,
             )
             narration = extract_narration_from_response(response)
@@ -517,13 +555,20 @@ class GameLifecycle:
         return narration
 
     async def resume_game(self, instance: GameInstance) -> str:
-        async with instance.authoritative_write() as entered:
-            if not entered:
-                raise ValueError('this run is read-only')
-            return await self._resume_game(instance)
+        # 恢复叙事同样走本局 GM 路由；user GM 掉线时运行时自动回退服务端。
+        generation = self._begin_gm_generation(instance)
+        try:
+            async with instance.authoritative_write() as entered:
+                if not entered:
+                    raise ValueError('this run is read-only')
+                return await self._resume_game(instance, llm_client=_routing_client(generation, self.llm_client))
+        finally:
+            if generation is not None:
+                await generation.close()
 
-    async def _resume_game(self, instance: GameInstance) -> str:
+    async def _resume_game(self, instance: GameInstance, *, llm_client: Any = None) -> str:
         """从 PAUSED 状态恢复游戏，生成「上回说到」续接叙事。"""
+        llm = llm_client or self.llm_client
         progression.require_writable(instance)
         if instance.state != GameState.PAUSED:
             await instance.activate()
@@ -583,7 +628,7 @@ class GameLifecycle:
         )
 
         try:
-            response = await self.llm_client.call(
+            response = await llm.call(
                 system_prompt=gm_prompt,
                 user_message="\n\n---\n\n".join(filter(None, (self.prompt.scene_context_text(instance), resume_prompt))),
                 temperature=0.6,

@@ -75,6 +75,9 @@ class GameHandler:
         self._puzzles = PuzzleProcessor()
         self.llm_client = llm_client
         self.ai_seat_runtime = None
+        # 本局 GM 模型路由（user GM / 服务端）：composition 注入；None 时所有
+        # GM 生成路径（回合/检定/swipe/概览/KP/开场）沿用服务端全局客户端。
+        self.gm_routing_runtime = None
         self._after_round_completed = None
         self.matcher = lorebook_matcher
         self.lorebook_store = lorebook_store
@@ -258,9 +261,9 @@ class GameHandler:
 
     # ---- 开始游戏 ----
 
-    async def start_game(self, instance: GameInstance) -> str:
+    async def start_game(self, instance: GameInstance, *, gm_assume_online: bool = False) -> str:
         """兼容旧入口；实际逻辑已拆到 GameLifecycle。"""
-        return await self._lifecycle.start_game(instance)
+        return await self._lifecycle.start_game(instance, gm_assume_online=gm_assume_online)
 
     # ---- 智能续接 ----
 
@@ -309,6 +312,24 @@ class GameHandler:
     def set_hosted_combat_resume(self, callback) -> None:
         self._after_round_completed = callback
         self._round_processor.set_defer_hosted_players(callback is not None)
+
+    def set_gm_routing_runtime(self, runtime) -> None:
+        """注入本局 GM 模型路由运行时，传播到全部 GM 生成路径。"""
+        self.gm_routing_runtime = runtime
+        self._round_processor.set_gm_routing_runtime(runtime)
+        self._swipe_generator.set_gm_routing_runtime(runtime)
+        self._kp_questions.set_gm_routing_runtime(runtime)
+        self._story_recap.set_gm_routing_runtime(runtime)
+        self._lifecycle.set_gm_routing_runtime(runtime)
+
+    @property
+    def check_llm_client(self):
+        """服务端全局检定客户端（供 GM 路由运行时作为回退引用）。"""
+        return self._round_processor.check_llm_client
+
+    @property
+    def check_model_enabled(self) -> bool:
+        return bool(self._round_processor.check_model_enabled)
 
     def prepare_round_checks(self, instance: GameInstance) -> list[dict]:
         """结算本轮结构化检定；若可消耗幸运，叙事会等待玩家选择。"""

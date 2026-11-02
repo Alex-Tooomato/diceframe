@@ -29,14 +29,30 @@ class StoryRecapGenerator:
         # _process_lock：模型调用期间回合推进必须能正常拿锁。
         self._generate_lock = asyncio.Lock()
 
+    def set_gm_routing_runtime(self, runtime) -> None:
+        """本局 GM 模型路由（user GM / 服务端）；None 表示沿用服务端客户端。"""
+        self._gm_routing = runtime
+
     async def generate(self, instance: GameInstance) -> dict[str, Any]:
         """Generate one recap and attach it to the latest completed round."""
         if instance._process_lock.locked():
             return {"ok": False, "error": _message(instance, "游戏正在推进，请稍后再生成剧情概览", "The game is processing. Try the recap again shortly.", "ゲーム進行中です。少し待ってから再度お試しください。", "Das Spiel wird gerade verarbeitet. Versuche die Zusammenfassung gleich noch einmal.")}
-        async with self._generate_lock:
-            return await self._generate_locked(instance)
+        # 概览属于 GM 主动操作：按本局 GM 路由解析客户端，用完即关。
+        generation = None
+        if getattr(self, "_gm_routing", None) is not None:
+            generation = self._gm_routing.begin(instance)
+        client = self.llm_client
+        if generation is not None and generation.source == "user":
+            client = generation.llm_client or self.llm_client
+        try:
+            async with self._generate_lock:
+                return await self._generate_locked(instance, client)
+        finally:
+            if generation is not None:
+                await generation.close()
 
-    async def _generate_locked(self, instance: GameInstance) -> dict[str, Any]:
+    async def _generate_locked(self, instance: GameInstance, llm: Any = None) -> dict[str, Any]:
+        llm = llm or self.llm_client
         # 与 kp_questions 相同的模式：锁内只取一致的快照，模型调用在锁外，
         # 仅最终落卡一步短暂重持锁并做注册表身份栅栏。
         async with instance._process_lock:
@@ -49,7 +65,7 @@ class StoryRecapGenerator:
         # 概览就不再对应当前剧情，必须拒绝落卡而不是挂到新剧情上。
         source_identity = _source_fingerprint(source)
         try:
-            response = await self.llm_client.call(
+            response = await llm.call(
                 system_prompt=_system_prompt(snapshot),
                 user_message=_recap_prompt(snapshot, source),
                 temperature=0.25,
