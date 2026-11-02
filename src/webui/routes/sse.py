@@ -203,9 +203,6 @@ async def sse_play(request: web.Request) -> web.StreamResponse:
                  "Connection": "keep-alive"})
     await resp.prepare(request)
     pool.add(game_key, user_id, resp)
-    # user GM 上线：GM 席位建立 SSE 即视为 presence 在线，唤醒各端刷新 GM 来源。
-    if user_id == getattr(inst, "gm_uid", ""):
-        await pool.broadcast(game_key, {"type": "gm_source_changed"})
 
     raw_cursor = (
         request.headers.get("Last-Event-ID", "")
@@ -245,6 +242,11 @@ async def sse_play(request: web.Request) -> web.StreamResponse:
                 # missed broadcast cannot leave an active composer onscreen.
                 {"type": "run_story_changed" if workspace_changed or lifecycle.get('status') in {'preparing', 'ended'} else "baseline"},
             )
+        # user GM 上线：GM 席位建立 SSE 即视为 presence 在线。先写完本流的
+        # 初始事件（baseline/run_story_changed 契约不能被抢跑），再通知其余
+        # 端刷新 GM 来源；本流刚拿到完整快照，无需自通知。
+        if user_id == getattr(inst, "gm_uid", ""):
+            await _notify_gm_source_changed(pool, game_key, exclude_uid=user_id)
         while True:
             current = api.get_game_instance(game_key)
             if not current:
@@ -318,9 +320,21 @@ async def sse_play(request: web.Request) -> web.StreamResponse:
     finally:
         pool.remove(game_key, user_id, resp)
         # user GM 掉线：presence 消失即触发自动回退服务端 GM，广播唤醒各端。
-        if user_id == getattr(inst, "gm_uid", "") and not pool.is_online(game_key, user_id):
-            await pool.broadcast(game_key, {"type": "gm_source_changed"})
+        # （is_online 是 presence 契约；无该能力的测试桩按掉线处理但广播会被
+        # _notify_gm_source_changed 静默跳过。）
+        if user_id == getattr(inst, "gm_uid", ""):
+            is_online = getattr(pool, "is_online", None)
+            if is_online is None or not is_online(game_key, user_id):
+                await _notify_gm_source_changed(pool, game_key)
     return resp
+
+
+async def _notify_gm_source_changed(pool, game_key: str, exclude_uid: str = "") -> None:
+    """广播 GM 来源变化；无广播能力的池（测试桩）静默跳过。"""
+    broadcast = getattr(pool, "broadcast", None)
+    if broadcast is None:
+        return
+    await broadcast(game_key, {"type": "gm_source_changed"}, exclude_uid=exclude_uid)
 
 
 def _play_public_signature(inst, user_id: str) -> str:
